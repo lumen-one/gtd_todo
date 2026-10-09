@@ -1,0 +1,192 @@
+import 'package:flutter/material.dart';
+
+import '../../application/today_view.dart';
+import '../../domain/task.dart';
+import '../app_controller.dart';
+import '../dialogs/routine_edit_dialog.dart';
+import '../theme.dart';
+import '../widgets/task_actions.dart';
+import '../widgets/task_tile.dart';
+
+/// 第 3 页：任务池（ui-interaction.md §6.3）。
+/// 一条横线分两段：横线前 = 计划段（未来任务 + 周期规则条目），横线后 =
+/// 散件段（三无）。拖拽仅为整理位置（无调度含义），顺序持久化（记 metadata，
+/// 重启保留）；新建任务进对应组末尾。空状态："池干水清"。
+///
+/// 周期条目（决议 27）：按下一次发生日期升序插入计划段对应位置，是否显示
+/// 由设置『周期任务在任务池的显示』决定；条目本身只读，点它跳『编辑规则』。
+class PoolPanel extends StatelessWidget {
+  final AppController controller;
+
+  const PoolPanel({super.key, required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    final view = controller.poolView;
+    final theme = Theme.of(context);
+
+    if (view.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.water_drop_outlined,
+                size: 44, color: theme.colorScheme.onSurfaceVariant),
+            const SizedBox(height: 8),
+            const Text('池干水清'),
+          ],
+        ),
+      );
+    }
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(0, 6, 0, 96),
+      children: [
+        if (view.rows.isNotEmpty) ...[
+          const _SectionLabel('计划段'),
+          ReorderableListView(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            buildDefaultDragHandles: false,
+            onReorder: (o, n) => _persistRows(view.rows, o, n),
+            children: [
+              for (var i = 0; i < view.rows.length; i++)
+                _row(context, theme, view.rows[i], i),
+            ],
+          ),
+        ],
+        if (view.rows.isNotEmpty && view.loose.isNotEmpty)
+          const _PoolDivider(),
+        if (view.loose.isNotEmpty)
+          ReorderableListView(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            buildDefaultDragHandles: false,
+            onReorder: (o, n) => _persistOrder(view.loose, o, n),
+            children: [
+              for (var i = 0; i < view.loose.length; i++)
+                TaskTile(
+                  key: ValueKey('loose-${view.loose[i].id}'),
+                  controller: controller,
+                  task: view.loose[i],
+                  highlight: view.loose[i].id == controller.focusedTaskId,
+                  onLongPress: () =>
+                      showPoolMenu(context, controller, view.loose[i]),
+                  trailing: _grip(i, theme),
+                ),
+            ],
+          ),
+      ],
+    );
+  }
+
+  /// 计划段的一行：任务行可拖，周期条目只读（点它跳设置页『编辑规则』）。
+  Widget _row(BuildContext context, ThemeData theme, PoolRow row, int index) {
+    if (row is PoolRoutineRow) {
+      final focused = controller.settingsFocusRoutineId == row.routine.id;
+      return Card(
+        key: ValueKey('routine-${row.routine.id}-${row.at.millisecondsSinceEpoch}'),
+        margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+        shape: focused
+            ? RoundedRectangleBorder(
+                side: BorderSide(color: AppColors.accent, width: 1.6),
+                borderRadius: BorderRadius.circular(14),
+              )
+            : null,
+        child: ListTile(
+          dense: true,
+          leading: Icon(Icons.repeat, size: 18, color: AppColors.accent),
+          title: Text(row.routine.title, maxLines: 1,
+              overflow: TextOverflow.ellipsis),
+          subtitle: Text(
+            '${routineSubtitle(row.routine)} · ${_fmtDay(row.at)}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          trailing: const Text('例行', style: TextStyle(fontSize: 11.5)),
+          onTap: () => controller.focusRoutineInSettings(row.routine.id),
+        ),
+      );
+    }
+    final task = (row as PoolTaskRow).task;
+    return TaskTile(
+      key: ValueKey('plan-${task.id}'),
+      controller: controller,
+      task: task,
+      highlight: task.id == controller.focusedTaskId,
+      onLongPress: () => showPoolMenu(context, controller, task),
+      trailing: _grip(index, theme),
+    );
+  }
+
+  Widget _grip(int i, ThemeData theme) => ReorderableDragStartListener(
+        index: i,
+        child: Icon(Icons.drag_handle,
+            size: 18,
+            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
+      );
+
+  /// 拖拽整理 = 仅显示序（决议 14）：整段重编 pool_order，重启保留。
+  /// 周期条目不可拖：拖动后取"任务行的相对顺序"落盘。
+  Future<void> _persistRows(List<PoolRow> rows, int oldIndex, int newIndex) async {
+    if (rows[oldIndex] is! PoolTaskRow) return;
+    final insert = newIndex > oldIndex ? newIndex - 1 : newIndex;
+    final list = [...rows]
+      ..removeAt(oldIndex)
+      ..insert(insert, rows[oldIndex]);
+    final ids = [
+      for (final r in list)
+        if (r is PoolTaskRow) r.task.id,
+    ];
+    await controller.setPoolOrders(ids);
+  }
+
+  Future<void> _persistOrder(
+      List<Task> section, int oldIndex, int newIndex) async {
+    final insert = newIndex > oldIndex ? newIndex - 1 : newIndex;
+    final ids = [for (final t in section) t.id]
+      ..removeAt(oldIndex)
+      ..insert(insert, section[oldIndex].id);
+    await controller.setPoolOrders(ids);
+  }
+
+  static String _fmtDay(DateTime d) =>
+      '${d.month}-${d.day.toString().padLeft(2, '0')}'
+      '${d.hour == 0 && d.minute == 0 ? '' : ' ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}'}';
+}
+
+class _SectionLabel extends StatelessWidget {
+  final String label;
+
+  const _SectionLabel(this.label);
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.fromLTRB(18, 10, 18, 4),
+        child: Text(label,
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w700)),
+      );
+}
+
+class _PoolDivider extends StatelessWidget {
+  const _PoolDivider();
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 18),
+        child: Row(
+          children: [
+            const Expanded(child: Divider()),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              child: Text('散件',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant)),
+            ),
+            const Expanded(child: Divider()),
+          ],
+        ),
+      );
+}

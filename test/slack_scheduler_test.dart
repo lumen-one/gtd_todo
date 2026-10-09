@@ -1,0 +1,132 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:gtd_todo/domain/schedule.dart';
+import 'package:gtd_todo/domain/task.dart';
+import 'package:gtd_todo/domain/time_context.dart';
+import 'package:gtd_todo/scheduler/slack_scheduler.dart';
+
+void main() {
+  const rule = WorkTimeRule.standard;
+  const scheduler = SlackScheduler();
+  final now = DateTime(2026, 10, 7, 16, 0); // 周三 16:00
+
+  Task task({
+    required String id,
+    required DateTime deadline,
+    required int remaining,
+    int estimated = 60,
+    int importance = 3,
+    TaskStatus status = TaskStatus.active,
+    DateTime? snoozedUntil,
+  }) {
+    return Task(
+      id: id,
+      title: id,
+      deadline: deadline,
+      estimatedWork: estimated,
+      remainingWork: remaining,
+      importance: importance,
+      status: status,
+      snoozedUntil: snoozedUntil,
+      created: DateTime(2026, 10, 7, 15, 0),
+    );
+  }
+
+  test('单任务：interval = alpha * slack，nextReminder 落在工作窗内', () {
+    // available = 16:00→18:00 = 120min，remaining 60 → slack 60 → interval 30
+    final r = scheduler.schedule(
+      tasks: [
+        task(id: 'a', deadline: DateTime(2026, 10, 7, 18, 0), remaining: 60),
+      ],
+      now: now,
+      workRule: rule,
+    );
+    final m = r.metricOf('a')!;
+    expect(m.slackMinutes, 60);
+    expect(m.urgency, closeTo(0.5, 1e-9));
+    expect(m.intervalMinutes, 30);
+    expect(r.nextReminderAt, DateTime(2026, 10, 7, 16, 30));
+    expect(r.nextTaskId, 'a');
+  });
+
+  test('裕度很大时 interval 被 max 截断，不会退化成几小时一响的固定提醒', () {
+    // available ≈ 2370min，remaining 60 → alpha*slack = 1155 → clamp 480
+    final r = scheduler.schedule(
+      tasks: [
+        task(id: 'a', deadline: DateTime(2026, 10, 14, 18, 0), remaining: 60),
+      ],
+      now: now,
+      workRule: rule,
+    );
+    expect(r.metricOf('a')!.intervalMinutes, 480);
+  });
+
+  test('多任务：urgency 高者优先；snooze 后其他任务自动顶上', () {
+    final a = task(id: 'a', deadline: DateTime(2026, 10, 7, 18, 0), remaining: 80);
+    final b = task(id: 'b', deadline: DateTime(2026, 10, 7, 18, 0), remaining: 30);
+
+    var r = scheduler.schedule(tasks: [a, b], now: now, workRule: rule);
+    expect(r.nextTaskId, 'a');
+
+    // Task 不可变（§3.2 C1）：snooze = 用新实例替换旧实例
+    final aSnoozed = Task(
+      id: a.id,
+      title: a.title,
+      deadline: a.deadline,
+      estimatedWork: a.estimatedWork,
+      remainingWork: a.remainingWork,
+      importance: a.importance,
+      status: TaskStatus.snoozed,
+      snoozedUntil: DateTime(2026, 10, 7, 17, 0), // 尚未到期
+      created: a.created,
+    );
+
+    r = scheduler.schedule(tasks: [aSnoozed, b], now: now, workRule: rule);
+    expect(r.nextTaskId, 'b');
+    expect(r.metricOf('a')!.displayStatus, TaskDisplayStatus.snoozed);
+  });
+
+  test('snooze 到期后重新参与调度', () {
+    final a = task(
+      id: 'a',
+      deadline: DateTime(2026, 10, 7, 18, 0),
+      remaining: 80,
+      status: TaskStatus.snoozed,
+      snoozedUntil: DateTime(2026, 10, 7, 15, 30), // 已过期
+    );
+    final r = scheduler.schedule(tasks: [a], now: now, workRule: rule);
+    expect(r.nextTaskId, 'a');
+    expect(r.metricOf('a')!.displayStatus, TaskDisplayStatus.normal);
+  });
+
+  test('available < remaining → 标记不可行，用最小间隔催', () {
+    // available = 16:00→17:30 = 90min，remaining 100 → 装不下
+    final r = scheduler.schedule(
+      tasks: [
+        task(id: 'a', deadline: DateTime(2026, 10, 7, 17, 30), remaining: 100),
+      ],
+      now: now,
+      workRule: rule,
+    );
+    final m = r.metricOf('a')!;
+    expect(m.displayStatus, TaskDisplayStatus.infeasible);
+    expect(r.infeasibleTaskIds, ['a']);
+    expect(m.urgency, greaterThan(1));
+    expect(m.intervalMinutes, 30);
+    expect(r.nextTaskId, 'a');
+  });
+
+  test('已过截止 → overdue，退出提醒循环', () {
+    final r = scheduler.schedule(
+      tasks: [
+        task(id: 'a', deadline: DateTime(2026, 10, 7, 15, 0), remaining: 30),
+      ],
+      now: now,
+      workRule: rule,
+    );
+    final m = r.metricOf('a')!;
+    expect(m.displayStatus, TaskDisplayStatus.overdue);
+    expect(r.overdueTaskIds, ['a']);
+    expect(m.nextReminderAt, isNull);
+    expect(r.nextReminderAt, isNull);
+  });
+}

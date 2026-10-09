@@ -1,0 +1,191 @@
+import '../domain/schedule.dart';
+import '../domain/task.dart';
+import '../domain/time_context.dart';
+import 'scheduler.dart';
+
+/// 第一版调度算法：基于 Slack（裕度）的动态提醒间隔。
+///
+/// 对每个未完成任务计算：
+///   available = WorkTime(now, deadline)   —— 跳过休息时间的真实可用工时
+///   slack     = available - remainingWork
+///   urgency   = remainingWork / available
+///   interval  = clamp(alpha * slack, min, max)   （slack <= 0 时取 min）
+///   nextReminderAt = addWorkMinutes(now, interval)
+///
+/// 多任务排序：urgency 高者优先（文档 §11），importance 作并列裁决。
+/// 派生状态：infeasible（urgency > 1，按期已不可行）需要升级处理，
+/// overdue（已过截止）退出提醒循环，只做展示。
+class SlackScheduler implements Scheduler {
+  static const String defaultId = 'slack.v1';
+
+  final SlackSchedulerConfig config;
+
+  const SlackScheduler({this.config = const SlackSchedulerConfig()});
+
+  @override
+  String get id => defaultId;
+
+  @override
+  String get displayName => '裕度几何递减';
+
+  @override
+  List<ParamSpec> get params => [
+        ParamSpec(
+          key: 'alpha',
+          label: '提醒激进度 α',
+          hint: '每轮提醒消耗剩余裕度的比例，越大催得越紧',
+          min: 0.1,
+          max: 0.9,
+          defaultValue: config.alpha,
+        ),
+        ParamSpec(
+          key: 'minIntervalMinutes',
+          label: '最小间隔（分钟）',
+          hint: '低于此时长的提醒没有行动价值',
+          min: 5,
+          max: 120,
+          defaultValue: config.minIntervalMinutes,
+        ),
+        ParamSpec(
+          key: 'maxIntervalMinutes',
+          label: '最大间隔（分钟）',
+          hint: '裕度再大也不退化为固定提醒，默认 1 个工作日',
+          min: 30,
+          max: 1440,
+          defaultValue: config.maxIntervalMinutes,
+        ),
+      ];
+
+  @override
+  ScheduleResult schedule({
+    required List<Task> tasks,
+    required DateTime now,
+    required WorkTimeRule workRule,
+  }) {
+    final metrics = <TaskMetric>[];
+    final infeasible = <String>[];
+    final overdue = <String>[];
+    final sortable = <_TaskView>[];
+
+    for (final task in tasks) {
+      if (task.isCompleted) continue;
+      // ui-interaction.md §10 #2/#3：只有可推（flex）进调度。
+      // fixed 不进调度（走 AlarmPort 时点闹钟）；周期实例不占工时、默认不响
+      // （决议 5/12）；无截止 flex（散件）不参与 overdue/infeasible 派生、永不提醒。
+      if (task.type != TaskType.flex) continue;
+      final deadline = task.deadline;
+      if (deadline == null) continue;
+
+      final isOverdue = deadline.isBefore(now) && task.remainingWork > 0;
+      final available =
+          isOverdue ? 0 : workRule.workMinutesBetween(now, deadline);
+      final remaining = task.remainingWork;
+      final slack = available - remaining;
+
+      final snoozedIntoFuture = task.status == TaskStatus.snoozed &&
+          task.snoozedUntil != null &&
+          task.snoozedUntil!.isAfter(now);
+
+      TaskDisplayStatus display;
+      if (isOverdue) {
+        display = TaskDisplayStatus.overdue;
+        overdue.add(task.id);
+      } else if (remaining > 0 && available < remaining) {
+        // 按期已不可行：必须升级（改截止 / 砍范围 / 加班预算），不能静静等待。
+        display = TaskDisplayStatus.infeasible;
+        infeasible.add(task.id);
+      } else if (snoozedIntoFuture) {
+        display = TaskDisplayStatus.snoozed;
+      } else {
+        display = TaskDisplayStatus.normal;
+      }
+
+      // urgency：available 为 0 时用 1 作分母兜底（结果必然 >1，进入 infeasible）。
+      final urgency =
+          remaining <= 0 ? 0.0 : remaining / (available == 0 ? 1 : available);
+
+      DateTime? nextReminderAt;
+      int? interval;
+      final schedulable = !isOverdue && !snoozedIntoFuture;
+      if (schedulable) {
+        final raw = slack <= 0
+            ? config.minIntervalMinutes
+            : (config.alpha * slack).round();
+        interval = raw
+            .clamp(config.minIntervalMinutes, config.maxIntervalMinutes)
+            .toInt();
+        nextReminderAt = workRule.addWorkMinutes(now, interval);
+      }
+
+      final metric = TaskMetric(
+        taskId: task.id,
+        displayStatus: display,
+        availableMinutes: available,
+        slackMinutes: slack,
+        urgency: urgency,
+        nextReminderAt: nextReminderAt,
+        intervalMinutes: interval,
+      );
+      metrics.add(metric);
+      if (!snoozedIntoFuture) {
+        sortable.add(_TaskView(task, metric));
+      }
+    }
+
+    // 排序：不可行/普通按 urgency 降序，importance 降序、deadline 升序做并列裁决；
+    // 逾期沉底。
+    sortable.sort((a, b) {
+      final byStatus = _rank(a.metric.displayStatus)
+          .compareTo(_rank(b.metric.displayStatus));
+      if (byStatus != 0) return byStatus;
+      final byUrgency = b.metric.urgency.compareTo(a.metric.urgency);
+      if (byUrgency != 0) return byUrgency;
+      final byImportance = b.task.importance.compareTo(a.task.importance);
+      if (byImportance != 0) return byImportance;
+      return a.task.deadline!.compareTo(b.task.deadline!);
+    });
+
+    final ordered = sortable.map((v) => v.metric).toList();
+    // 已 snooze 的排到列表尾部展示。
+    for (final m in metrics) {
+      if (m.displayStatus == TaskDisplayStatus.snoozed &&
+          !ordered.contains(m)) {
+        ordered.add(m);
+      }
+    }
+
+    DateTime? nextReminderAt;
+    String? nextReminderTaskId;
+    for (final m in ordered) {
+      if (m.nextReminderAt != null &&
+          (nextReminderAt == null ||
+              m.nextReminderAt!.isBefore(nextReminderAt))) {
+        nextReminderAt = m.nextReminderAt;
+        nextReminderTaskId = m.taskId;
+      }
+    }
+
+    return ScheduleResult(
+      computedAt: now,
+      items: ordered,
+      nextTaskId: ordered.isEmpty ? null : ordered.first.taskId,
+      nextReminderAt: nextReminderAt,
+      nextReminderTaskId: nextReminderTaskId,
+      infeasibleTaskIds: infeasible,
+      overdueTaskIds: overdue,
+    );
+  }
+
+  static int _rank(TaskDisplayStatus s) => switch (s) {
+        TaskDisplayStatus.normal => 0,
+        TaskDisplayStatus.infeasible => 0, // 与 normal 同池，urgency 会让它靠前
+        TaskDisplayStatus.overdue => 1,
+        TaskDisplayStatus.snoozed => 2,
+      };
+}
+
+class _TaskView {
+  final Task task;
+  final TaskMetric metric;
+  const _TaskView(this.task, this.metric);
+}
