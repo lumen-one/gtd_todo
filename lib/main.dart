@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import 'application/event_log.dart';
 import 'application/notification_window.dart';
 import 'application/reminder_dispatcher.dart';
 import 'application/routine_service.dart';
@@ -129,6 +130,16 @@ Future<void> main() async {
   await dispatcher.start();
   await dispatcher.updateWindows(controller.notificationWindowRule);
   await dispatcher.updateAlarmMode(controller.settings.alarmMode);
+
+  // 操作流水（决议 37）：`log` 数据单独一个文档 `.gtd/log.md`，append-only。
+  // 走事件流订阅者（§3.3），不碰 TaskService。
+  //
+  // **只在主引擎挂**：悬浮面板跑在第二个引擎里，两个引擎都挂会把同一件事记两遍
+  // （§4.2 的边界精神——交付/观察类构件归主引擎）。
+  EventLog(
+    port: FileEventLogPort(taskDir),
+    tasks: () => service.tasks,
+  ).attach(service.events);
   AppColors.applyPreset(controller.themePreset);
   await bridge?.markReady(); // 取回应用被杀期间入队的事件
   await controller.refreshOverlayHandleState(); // 设置页开关显示真实状态

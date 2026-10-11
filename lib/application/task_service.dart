@@ -271,7 +271,7 @@ class TaskService {
     return updated;
   }
 
-  /// 删除 = 软删除（D11）：移入任务目录 `.trash/` 子目录，
+  /// 删除 = 软删除（D11）：内核属性文件移入 `.gtd/.trash/`、人类文档那一行注释掉，
   /// Obsidian 可见可捞；撤销走 [restoreTask]。
   Future<void> deleteTask(String id,
       {EventOrigin origin = EventOrigin.user}) async {

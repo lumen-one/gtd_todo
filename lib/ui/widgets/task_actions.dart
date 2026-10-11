@@ -240,7 +240,8 @@ Future<void> showPoolMenu(
   );
 }
 
-/// 删除 = 软删除（D11）：移入 .trash/ + 撤销 toast（约 10 秒），无二次确认。
+/// 删除 = 软删除（D11）：内核属性文件进 `.gtd/.trash/`、人类文档那一行注释掉
+/// + 撤销 toast（约 10 秒），无二次确认。
 Future<void> deleteTaskWithUndo(
     BuildContext context, AppController controller, Task task) async {
   await controller.deleteTask(task.id);

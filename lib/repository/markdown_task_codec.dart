@@ -1,17 +1,19 @@
 import '../domain/task.dart';
 import 'task_codec.dart';
 
-/// Markdown + frontmatter 编解码实现（formatId: md-frontmatter/1）。
+/// 旧格式（`md-frontmatter/1`）编解码实现：**一任务一文件**的 frontmatter 任务。
 ///
-/// 格式规范（附录 B）：frontmatter 为平铺的 `key: value` 行，每行一个字段、
-/// 标量值；不支持列表/嵌套/多行标量。
+/// **状态：只读兼容（v1.7）**。决议 36 之后正式格式是"双文档"
+/// （人类文档 `tasks.md` 的复选框行 + 内核属性文档 `.gtd/<id>.md`，见
+/// [TaskDocumentCodec] / [TaskSidecarCodec] / [MarkdownTaskRepository]）。
+/// 本 codec 保留的原因是 §4.1 的"旧格式 codec 永远保留负责读旧文件"：
+/// 首次读取时把目录里遗留的一任务一文件迁移进新格式（迁移后旧文件进
+/// `legacy-tasks/` 存档）。
 ///
-/// 分级保真（§3.4 防线一，本类的核心职责）：
-/// - **正文：字节级保真**——只要 description 未被显式修改，正文逐字节原样；
-/// - **frontmatter：字段级保真**——应用拥有的字段行原地改写，未知字段行、
-///   注释行、空行、行顺序原样保留。
+/// 分级保真（§3.4 防线一）：正文字节级保真；frontmatter 字段级保真——
+/// 应用拥有的字段行原地改写，未知字段行、注释行、空行、行顺序原样保留。
 class MarkdownTaskCodec implements TaskCodec {
-  /// 应用拥有的字段（附录 B 字段表），编码时原地改写。
+  /// 应用拥有的字段（旧格式字段表），编码时原地改写。
   static const List<String> _ownedKeys = [
     'id',
     'title',
@@ -22,12 +24,13 @@ class MarkdownTaskCodec implements TaskCodec {
     'status',
     'snoozed_until',
     'created',
+    'completed_at',
   ];
 
   /// 应用自有 metadata 键登记表（附录 B / §3.4 防线二）：跟随任务对象
   /// 改写（值变则行变、键消失则行删）；其余未知键仍按字段级保真原样往返。
   static const List<String> _metadataKeys = [
-    'type',              // flex / fixed / routine（§4.1 类型三分，缓冲带试水）
+    'type',              // flex / fixed / routine（§4.1 类型三分）
     'pinned',            // 插队标记（决议 9）
     'picked_for_today',  // 被挑散件标记（决议 8）
     'pool_order',        // 任务池显示序（决议 14）
@@ -36,7 +39,10 @@ class MarkdownTaskCodec implements TaskCodec {
     'routine_remind',    // 规则设了响（决议 18：时点性提醒）
     'routine_skipped',   // 跳过的那一天 yyyy-MM-dd（决议 23）
     'point_fired',       // 已响过的那一次时点提醒（只到点响一次）
+    'time_slack',        // 时间裕度（决议 36；旧格式里也认这个键）
   ];
+
+  const MarkdownTaskCodec();
 
   @override
   String get formatId => 'md-frontmatter/1';
@@ -118,6 +124,9 @@ class MarkdownTaskCodec implements TaskCodec {
           ? DateTime.tryParse(meta['snoozed_until']!)
           : null,
       created: DateTime.tryParse(meta['created'] ?? '') ?? DateTime.now(),
+      completedAt: meta['completed_at'] == null
+          ? null
+          : DateTime.tryParse(meta['completed_at']!),
       metadata: Map.unmodifiable(unknown),
     );
     return DecodeResult(task: task);
@@ -213,6 +222,8 @@ class MarkdownTaskCodec implements TaskCodec {
         return t.snoozedUntil == null ? null : fmtDateTime(t.snoozedUntil!);
       case 'created':
         return fmtDateTime(t.created);
+      case 'completed_at':
+        return t.completedAt == null ? null : fmtDateTime(t.completedAt!);
       default:
         return null;
     }

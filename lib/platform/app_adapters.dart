@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
 
+import '../application/event_log.dart';
 import '../application/notes_reader.dart';
 import '../application/settings.dart';
 
@@ -96,5 +97,41 @@ class FileNotesReaderPort implements NotesReaderPort {
     if (!f.existsSync()) return const NotesReadResult(NotesStatus.notFound);
     final raw = await f.readAsString();
     return extractNotesSection(raw);
+  }
+}
+
+/// `log` 文档落盘适配器（决议 37）：任务目录 `.gtd/log.md`，**append-only**。
+///
+/// 只做追加：文件不存在时先写一个表头，之后每行一条。应用**从不重写**已有的行
+/// （连"整理格式"都不做），所以这份流水可以放心当历史看。
+///
+/// **串行化**：事件是接连来的，而"建表头 + 追加"是两步异步 IO。并发跑会两个
+/// 调用同时看到"文件不存在"→ 写两遍表头，甚至互相插队（实现期实测踩到）。
+/// 所以这里把写入串成一条链：上一个写完才轮到下一个。
+class FileEventLogPort implements EventLogPort {
+  final File _file;
+  Future<void> _chain = Future<void>.value();
+
+  FileEventLogPort(String dirPath)
+      : _file = File('$dirPath${Platform.pathSeparator}.gtd'
+            '${Platform.pathSeparator}log.md');
+
+  @override
+  Future<void> append(String line) {
+    final next = _chain.then((_) => _append(line));
+    // 链路本身不因单次失败而断掉（错误由 EventLog 收进 failures）
+    _chain = next.catchError((_) {});
+    return next;
+  }
+
+  /// 等已排队的追加全部落盘（测试与"退出前冲刷"用）。
+  Future<void> drain() => _chain;
+
+  Future<void> _append(String line) async {
+    await _file.parent.create(recursive: true);
+    if (!_file.existsSync()) {
+      await _file.writeAsString('# 操作流水（应用自动追加，只增不改）\n\n');
+    }
+    await _file.writeAsString('$line\n', mode: FileMode.append);
   }
 }

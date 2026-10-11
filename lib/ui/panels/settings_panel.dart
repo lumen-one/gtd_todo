@@ -340,7 +340,7 @@ class _SettingsPanelState extends State<SettingsPanel>
         ListTile(
           leading: const Icon(Icons.delete_sweep_outlined),
           title: Text('清空回收（${_c.trashTasks.length} 件）'),
-          subtitle: const Text('删除的任务先进入任务目录 .trash/，Obsidian 可捞'),
+          subtitle: const Text('删除的任务先进 .gtd/.trash/，tasks.md 那一行会被注释掉（可捞）'),
           onTap: _c.trashTasks.isEmpty ? null : () => _purgeTrash(context),
         ),
       ],

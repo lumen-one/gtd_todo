@@ -3,7 +3,11 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gtd_todo/domain/task.dart';
 import 'package:gtd_todo/repository/markdown_task_repository.dart';
+import 'package:gtd_todo/repository/task_document.dart';
 
+/// 双文档存储（决议 36）的验收测试：
+/// - 人类文档 `tasks.md`：一行一条任务，应用只改自己那一行；
+/// - 内核属性文档 `.gtd/<id>.md`：任务id / 工作强度 / 优先级 / 时间裕度 / 剩余工作量。
 void main() {
   late Directory tmp;
   late MarkdownTaskRepository repo;
@@ -20,8 +24,8 @@ void main() {
     } catch (_) {}
   });
 
-  // 传入完整文件名（含 .md）
-  File file(String name) => File('${tmp.path}/$name');
+  File doc() => File('${tmp.path}/tasks.md');
+  File kernel(String id) => File('${tmp.path}/.gtd/$id.md');
 
   Task makeTask() => Task(
         id: 'task-001',
@@ -32,10 +36,101 @@ void main() {
         importance: 3,
         status: TaskStatus.active,
         created: DateTime(2026, 10, 7, 15, 30),
-        description: '# 任务说明\n\n- 阅读论文\n- 写总结\n',
+        description: '阅读论文并整理笔记。',
+        tags: const ['工作'],
       );
 
-  test('保存后能读回来，字段一致', () async {
+  // ------------------------------------------------------------------
+  // 人类文档的读
+  // ------------------------------------------------------------------
+
+  group('人类文档（tasks.md）', () {
+    test('解析样例行：任务名 / 创建 / 结束 / 完成 / 备注 / 标签', () {
+      const raw = '# 工作\n'
+          '\n'
+          '- [ ] 任务名 创建 2026-10-11,7:00 结束 2026-10-12,18:00 这是备注。 ##这是标签1 ##这是标签2\n';
+      final doc = const TaskDocumentCodec().parse(raw);
+      expect(doc.warnings, isEmpty);
+      expect(doc.tasks, hasLength(1));
+      final t = doc.tasks.single;
+      expect(t.title, '任务名');
+      expect(t.created, DateTime(2026, 10, 11, 7, 0));
+      expect(t.deadline, DateTime(2026, 10, 12, 18, 0));
+      expect(t.completed, isFalse);
+      expect(t.description, '这是备注。');
+      expect(t.tags, ['这是标签1', '这是标签2']);
+      expect(t.section, '工作');
+    });
+
+    test('复选框 [x] 与「完成」时刻都认，且 `##` 小节标题不会被当标签', () {
+      const raw = '## 生活\n'
+          '- [x] 交房租 创建 2026-10-01,9:00 完成 2026-10-01,9:30 ##生活\n';
+      final t = const TaskDocumentCodec().parse(raw).tasks.single;
+      expect(t.completed, isTrue);
+      expect(t.completedAt, DateTime(2026, 10, 1, 9, 30));
+      expect(t.tags, ['生活']);
+      expect(t.section, '生活');
+    });
+
+    test('备注里的「完成」二字（后无空白）不破坏字段切分', () {
+      const raw = '- [ ] 写总结 创建 2026-10-11,7:00 备注 完成后交给组长 ##工作\n';
+      final t = const TaskDocumentCodec().parse(raw).tasks.single;
+      expect(t.title, '写总结');
+      expect(t.description, '完成后交给组长');
+      expect(t.completedAt, isNull);
+    });
+
+    test('缺「创建」关键字的复选框行：不改动、进 warnings', () {
+      const raw = '# 工作\n\n- [ ] 随手记一笔\n- [ ] 正常任务 创建 2026-10-11,7:00\n';
+      final doc = const TaskDocumentCodec().parse(raw);
+      expect(doc.tasks, hasLength(1));
+      expect(doc.tasks.single.title, '正常任务');
+      expect(doc.warnings, hasLength(1));
+      expect(doc.warnings.single, contains('缺少'));
+    });
+
+    test('围栏代码块里的示例行不算任务', () {
+      const raw = '- [ ] 真的任务 创建 2026-10-11,7:00\n'
+          '\n'
+          '```markdown\n'
+          '- [ ] 示例任务 创建 2026-10-11,7:00\n'
+          '```\n';
+      final doc = const TaskDocumentCodec().parse(raw);
+      expect(doc.tasks, hasLength(1));
+      expect(doc.tasks.single.title, '真的任务');
+    });
+
+    test('行渲染 → 解析 往返稳定（人看到的行 = 内核指纹的输入）', () {
+      final task = makeTask();
+      final line = TaskDocumentCodec.encodeLine(task);
+      expect(line, startsWith('- [ ] 完成 Agent 调度论文阅读 创建 2026-10-07,15:30'));
+      expect(line, contains('结束 2026-10-08,18:00'));
+      expect(line, contains('备注 阅读论文并整理笔记。'));
+      expect(line, endsWith('##工作'));
+
+      final parsed = const TaskDocumentCodec().parse(line).tasks.single;
+      expect(parsed.title, task.title);
+      expect(parsed.created, task.created);
+      expect(parsed.deadline, task.deadline);
+      expect(parsed.description, task.description);
+      expect(parsed.tags, task.tags);
+      expect(parsed.digest, TaskDocumentCodec.digestFor(task));
+    });
+
+    test('没有「结束」的散件、只写日期的「结束」', () {
+      const raw = '- [ ] 收拾房间 创建 2026-10-11,7:00 ##生活\n'
+          '- [ ] 交报告 创建 2026-10-11,7:00 结束 2026-10-15 ##工作\n';
+      final doc = const TaskDocumentCodec().parse(raw);
+      expect(doc.tasks[0].deadline, isNull);
+      expect(doc.tasks[1].deadline, DateTime(2026, 10, 15, 23, 59));
+    });
+  });
+
+  // ------------------------------------------------------------------
+  // 双文档的读回与写回
+  // ------------------------------------------------------------------
+
+  test('保存后能读回来：人类那半 + 内核那半都在', () async {
     await repo.save(makeTask());
     final loaded = await repo.loadAll();
     expect(loaded, hasLength(1));
@@ -47,107 +142,255 @@ void main() {
     expect(t.remainingWork, 90);
     expect(t.importance, 3);
     expect(t.status, TaskStatus.active);
+    expect(t.description, '阅读论文并整理笔记。');
+    expect(t.tags, ['工作']);
+    expect(t.created, DateTime(2026, 10, 7, 15, 30));
   });
 
-  test('幂等：应用自己写的文件，读进来再存回去逐字节不变', () async {
+  test('两个文档各就各位：人写的那行干净，内核属性在 .gtd/', () async {
     await repo.save(makeTask());
-    final raw1 = file('task-001.md').readAsStringSync();
+
+    final human = doc().readAsStringSync();
+    expect(human, contains('- [ ] 完成 Agent 调度论文阅读 创建 2026-10-07,15:30'));
+    // 内核字段一个都不许出现在人类文档里
+    for (final key in ['work_intensity', 'priority', 'time_slack', 'digest']) {
+      expect(human, isNot(contains(key)));
+    }
+
+    final side = kernel('task-001').readAsStringSync();
+    expect(side, contains('id: task-001'));
+    expect(side, contains('work_intensity: 120'));
+    expect(side, contains('priority: 3'));
+    expect(side, contains('remaining_load: 0.75')); // 90 / 120
+    expect(side, contains('digest: '));
+  });
+
+  test('幂等：自己的文件读进来再存回去逐字节不变', () async {
+    await repo.save(makeTask());
+    final human1 = doc().readAsStringSync();
+    final side1 = kernel('task-001').readAsStringSync();
 
     final loaded = (await repo.loadAll()).single;
     await repo.save(loaded.copyWith(remainingWork: 80));
-    final raw2 = file('task-001.md').readAsStringSync();
+    final side2 = kernel('task-001').readAsStringSync();
 
     final loaded2 = (await repo.loadAll()).single;
     await repo.save(loaded2);
-    final raw3 = file('task-001.md').readAsStringSync();
-
-    expect(raw2, isNot(raw1)); // remaining_work 变了
-    expect(raw3, raw2); // 无变化的保存 = 逐字节不变
+    expect(doc().readAsStringSync(), human1); // 无变化的人类文档：一字不动
+    expect(kernel('task-001').readAsStringSync(), side2);
+    expect(side2, isNot(side1)); // remaining_load 变了
   });
 
-  test('字段级保真：手写文件里的未知字段、注释、正文原样保留', () async {
-    file('task-001.md').writeAsStringSync('''
----
-# 用户的备注：别动这行
-id: task-001
-title: 完成论文阅读
-deadline: 2026-10-08T18:00
-estimated_work: 120
-remaining_work: 90
-priority: high
-status: active
-created: 2026-10-07T15:30
----
+  test('人类文档里别人的内容（标题、空行、正文、其它待办）一字不动', () async {
+    const raw = '# 工作\n'
+        '\n'
+        '这是我自己写的一段说明，应用别动。\n'
+        '\n'
+        '- [ ] 完成论文阅读 创建 2026-10-7,15:30 结束 2026-10-8,18:00 ##工作\n'
+        '\n'
+        '## 随手记\n'
+        '\n'
+        '- [ ] 买菜\n'
+        '\n'
+        '<!-- 我自己的注释 -->\n';
+    doc().writeAsStringSync(raw);
 
-# 任务说明
-
-- 阅读论文
-''');
     final loaded = (await repo.loadAll()).single;
-    expect(loaded.metadata['priority'], 'high'); // 未知字段进 metadata
+    await repo.save(loaded.copyWith(remainingWork: 10));
 
-    // 应用只改自己的字段
-    await repo.save(loaded.copyWith(remainingWork: 80));
-    final raw = file('task-001.md').readAsStringSync();
-
-    expect(raw, contains('remaining_work: 80')); // 应用字段更新
-    expect(raw, contains('# 用户的备注：别动这行')); // 注释保留
-    expect(raw, contains('priority: high')); // 未知字段保留
-    expect(raw.indexOf('# 用户的备注'), lessThan(raw.indexOf('id: task-001'))); // 行顺序保留
-    expect(raw, contains('- 阅读论文')); // 正文保留
+    final after = doc().readAsStringSync();
+    expect(after, contains('这是我自己写的一段说明，应用别动。'));
+    expect(after, contains('## 随手记'));
+    expect(after, contains('- [ ] 买菜'));
+    expect(after, contains('<!-- 我自己的注释 -->'));
+    expect(after.indexOf('这是我自己写的一段说明'), lessThan(after.indexOf('完成论文阅读')));
+    // 除自己那一行之外，人类文档逐行不变（行数、空行、顺序都不动）
+    final before = raw.split('\n');
+    final now = after.split('\n');
+    expect(now.length, before.length);
+    final differing = [
+      for (var i = 0; i < before.length; i++)
+        if (before[i] != now[i]) i,
+    ];
+    expect(differing, hasLength(1));
+    expect(before[differing.single], contains('完成论文阅读'));
+    expect(now[differing.single], contains('完成论文阅读'));
   });
 
-  test('D9 外部合并：Obsidian 端的修改不会被应用覆盖', () async {
-    file('task-001.md').writeAsStringSync('''
+  test('内核属性文档的字段级保真：注释与未知字段原样保留', () async {
+    Directory('${tmp.path}/.gtd').createSync(recursive: true);
+    kernel('task-001').writeAsStringSync('''
 ---
+# 用户给内核文档写的备注：别动
 id: task-001
-title: 完成论文阅读
-deadline: 2026-10-08T18:00
-estimated_work: 120
-remaining_work: 90
-priority: high
+work_intensity: 120
+remaining_load: 0.75
+priority: 3
+ai_note: 这是 AI 留的字段
 status: active
-created: 2026-10-07T15:30
 ---
-
-- 阅读论文
 ''');
+    doc().writeAsStringSync(
+        '- [ ] 完成论文阅读 创建 2026-10-7,15:30 结束 2026-10-8,18:00 ##工作\n');
+
     final loaded = (await repo.loadAll()).single;
+    expect(loaded.metadata['ai_note'], '这是 AI 留的字段');
 
-    // 模拟用户在 Obsidian 里改了未知字段、机读字段、并加了正文
-    final external = file('task-001.md').readAsStringSync()
-        .replaceFirst('priority: high', 'priority: urgent')
-        .replaceFirst('remaining_work: 90', 'remaining_work: 999')
-        .replaceFirst('- 阅读论文', '- 阅读论文\n- 外部新增的行');
-    file('task-001.md').writeAsStringSync(external);
-
-    // 应用保存 remaining_work: 50
-    await repo.save(loaded.copyWith(remainingWork: 50));
-    final raw = file('task-001.md').readAsStringSync();
-
-    expect(raw, contains('remaining_work: 50')); // 应用拥有的字段：应用赢
-    expect(raw, contains('priority: urgent')); // 未知字段：外部赢（字段归属合并）
-    expect(raw, contains('- 外部新增的行')); // 正文：外部赢（未被显式命令不改）
-    expect(repo.warnings.any((w) => w.contains('外部修改')), isTrue); // 有提示
+    await repo.save(loaded.copyWith(remainingWork: 30));
+    final raw = kernel('task-001').readAsStringSync();
+    expect(raw, contains('remaining_load: 0.25'));
+    expect(raw, contains('# 用户给内核文档写的备注：别动'));
+    expect(raw, contains('ai_note: 这是 AI 留的字段'));
+    expect(raw.indexOf('# 用户给内核文档写的备注'), lessThan(raw.indexOf('id: task-001')));
   });
 
-  test('snoozed_until：持久化，清除后从文件中移除', () async {
-    final snoozed = makeTask()
-        .copyWith(status: TaskStatus.snoozed, snoozedUntil: DateTime(2026, 10, 7, 17, 10));
-    await repo.save(snoozed);
-    expect(file('task-001.md').readAsStringSync(), contains('snoozed_until:'));
-
-    await repo.save(snoozed.copyWith(clearSnooze: true));
-    expect(file('task-001.md').readAsStringSync(), isNot(contains('snoozed_until')));
-  });
-
-  test('坏文件不崩溃，降级为 warning', () async {
-    file('broken.md').writeAsStringSync('这不是一个任务文件');
+  test('D9：人在 Obsidian 里改任务行 → 内核认领并同步（内核属性保留）', () async {
     await repo.save(makeTask());
+    // 模拟用户在 Obsidian 里改写任务名、结束日期、备注
+    final raw = doc()
+        .readAsStringSync()
+        .replaceFirst('完成 Agent 调度论文阅读', '完成 Agent 调度综述')
+        .replaceFirst('结束 2026-10-08,18:00', '结束 2026-10-09,18:00');
+    doc().writeAsStringSync(raw);
+
+    final reloaded = MarkdownTaskRepository(tmp.path);
+    final loaded = (await reloaded.loadAll()).single;
+
+    expect(loaded.id, 'task-001'); // 还是同一条任务
+    expect(loaded.title, '完成 Agent 调度综述'); // 人写的：人赢
+    expect(loaded.deadline, DateTime(2026, 10, 9, 18, 0));
+    expect(loaded.estimatedWork, 120); // 内核属性：原样保留
+    expect(loaded.remainingWork, 90);
+    expect(reloaded.warnings.any((w) => w.contains('应用之外被修改')), isTrue);
+  });
+
+  test('人在 Obsidian 里新增一行 → 内核自动接管并分配任务 id', () async {
+    doc().writeAsStringSync('# 生活\n'
+        '\n'
+        '- [ ] 买菜 创建 2026-10-11,8:00 ##生活\n');
+    final loaded = (await repo.loadAll()).single;
+    expect(loaded.title, '买菜');
+    expect(loaded.id, startsWith('task-'));
+    expect(kernel(loaded.id).existsSync(), isTrue);
+    expect(repo.warnings.any((w) => w.contains('已由内核接管')), isTrue);
+    // 人类文档不动
+    expect(doc().readAsStringSync(),
+        '# 生活\n\n- [ ] 买菜 创建 2026-10-11,8:00 ##生活\n');
+  });
+
+  test('内核属性目录还在、行被人删了：保留数据 + 提示，不崩', () async {
+    await repo.save(makeTask());
+    doc().writeAsStringSync('# 工作\n');
+    final reloaded = MarkdownTaskRepository(tmp.path);
+    expect(await reloaded.loadAll(), isEmpty);
+    expect(kernel('task-001').existsSync(), isTrue);
+    expect(reloaded.warnings.any((w) => w.contains('找不到对应的行')), isTrue);
+  });
+
+  test('新任务按标签追加到对应小节', () async {
+    doc().writeAsStringSync('# 工作\n\n- [ ] 旧任务 创建 2026-10-1,9:00 ##工作\n');
+    await repo.save(Task(
+      id: 'task-002',
+      title: '新任务',
+      created: DateTime(2026, 10, 11, 9, 0),
+      tags: const ['工作'],
+    ));
+    final lines = doc().readAsStringSync().split('\n');
+    expect(lines[0], '# 工作');
+    expect(lines[2], contains('旧任务'));
+    expect(lines[3], contains('新任务'));
+  });
+
+  test('坏的内核属性文档不崩溃，降级为 warning', () async {
+    await repo.save(makeTask());
+    File('${tmp.path}/.gtd/broken.md').writeAsStringSync('这不是内核属性文档');
     final loaded = await repo.loadAll();
     expect(loaded, hasLength(1));
-    expect(repo.warnings, hasLength(1));
-    expect(repo.warnings.first, contains('broken.md'));
+    expect(repo.warnings.any((w) => w.contains('broken.md')), isTrue);
+  });
+
+  test('snoozed_until：持久化在内核属性里，清除后移除该行', () async {
+    final snoozed = makeTask().copyWith(
+      status: TaskStatus.snoozed,
+      snoozedUntil: DateTime(2026, 10, 7, 17, 10),
+    );
+    await repo.save(snoozed);
+    expect(kernel('task-001').readAsStringSync(), contains('snoozed_until:'));
+    expect(doc().readAsStringSync(), isNot(contains('snoozed_until')));
+
+    await repo.save(snoozed.copyWith(clearSnooze: true));
+    expect(kernel('task-001').readAsStringSync(), isNot(contains('snoozed_until')));
+  });
+
+  test('完成：打勾 + 落完成时刻，两边一致', () async {
+    await repo.save(makeTask());
+    final loaded = (await repo.loadAll()).single;
+    final done = loaded.copyWith(
+      status: TaskStatus.completed,
+      completedAt: DateTime(2026, 10, 12, 15, 19),
+    );
+    await repo.save(done);
+
+    expect(doc().readAsStringSync(),
+        contains('- [x] 完成 Agent 调度论文阅读'));
+    expect(doc().readAsStringSync(), contains('完成 2026-10-12,15:19'));
+    expect(kernel('task-001').readAsStringSync(),
+        contains('completed_at: 2026-10-12T15:19'));
+
+    final reread = (await repo.loadAll()).single;
+    expect(reread.isCompleted, isTrue);
+    expect(reread.completedAt, DateTime(2026, 10, 12, 15, 19));
+  });
+
+  test('软删除：内核文件进 .gtd/.trash/，人类文档那行被注释掉', () async {
+    await repo.save(makeTask());
+    await repo.loadAll();
+    await repo.moveToTrash('task-001');
+
+    expect(kernel('task-001').existsSync(), isFalse);
+    expect(File('${tmp.path}/.gtd/.trash/task-001.md').existsSync(), isTrue);
+    final human = doc().readAsStringSync();
+    expect(human, contains('<!-- gtd:deleted task-001 -->'));
+    expect(human, contains('%%- [ ] 完成 Agent 调度论文阅读'));
+    expect(human, contains('完成 Agent 调度论文阅读')); // 内容还在，可捞
+
+    // 被注释掉的行不算任务
+    expect(await repo.loadAll(), isEmpty);
+
+    final trash = await repo.loadTrash();
+    expect(trash.map((t) => t.title), ['完成 Agent 调度论文阅读']);
+
+    await repo.restore('task-001');
+    expect(kernel('task-001').existsSync(), isTrue);
+    expect(doc().readAsStringSync(), isNot(contains('gtd:deleted')));
+    expect((await repo.loadAll()).single.title, '完成 Agent 调度论文阅读');
+  });
+
+  test('迁移：旧「一任务一文件」自动转双文档，旧文件进 legacy-tasks/', () async {
+    File('${tmp.path}/task-001.md').writeAsStringSync('''
+---
+id: task-001
+title: 完成论文阅读
+deadline: 2026-10-08T18:00
+estimated_work: 120
+remaining_work: 90
+importance: 4
+status: active
+created: 2026-10-07T15:30
+---
+''');
+
+    final loaded = (await repo.loadAll()).single;
+    expect(loaded.id, 'task-001');
+    expect(loaded.title, '完成论文阅读');
+    expect(loaded.importance, 4);
+    expect(doc().existsSync(), isTrue);
+    expect(doc().readAsStringSync(), contains('- [ ] 完成论文阅读 创建 2026-10-07,15:30'));
+    expect(kernel('task-001').readAsStringSync(), contains('work_intensity: 120'));
+    // 旧文件不再被当成任务，且挪进了存档目录
+    expect(File('${tmp.path}/task-001.md').existsSync(), isFalse);
+    expect(File('${tmp.path}/legacy-tasks/task-001.md').existsSync(), isTrue);
+    expect(repo.warnings.any((w) => w.contains('迁移')), isTrue);
   });
 
   test('桌面实现支持文件监听（可选能力）', () {

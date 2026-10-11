@@ -27,10 +27,13 @@ class Task {
     this.importance = 3,
     this.status = TaskStatus.pending,
     this.snoozedUntil,
+    List<String>? tags,
     Map<String, String>? metadata,
     DateTime? created,
+    this.completedAt,
   })  : estimatedWork = estimatedWork ?? 0,
         remainingWork = remainingWork ?? estimatedWork ?? 0,
+        tags = List.unmodifiable(tags ?? const <String>[]),
         metadata = metadata ?? const {},
         created = created ?? DateTime.now();
 
@@ -60,11 +63,19 @@ class Task {
   /// 因此持久化到 frontmatter；而 nextReminder 是计算结果，不持久化。
   final DateTime? snoozedUntil;
 
+  /// 标签（人类文档行尾的 `##标签`，也是分类归属：`##工作` 归入 `# 工作` 小节）。
+  /// ui-interaction.md §4.3：更多的标签 = 更多的属性；内核不解释标签语义。
+  final List<String> tags;
+
   /// 未知 frontmatter 字段 + 应用自有 metadata 键（附录 B 登记表：
   /// type / pinned / picked_for_today / pool_order），§3.4 字段级保真的载体。
   final Map<String, String> metadata;
 
   final DateTime created;
+
+  /// 完成时刻（人类文档的 `完成 <日期,时间>`；内核同时落 completed_at）。
+  /// null = 未完成。任务名/创建/结束/完成/备注/标签六项里唯一带时间戳的完成态。
+  final DateTime? completedAt;
 
   /// 类型（metadata 缓冲带读取，见 [TaskType]）。
   TaskType get type {
@@ -120,12 +131,14 @@ class Task {
 
   /// 完成判定（§3.5 规划表）：fixed / routine 仅按 status 判定（0 工时也不允许
   /// 出生即完成）；flex 保留 remainingWork ≤ 0 的语义（logWork 干完即完成）。
+  /// [completedAt] 是人类文档复选框 `[x]` 的落地形态，同样算完成。
   bool get isCompleted =>
       status == TaskStatus.completed ||
+      completedAt != null ||
       (type == TaskType.flex && remainingWork <= 0);
 
-  /// [clearSnooze] / [clearDeadline] 用于把可空字段置回 null（copyWith 的
-  /// 普通 null 参数表示"保持原值"，无法表达清除）。
+  /// [clearSnooze] / [clearDeadline] / [clearCompletedAt] 用于把可空字段置回
+  /// null（copyWith 的普通 null 参数表示"保持原值"，无法表达清除）。
   Task copyWith({
     String? title,
     String? description,
@@ -137,8 +150,11 @@ class Task {
     DateTime? snoozedUntil,
     bool clearSnooze = false,
     bool clearDeadline = false,
+    List<String>? tags,
     Map<String, String>? metadata,
     DateTime? created,
+    DateTime? completedAt,
+    bool clearCompletedAt = false,
   }) {
     return Task(
       id: id,
@@ -150,8 +166,11 @@ class Task {
       importance: importance ?? this.importance,
       status: status ?? this.status,
       snoozedUntil: clearSnooze ? null : (snoozedUntil ?? this.snoozedUntil),
+      tags: tags ?? this.tags,
       metadata: metadata ?? this.metadata,
       created: created ?? this.created,
+      completedAt:
+          clearCompletedAt ? null : (completedAt ?? this.completedAt),
     );
   }
 }

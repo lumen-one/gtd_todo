@@ -300,10 +300,11 @@ void main() {
       await routines.load();
       await routines.create(title: '晨跑', minuteOfDay: 7 * 60);
 
-      // 落盘内容必须带 type/routine/routine_date
-      final raw = await File(
-              '${dir.path}${Platform.pathSeparator}'
-              '${TaskService.routineInstanceId(routines.routines.single.id, '2026-10-07')}.md')
+      // 落盘内容必须带 type/routine/routine_date：它们在**内核属性文档**里
+      final id = TaskService.routineInstanceId(
+          routines.routines.single.id, '2026-10-07');
+      final raw = await File('${dir.path}${Platform.pathSeparator}'
+              '.gtd${Platform.pathSeparator}$id.md')
           .readAsString();
       expect(raw, contains('type: routine'));
       expect(raw, contains('routine: '));
