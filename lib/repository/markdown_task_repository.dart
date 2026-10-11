@@ -46,6 +46,16 @@ class MarkdownTaskRepository implements TaskRepository {
   /// 旧"一任务一文件"的存档目录名。
   static const String legacyDirName = 'legacy-tasks';
 
+  /// `.gtd/` 里的**非任务文档**：操作流水 `log.md`（决议 37）。
+  ///
+  /// 内核属性扫描与文件监听都要跳过它——它只是观察手段，不是任务事实。
+  /// 监听它还会自激成环：写日志 → 文件变化 → 重锚 → 又写日志。
+  static const String logFileName = 'log.md';
+
+  /// [path] 是否指向流水（不是任务数据）。
+  static bool _isLogFile(String path) =>
+      path.split(Platform.pathSeparator).last == logFileName;
+
   static const String _deletedPrefix = '<!-- gtd:deleted ';
 
   final String dirPath;
@@ -450,6 +460,7 @@ class MarkdownTaskRepository implements TaskRepository {
         );
         subs.add(src.listen(
           (e) {
+            if (_isLogFile(e.path)) return; // 流水写入不算"任务目录变了"
             if (!e.path.endsWith('.md') && !e.path.endsWith('.json')) return;
             debouncer?.cancel();
             debouncer = Timer(const Duration(milliseconds: 300), emit);
@@ -580,6 +591,7 @@ class MarkdownTaskRepository implements TaskRepository {
     for (final entity in _kernelDir.listSync()) {
       if (entity is! File || !entity.path.endsWith('.md')) continue;
       final name = entity.path.split(Platform.pathSeparator).last;
+      if (name == logFileName) continue; // 流水不是内核属性文档（决议 37）
       final task = await _readSidecarFrom(entity.path);
       if (task == null) {
         _parseWarnings.add('$kernelDirName/$name: 内核属性文档无法解析，已忽略');

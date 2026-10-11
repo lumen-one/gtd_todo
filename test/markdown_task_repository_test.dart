@@ -1,9 +1,12 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gtd_todo/application/task_service.dart';
 import 'package:gtd_todo/domain/task.dart';
+import 'package:gtd_todo/domain/time_context.dart';
 import 'package:gtd_todo/repository/markdown_task_repository.dart';
 import 'package:gtd_todo/repository/task_document.dart';
+import 'package:gtd_todo/scheduler/slack_scheduler.dart';
 
 /// 双文档存储（决议 36）的验收测试：
 /// - 人类文档 `tasks.md`：一行一条任务，应用只改自己那一行；
@@ -395,5 +398,145 @@ created: 2026-10-07T15:30
 
   test('桌面实现支持文件监听（可选能力）', () {
     expect(repo.watch, isNotNull);
+  });
+
+  // ------------------------------------------------------------------
+  // 应用自有 metadata 键的写回（附录 B.2 登记表）
+  //
+  // 这些键是"持久意图"（插队 / 池序 / 跳过今天 / 只响一次 / 类型转换）。
+  // v1.7 换 TaskSidecarCodec 时它们一度被当成"未知字段原样保留"：
+  // 值变不写、键新不写 —— 而 TaskService 每个命令后都重读磁盘，
+  // 于是命令刚返回，意图就没了。本组是那次的回归护栏。
+  // ------------------------------------------------------------------
+
+  group('应用自有 metadata 键落盘（附录 B.2）', () {
+    test('type 键：写了要落盘，转回 flex 要整行移除', () async {
+      final flex = makeTask();
+      await repo.save(flex);
+      expect(kernel('task-001').readAsStringSync(), isNot(contains('type:')));
+
+      final fixed = flex.copyWith(metadata: const {'type': 'fixed'});
+      await repo.save(fixed);
+      expect(kernel('task-001').readAsStringSync(), contains('type: fixed'));
+      expect((await repo.loadAll()).single.type, TaskType.fixed);
+
+      await repo.save(fixed.copyWith(metadata: const {}));
+      expect(kernel('task-001').readAsStringSync(), isNot(contains('type:')));
+      expect((await repo.loadAll()).single.type, TaskType.flex);
+    });
+
+    test('pinned / pool_order：值变则行变、键消失则行删，读回还在', () async {
+      final t = makeTask();
+      await repo.save(t);
+
+      await repo.save(t.copyWith(metadata: const {
+        'pinned': '2026-10-11T09:00:00.000',
+        'pool_order': '2',
+      }));
+      final raw = kernel('task-001').readAsStringSync();
+      expect(raw, contains('pinned: 2026-10-11T09:00:00.000'));
+      expect(raw, contains('pool_order: 2'));
+
+      final reloaded = (await repo.loadAll()).single;
+      expect(reloaded.pinnedAt, '2026-10-11T09:00:00.000');
+      expect(reloaded.poolOrder, 2);
+
+      await repo.save(reloaded.copyWith(metadata: const {'pool_order': '7'}));
+      final raw2 = kernel('task-001').readAsStringSync();
+      expect(raw2, isNot(contains('pinned:')));
+      expect(raw2, contains('pool_order: 7'));
+    });
+
+    test('周期实例键与 point_fired 落盘并读回', () async {
+      final inst = makeTask().copyWith(metadata: const {
+        'type': 'routine',
+        'routine': 'routine-1a2b',
+        'routine_date': '2026-10-11',
+        'routine_remind': 'true',
+        'routine_skipped': '2026-10-11',
+        'point_fired': '2026-10-11T07:00',
+      });
+      await repo.save(inst);
+
+      final reloaded = (await repo.loadAll()).single;
+      expect(reloaded.type, TaskType.routine);
+      expect(reloaded.routineId, 'routine-1a2b');
+      expect(reloaded.routineDate, '2026-10-11');
+      expect(reloaded.routineRemind, isTrue);
+      expect(reloaded.isRoutineSkippedOn('2026-10-11'), isTrue);
+      expect(reloaded.pointFiredMark, '2026-10-11T07:00');
+    });
+
+    test('改写登记键时不碰未知字段与注释行（字段级保真照旧）', () async {
+      await repo.save(makeTask());
+      final raw = kernel('task-001').readAsStringSync();
+      kernel('task-001')
+          .writeAsStringSync(raw.replaceFirst('---\n', '---\n# 手写注释\nmood: 好\n'));
+
+      final reloaded = (await repo.loadAll()).single;
+      expect(reloaded.metadata['mood'], '好');
+      await repo.save(reloaded.copyWith(metadata: {
+        ...reloaded.metadata,
+        'pinned': '2026-10-11T09:00:00.000',
+      }));
+
+      final after = kernel('task-001').readAsStringSync();
+      expect(after, contains('# 手写注释'));
+      expect(after, contains('mood: 好'));
+      expect(after, contains('pinned: 2026-10-11T09:00:00.000'));
+    });
+
+    test('命令链路回归：插队经 TaskService 落盘，重载后仍在', () async {
+      TaskService service() => TaskService(
+            repo: MarkdownTaskRepository(tmp.path),
+            scheduler: const SlackScheduler(),
+            workRule: WorkTimeRule.standard,
+            clock: () => DateTime(2026, 10, 11, 9, 0),
+          );
+
+      final svc = service();
+      final a = await svc.createTask(
+        title: '写周报',
+        estimatedWorkMinutes: 60,
+        deadline: DateTime(2026, 10, 13, 18, 0),
+      );
+      await svc.pinToTop(a.id);
+      expect(svc.byId(a.id)!.pinnedAt, isNotNull, reason: '命令自己的重锚不该吃掉插队');
+
+      final svc2 = service();
+      await svc2.refreshSchedule();
+      expect(svc2.byId(a.id)!.pinnedAt, isNotNull, reason: '重启后插队仍在（决议 9）');
+    });
+
+    test('操作流水 log.md 不被当成内核属性文档（决议 37）', () async {
+      Directory('${tmp.path}/.gtd').createSync(recursive: true);
+      File('${tmp.path}/.gtd/log.md').writeAsStringSync(
+          '# 操作流水（应用自动追加，只增不改）\n\n'
+          '- 2026-10-11 07:12:05  taskCreated  task-1  user  写周报\n');
+
+      expect(await repo.loadAll(), isEmpty);
+      expect(repo.warnings, isEmpty, reason: '流水不是"解析不了的属性文档"');
+    });
+
+    test('文件监听忽略流水写入（否则"写日志 → 重锚 → 再写日志"自激）', () async {
+      Directory('${tmp.path}/.gtd').createSync(recursive: true);
+      final log = File('${tmp.path}/.gtd/log.md')
+        ..writeAsStringSync('# 操作流水\n');
+      final got = <String>[];
+      final sub = repo.watch()!.listen((e) => got.add(e.path));
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+
+      log.writeAsStringSync(
+          '- 2026-10-11 07:00:00  taskCreated  task-1  user  T\n',
+          mode: FileMode.append);
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+      expect(got, isEmpty, reason: '流水不是任务数据');
+
+      // 对照组：任务数据变化必须照旧触发（证明监听本身是活的）
+      doc().writeAsStringSync('- [ ] T 创建 2026-10-11,7:00\n');
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+      expect(got, isNotEmpty);
+      await sub.cancel();
+    });
   });
 }

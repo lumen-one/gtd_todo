@@ -49,6 +49,29 @@ class TaskSidecarCodec {
     'completed_at',
   ];
 
+  /// 应用自有的 **metadata 键**（附录 B.2 登记表）：不是内核算出来的字段，
+  /// 但同样是应用财产——编码时**跟随任务对象改写**（值变则行变、键消失则行删），
+  /// 其余未知键仍原样往返（§3.4 字段级保真）。
+  ///
+  /// 漏掉这一条，"插队（决议 9）/ 池子显示序（决议 14）/ 挑到今日（决议 8）/
+  /// 跳过今天（决议 23）/ 只到点响一次（决议 32）/ 类型转换（§3.5 updateTask）"
+  /// 这些持久意图就会在命令自己的重锚里蒸发——TaskService 每个命令后都重读磁盘。
+  static const List<String> registeredMetaKeys = [
+    'type',
+    'pinned',
+    'picked_for_today',
+    'pool_order',
+    'routine',
+    'routine_date',
+    'routine_remind',
+    'routine_skipped',
+    'point_fired',
+  ];
+
+  /// 应用拥有的键 = 内核字段 + 登记的 metadata 键（这两类都要改写，不是"未知"）。
+  static bool _isAppOwned(String key) =>
+      ownedKeys.contains(key) || registeredMetaKeys.contains(key);
+
   bool canDecode(String raw) {
     final lines = raw.split('\n');
     return lines.isNotEmpty && lines.first.trim() == '---';
@@ -157,7 +180,7 @@ class TaskSidecarCodec {
       final line = lines[i];
       final idx = line.indexOf(':');
       final key = idx > 0 ? line.substring(0, idx).trim() : null;
-      if (key != null && ownedKeys.contains(key)) {
+      if (key != null && _isAppOwned(key)) {
         final value = fieldValue(t, key, digest: _digestField(t));
         if (value == null) continue; // 如 snoozed_until 为空 → 整行移除
         final cr = line.endsWith('\r') ? '\r' : '';
@@ -167,7 +190,7 @@ class TaskSidecarCodec {
         front.add(line); // 注释/未知字段/空行：原样保留
       }
     }
-    for (final key in ownedKeys) {
+    for (final key in [...ownedKeys, ...registeredMetaKeys]) {
       if (written.contains(key)) continue;
       final value = fieldValue(t, key, digest: _digestField(t));
       if (value == null) continue;
@@ -203,7 +226,9 @@ class TaskSidecarCodec {
       case 'completed_at':
         return t.completedAt == null ? null : fmtDateTime(t.completedAt!);
       default:
-        return null;
+        // 登记的应用自有 metadata 键（附录 B.2）：值直接取自任务对象；
+        // 键在 metadata 里消失 → 返回 null → 整行移除（"键消失则行删"）。
+        return registeredMetaKeys.contains(key) ? t.metadata[key] : null;
     }
   }
 

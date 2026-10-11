@@ -1,6 +1,6 @@
 # 架构契约：分层与接口设计
 
-> 版本：v1.7（修订记录见 §13）
+> 版本：v1.8（修订记录见 §13）
 > 定位：这是写代码时对照的**合同**。结构或接口变更必须先改本文件，再改代码。
 >
 > **标注约定（全文统一）**：
@@ -117,7 +117,7 @@
 
 | 类型 | 职责 | 状态 |
 |---|---|---|
-| `Task` | 任务事实：id、title、**deadline（可空：fixed=时点 / flex=截止 / null=散件，v1.4）**、estimatedWork、remainingWork、importance、status、snoozedUntil、description、**tags（v1.7）**、**completedAt（v1.7）**、metadata；**不可变 + copyWith（v1.2 起由编译器强制写路径唯一）**；类型 TaskType 走 metadata 缓冲带 | 现状 |
+| `Task` | 任务事实：id、title、**created（= 人类文档的「创建」；v1.7 起由人类文档持有）**、**deadline（可空：fixed=时点 / flex=截止 / null=散件，v1.4）**、estimatedWork、remainingWork、importance、status、snoozedUntil、description、**tags（v1.7）**、**completedAt（v1.7）**、metadata；**不可变 + copyWith（v1.2 起由编译器强制写路径唯一）**；类型 TaskType 走 metadata 缓冲带 | 现状 |
 | `TaskType` | flex（可推）/ fixed（不可推）/ **routine（周期实例，v1.5）**——三者的调度与完成语义不同 | 现状 |
 | `Routine` | 周期规则：频率（每天/每周 X）、时点、响不响、启用开关；**不是任务**（住在 `routines.md`），每天生成一个当天实例（TaskType.routine） | 现状 |
 | `RoutineOccurrence` | 一次具体发生（规则 + 时刻）：任务池计划段插入与日历打点用 | 现状 |
@@ -174,8 +174,8 @@ overdue、snoozed 沉底；overdue 退出提醒循环。
 
 ### 3.3 领域事件（添加而不修改的钩子）【现状】
 
-TaskService 每个命令完成后广播 `DomainEvent`（含 origin）。通知、同步、统计、AI 观察
-全部做成订阅者。**新增功能 = 新增订阅者，不改 TaskService。**
+TaskService 每个命令完成后广播 `DomainEvent`（含 origin）。通知、同步、统计、AI 观察、
+**操作流水（`EventLog`，决议 37）**全部做成订阅者。**新增功能 = 新增订阅者，不改 TaskService。**
 
 ### 3.4 升级三道防线（domain 演进的影响控制）
 
@@ -217,7 +217,7 @@ TaskService 每个命令完成后广播 `DomainEvent`（含 origin）。通知�
 | `pinToTop(taskId)` | 插队 = 持久意图记在任务（metadata `pinned`），保持到完成、栈式压顶；仅对可推组生效 |
 | `pickForToday` / `returnToPool` | 挑散件到今日尾部（`picked_for_today` 标记，当日手动挑优先、尾部最多一件）/ 放回池子 |
 | `setPoolOrder(taskId, order)` | 池子显示序（`pool_order`，仅整理无调度含义，重启保留） |
-| `deleteTask` / `restoreTask` / `purgeTrash` | 软删除三件套：移入 `.trash/` / 从回收站恢复 / 清空回收（D11） |
+| `deleteTask` / `restoreTask` / `purgeTrash` | 软删除三件套：移入 `.gtd/.trash/` / 从回收站恢复 / 清空回收（D11） |
 | `refreshSchedule` | 重锚（C2：只在事件发生时调用） |
 | **周期任务（v1.5）** | |
 | `createRoutine` / `updateRoutine` / `deleteRoutine` / `setRoutineEnabled` | 规则增删改与启用开关（RoutineService，写 `routines.md`）；每次改动同步当天实例（决议 23：没有"编辑实例"） |
@@ -248,10 +248,13 @@ abstract class TaskRepository {
 }
 
 /// 格式编解码：纯函数，无 IO。"存哪"（repository）与"什么格式"（codec）分离。
-/// 【现状】v1.7 起本接口只服务**内核属性文档**（一个任务一个文件），
-/// 人类文档是多任务共篇，由 TaskDocumentCodec 直接处理（见下）。
+/// 【现状】v1.7 起双文档各有专用形状，本接口只剩**旧格式只读兼容**这一位：
+///   - 旧"一任务一文件"（`md-frontmatter/1`，附录 B.5）= 唯一的 TaskCodec 实现；
+///   - 内核属性文档走 TaskSidecarCodec（下），人类文档走 TaskDocumentCodec（下）
+///     ——两者都**不是** TaskCodec：一个要多带 digest 接线与登记键写回，
+///     一个处理的是"一篇多任务文档里的某一行"，不是"一个文件"。
 abstract class TaskCodec {
-  String get formatId;                   // 'md-taskkernel/1'（内核属性）
+  String get formatId;                   // 'md-frontmatter/1'（旧格式只读）
   bool canDecode(String raw);
   DecodeResult decode(String raw);
   String encode(EncodedTask input);      // 遵守 §3.4 分级保真
@@ -311,11 +314,20 @@ class TaskDocumentCodec {
 
 /// 内核属性文档 .gtd/<id>.md：任务 id / 工作强度 / 优先级 / 时间裕度 /
 /// 剩余工作量 + digest（连接键）。【现状】
-class TaskSidecarCodec implements TaskCodec {
+/// 注意：它**不是** TaskCodec 实现（多了 digest 接线 + 登记键写回，见上）。
+class TaskSidecarCodec {
   static const String formatId = 'md-taskkernel/1';
+  /// 内核自己算的字段：原地改写，`null` → 整行移除。
   static const List<String> ownedKeys = [
     'id', 'digest', 'work_intensity', 'remaining_load', 'priority',
     'time_slack', 'status', 'snoozed_until', 'completed_at',
+  ];
+  /// 应用自有 metadata 键（附录 B.2 登记表）：**跟随任务对象改写**
+  /// （值变则行变、键在 metadata 里消失则整行删）；其余未知键原样往返。
+  static const List<String> registeredMetaKeys = [
+    'type', 'pinned', 'picked_for_today', 'pool_order',
+    'routine', 'routine_date', 'routine_remind', 'routine_skipped',
+    'point_fired',
   ];
 }
 
@@ -326,7 +338,8 @@ class MarkdownTaskRepository implements TaskRepository { /* … */ }
 
 - **`TaskDocumentCodec` 为什么要独立成一个类型**：它编解码的对象是"**一篇多任务文档
   里的某一行**"，不是"一个文件"。硬塞进 `TaskCodec`（一文件一任务）会把 `originalRaw`
-  的语义搞混——所以 `TaskCodec` 保留给内核属性文档，人类文档走专用 codec，
+  的语义搞混——所以内核属性文档与人类文档各走专用 codec（`TaskSidecarCodec` /
+  `TaskDocumentCodec`），`TaskCodec` 只留给旧格式的只读兼容；
   两者共用一个 repository 做归属合并。
 - **行指纹（digest）登记**：见附录 B。它是 D9"外部修改检测"在双文档形态下的实现——
   比 mtime 可靠（同分钟两次改动也分得开），也比"重新渲染一遍再比"可靠
@@ -334,7 +347,7 @@ class MarkdownTaskRepository implements TaskRepository { /* … */ }
 - **Scheduler 注册表 + 影子运行**：当前选择存设置；切换算法无需迁移（nextReminder 是
   计算结果，重算即生效）；新算法可影子运行（只记日志对比）【现状】。
 
-**UI 文档（v0.4/v0.5）带来的新座位**：
+**UI 文档带来的新座位（v1.4–v1.7 陆续落地）**：
 
 - **RoutineRepository / RoutineCodec**：周期规则存独立 `routines.md`（非 Task 文件，
   TaskRepository/TaskCodec 不覆盖；一条规则一个 frontmatter 条目，Obsidian 可改）；
@@ -353,6 +366,14 @@ class MarkdownTaskRepository implements TaskRepository { /* … */ }
   platform 落盘实现】；**v1.5 起设置文件仍在任务目录 `settings.json`**，
   但"任务目录是哪个"改存应用支持目录的 `bootstrap.json`（`BootstrapPort`），
   否则改目录会把设置本身弄丢。
+- **EventLogPort**：操作流水（决议 37）的**只追加**落盘插座——
+  `application/event_log.dart` 定义 `EventLogPort` + `EventLog` 订阅者，
+  落盘任务目录 `.gtd/log.md`（append-only，应用从不重写历史行）
+  【现状（v1.7）：platform/app_adapters.dart 的 `FileEventLogPort`】。
+  **只在主引擎装配**（两个引擎都挂会把同一件事记两遍，理由同 §4.2 边界 1）；
+  `.gtd/log.md` **不是内核属性文档**——内核属性扫描与文件监听都要跳过它，
+  否则每次读盘都会多出一条"属性文档无法解析"的假警告，
+  监听它更会自激成环（写日志 → 文件变化 → 重锚 → 又写日志）。
 
 ### 4.2 交付类插座（application 定义）【接口 + 桌面适配器 + 安卓适配器现状（v1.5）】
 
@@ -427,8 +448,9 @@ abstract class PermissionPort {
 | 窗口 | 原生 `OverlayHandleService` | 全屏**透明** `TYPE_APPLICATION_OVERLAY` 窗口承载引擎的 FlutterView；展开时隐藏原生把手 |
 
 边界（写死，避免两个引擎打架）：
-1. **交付类插座只在主引擎装配**：全局单闹钟归主引擎那一份，悬浮引擎不起
-   ReminderDispatcher（两个引擎各自挂闹钟会互相覆盖）；
+1. **交付类插座与观察类订阅者只在主引擎装配**：全局单闹钟归主引擎那一份，悬浮引擎
+   不起 ReminderDispatcher（两个引擎各自挂闹钟会互相覆盖）；`EventLog`（操作流水）
+   同理只在主引擎挂，否则同一件事会被记两遍（决议 37）；
 2. **写路径仍然唯一**：悬浮面板的命令同样走它自己的 `TaskService`（C1 不变），
    两个引擎之间的状态同步走**文件**——两边都 `watch()` 任务目录（与"Obsidian 手改
    回流"同一条通路），并发写由 D9 的字段归属合并兜底；
@@ -439,7 +461,7 @@ abstract class PermissionPort {
 application 层的 **ReminderDispatcher**（见 §4.3）。装配点负责把 AlarmPort 注入。
 **适配器无自主权**：只执行"取消旧的、挂新的"，不得自行重排或补挂。
 
-### 4.3 送达策略与提醒协调者【现状（接口 + 桌面适配器）；安卓适配器待设备阶段】
+### 4.3 送达策略与提醒协调者【现状（接口 + 桌面适配器 + 安卓适配器，v1.5）】
 
 **NotificationWindowRule（通知时间段，D10）**：与 WorkTimeRule（工时产能，domain）
 **解耦**——slack 数学不动，"什么时候真正打扰用户"由它裁决，归 application 层。
@@ -484,7 +506,8 @@ lib/ui/
 ├── shells/       android_shell.dart / desktop_shell.dart
 │                 ← 抽屉、返回键、状态栏、窗口标题栏……平台差异全在这
 ├── panels/       task_list_panel.dart / today_panel.dart / notes_panel.dart /
-│                 pool_panel.dart / settings_panel.dart
+│                 pool_panel.dart / settings_panel.dart /
+│                 side_panel.dart（应用内壳与悬浮面板共用同一份，v1.6）
 │                 ← 功能面板，平台无关，只被 shell 摆放
 ├── dialogs/      创建对话框（长按滑档位）/ 编辑表单 / 推迟档位 / 日历 /
 │                 quick_dump_dialog.dart（堆三无）/ routine_edit_dialog.dart（周期规则）
@@ -597,9 +620,13 @@ class SystemSnapshot {
 
 行为守卫：
 
-4. **分级保真测试**（正典 = §3.4 防线 1）：正文逐字节保真；frontmatter 字段级保真
-   （未知字段、行顺序保留）。——取代 v1.0 中"整文件逐字节保真"的过强表述，
-   两者冲突的裁决规则见 §3.4。
+4. **分级保真测试**（正典 = §3.4 防线 1）：分两个文档断言——
+   人类文档 `tasks.md` **行级保真**（应用只改自己那一行，其余行/标题/空行/正文
+   一字不动，且永不重排行）；内核属性文档 **字段级保真**（内核字段原地改写，
+   注释行、未知字段、行顺序原样保留），**登记的 metadata 键跟随任务对象改写**
+   （值变则行变、键消失则行删）。
+   ——取代 v1.0"整文件逐字节保真"与 v1.1–v1.6"一任务一文件 frontmatter 字段级"的
+   表述，两者冲突的裁决规则见 §3.4。
 5. ~~Task 字段赋值的文本扫描~~ **已退役（v1.2）**：被 §10 第 1 条（Task 不可变 + copyWith）取代
    ——结构上不可能违规后，弱守卫没有存在价值。
 
@@ -642,10 +669,9 @@ class SystemSnapshot {
 
 已成立【现状】：domain/scheduler/application 零平台依赖；接口与实现分离（一处已知违规，
 见 §2）；通知已是接口；时间可注入；ScheduleResult 不落盘；snoozed_until 持久化；
-23 个测试含跨日历/临界/逾期场景。
+测试覆盖跨日历/临界/逾期场景（**v1.7：118 个测试全绿**）。
 
-**进度（2026-10-08）：第 1–8 条已完成；第 9 条接口/桌面侧完成；第 10 条（UI 文档落地）
-完成；第 11 条（安卓交付适配器 + 周期任务 + 主题预设）完成。** 各条目：
+**进度（2026-10-11）：第 1–12 条全部完成**（各条末尾记着落地版本）。各条目：
 
 1. **Task 不可变 + copyWith**：字段全 final，变更 = 经 TaskService 生成新实例；
    "写路径唯一"（C1）从约定变编译器强制；顺带修复 A1/A2 两个已知 bug ✅
@@ -674,11 +700,14 @@ class SystemSnapshot {
 11. **UI 文档剩余项（v1.5）**：**完成**——周期任务全链路（规则 routines.md + 当天实例
     + 设置页管理 + 今日『例行组』+ 池子计划段插入 + 日历打点只读）、主题预设（4 套强调色）、
     时点性提醒（不可推到点 + 设了响的周期实例，含闹钟模式与静默段豁免）。
-    剩余（明确记录）：跨 App 的系统级**面板本体**（Flutter 常驻悬浮窗）、AI L2。
+    当时剩余（后续状态）：跨 App 的系统级**面板本体**（Flutter 常驻悬浮窗，
+    **v1.6 已落地**）、AI L2（**仍未落地**）。
 12. **存储形态改造：双文档（v1.7）**：**完成**——人类文档 `tasks.md` + 内核属性文档
     `.gtd/<id>.md`（决议 36/37）；`tags` / `completedAt` 升为 `Task` 正式字段；
     旧"一任务一文件"只读兼容 + 一次性自动迁移（旧文件进 `legacy-tasks/` 存档）；
-    软删除改 `%%…%%` 注释 + `.gtd/.trash/`；示例数据已按新格式重建。
+    软删除改 `%%…%%` 注释 + `.gtd/.trash/`；**操作流水另立 `.gtd/log.md`**
+    （决议 37：`EventLogPort` + `EventLog` 订阅者，只在主引擎挂，内核扫描与文件监听
+    都跳过它）；示例数据已按新格式重建。
 
 1→4 是一次纯内部小迭代；5–7 是存储改造；8 是算法层升级；9 起进入多平台；
 12 是人机数据归属的再切分（不改调度数学）。
@@ -720,7 +749,7 @@ class SystemSnapshot {
 | **悬浮面板不跑提醒调度**（v1.6） | 悬浮引擎（第二个 isolate）只做交互与展示，不装配 ReminderDispatcher（避免两个引擎抢同一个全局闹钟）。因此"只有悬浮面板活着"时也不重锚下一站闹钟 | 与上一条一并处理：把调度搬进原生或让两个引擎协商单一调度者 |
 | **两引擎并发写**（v1.6） | 应用内壳与悬浮面板各有自己的 TaskService；同步靠文件 watch + D9 字段归属合并，同一次编辑同时发生在两边时理论上可丢一侧（窗口极小） | 出现真实丢失案例时（引入跨引擎的单一写入者或文件锁） |
 | **系统级悬浮面板本体**（v1.5 → **v1.6 已落地**） | 把手拖出即在当前 App 上方就地展开面板（第二个 Flutter 引擎 + 透明 overlay 窗口，复用同一份 panels）；进应用只走『设置 / 编辑规则』 | —（已落地；新局限见上两条关于调度与并发写的行） |
-| 周期实例按天物化成任务文件（v1.5） | 每天一个 `routine-<规则id>-<日期>.md`（Obsidian 可见、完成/跳过都有地方落）；规则多时目录文件数会增长，需靠回收站/手工清理历史 | 目录膨胀到影响浏览时（改为归档子目录或按需生成） |
+| 周期实例按天物化成任务文件（v1.5） | 每天一份：人类文档里一行（`- [ ] 晨跑 创建 …`，Obsidian 可见）+ 内核属性文档 `.gtd/<规则id>-<yyyy-MM-dd>.md`（完成/跳过都有地方落）；规则多时目录文件数会增长，需靠回收站/手工清理历史 | 目录膨胀到影响浏览时（改为归档子目录或按需生成） |
 | 主题预设只换强调色（v1.5） | 状态语义色（逾期橙红、时间徽标橙）固定不随预设变；不是完整主题包 | 需要夜间配色/完整主题包时（§8 的"最后做"项） |
 
 ---
@@ -907,6 +936,33 @@ class SystemSnapshot {
   改读 `.gtd/`）。
   桌面实测：`dart run tool/seed_tasks.dart` 生成的示例数据读回 3 条、`warnings` 为空，
   且"无变化存回"时 `tasks.md` 与 `.gtd/<id>.md` **双双向逐字节不变**。
+- **v1.8**（2026-10-11）：**双文档形态的自洽性核对**（与 ui-interaction.md v0.8 配对）。
+  由一次文档交叉评审发现的问题而来，纯修订 + 两处实现回补，不改产品行为。要点——
+  ① **`log` 补登记**（决议 37 此前只在 ui 文档与代码里，本文件缺席）：
+  §3.3 把 `EventLog` 列入订阅者范例、§4.1 增设 **`EventLogPort`** 座位
+  （`application/event_log.dart` + `.gtd/log.md`，append-only）、§4.2 边界 1 写明
+  **只在主引擎挂**、B.0 目录布局补一行、§10 第 12 条补记。
+  同时明确 **`.gtd/log.md` 不是内核属性文档**：内核属性扫描与文件监听都要跳过它，
+  否则每次读盘多一条"属性文档无法解析"的假警告，监听它更会自激成环
+  （写日志 → 文件变化 → 重锚 → 又写日志）——两处均已实现（`logFileName`）。
+  ② **登记键写回回补**（实现回退）：v1.7 的 `TaskSidecarCodec` 只把 `ownedKeys`
+  当自有字段，附录 B.2 登记的 metadata 键（`type`/`pinned`/`picked_for_today`/
+  `pool_order`/`routine*`/`point_fired`）被当成"未知字段原样保留"——**值变不写、
+  键新不写**；而 `TaskService._persist()` 每个命令后都重读磁盘，于是
+  "插队 / 池序 / 挑到今日 / 跳过今天 / 只到点响一次 / 类型转换"在命令返回时就地失效
+  （v1.4 在旧 codec 上明确实现并有测试，换 codec 时丢了）。本版补
+  `registeredMetaKeys` 写回，并把护栏测试迁到双文档路径
+  （`markdown_task_repository_test` 新增"应用自有 metadata 键落盘"一组，
+  含经 `TaskService` 的插队重载回归）。
+  ③ **更正 v1.7 的两句表述**：(a) `TaskCodec` 并未"收窄为内核属性文档"——
+  它只剩旧格式（`md-frontmatter/1`）只读兼容这一位，内核属性文档走独立的
+  `TaskSidecarCodec`（不是 `TaskCodec` 实现），人类文档走 `TaskDocumentCodec`；
+  (b) §4.3 标题的"安卓适配器待设备阶段"与 §4.2/§10 第 9 条冲突，已改为
+  "接口 + 桌面 + 安卓适配器（v1.5）"。
+  ④ **陈旧条款对齐**：§7 守卫规则 4 改写为"人类文档行级保真 + 内核文档字段级保真
+  （含登记键跟随任务对象）"；§12 周期实例落点改为"人类文档一行 + `.gtd/<规则id>-<yyyy-MM-dd>.md`"；
+  §3.1 `Task` 字段补 `created`；§10 的"23 个测试"与停在 1–11 条的进度摘要更新为
+  1–12 条 / 118 个测试；§5.1 目录树补 `side_panel.dart`。
 
 ---
 
@@ -929,6 +985,8 @@ tasks/                       ← 任务目录（设置里可选，GTD_TASKS_DIR 
 ├── tasks.md                 ← 【人类文档】所有任务：一个文档，# 标题分类，一行一条
 ├── .gtd/                    ← 【内核属性文档】应用自己写，一个任务一个
 │   ├── <任务id>.md          　任务id / 工作强度 / 优先级 / 时间裕度 / 剩余工作量
+│   ├── log.md               　操作流水（决议 37：append-only；**不是任务文档**，
+│   │                        　内核属性扫描与文件监听都跳过它）
 │   └── .trash/              　软删除的内核属性文件（Obsidian 可见可捞）
 ├── routines.md              ← 周期规则（B-2，形状不变）
 ├── settings.json            ← 应用设置
@@ -995,13 +1053,15 @@ work_intensity: 120    # 工作强度 = 完成它需要的工时（工作分钟�
 remaining_load: 0.75   # 剩余工作量（分数：乘以工作强度才是分钟）
 priority: 3            # 优先级 1–5（与 domain 的 importance 同一枚硬币）
 time_slack: 210        # 时间裕度（工作分钟；计算结果，不落盘也能重算）
-status: active
-snoozed_until: 2026-10-07T17:10
-completed_at: 2026-10-08T21:40
+status: snoozed
+snoozed_until: 2026-10-11T17:10   # 与 status: snoozed 配套（D8：用户意图，持久化）
 ---
 
 内核备注（可选）：调度解释、AI 留的理由……归内核，应用不主动改。
 ```
+
+**完成态不许自相矛盾**：`completed_at` 只与 `status: completed`（或人类文档的 `[x]` /
+`完成 <时刻>`）配套出现；`status: active` + `completed_at` 是非法状态，别照着写。
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
@@ -1016,8 +1076,11 @@ completed_at: 2026-10-08T21:40
 | `completed_at` | ISO8601，可选 | 完成时刻（与人类文档 `完成 <时刻>` 同步落一份） |
 | `schema` | int（规划） | 迁移版本号，见 §3.4 防线三 |
 
-**自有 metadata 键登记表**（§3.4 防线二：应用自有键在此登记，编码时跟随任务对象
-改写/删除；其余未知键原样往返）。除上表内的字段外，还登记：
+**自有 metadata 键登记表**（§3.4 防线二：应用自有键在此登记，编码时**跟随任务对象
+改写**——值变则行变、键在 `Task.metadata` 里消失则整行删；其余未知键原样往返）。
+实现载体 = `TaskSidecarCodec.registeredMetaKeys`；**漏登记这批键的写回，等于让
+"插队 / 池序 / 跳过今天 / 只到点响一次 / 类型转换"这些持久意图在命令自己的重锚里
+蒸发**（v1.7 漏过一次，v1.8 回补，见 §13）。除上表内的字段外，还登记：
 
 | 键 | 语义 | 来源 |
 |---|---|---|
