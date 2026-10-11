@@ -817,7 +817,8 @@ class SystemSnapshot {
   编辑/定期挑/回收站）；安卓壳（应用内悬浮侧边栏：把手/三页竖翻/重手势/隐私
   过头/Drawer 兜底/首次引导）。
   ⑥ **架构守卫**：66 个测试全绿（新增 android_ui_contract_test 15 个）；
-  中文路径迁移已执行（附录 A），android/ 平台补建，Gradle 走 dl.google.com +
+  中文路径迁移当时已执行（**该处置已作废**：那份 ASCII 副本已删除，分析与构建
+  只在本工作目录进行），android/ 平台补建，Gradle 走 dl.google.com +
   阿里云镜像链。
   剩余：系统通知/精确闹钟/悬浮窗的安卓原生适配器（设备阶段）、周期任务（三期）、
   AI L2（三期）。
@@ -962,7 +963,9 @@ class SystemSnapshot {
   ④ **陈旧条款对齐**：§7 守卫规则 4 改写为"人类文档行级保真 + 内核文档字段级保真
   （含登记键跟随任务对象）"；§12 周期实例落点改为"人类文档一行 + `.gtd/<规则id>-<yyyy-MM-dd>.md`"；
   §3.1 `Task` 字段补 `created`；§10 的"23 个测试"与停在 1–11 条的进度摘要更新为
-  1–12 条 / 118 个测试；§5.1 目录树补 `side_panel.dart`。
+  1–12 条 / 118 个测试；§5.1 目录树补 `side_panel.dart`；附录 A 删掉已作废的
+  "中文路径迁移"注（那份 ASCII 副本已删除，分析与构建只在本工作目录进行），
+  只保留其中的构建镜像信息。
 
 ---
 
@@ -974,7 +977,7 @@ class SystemSnapshot {
 | 所有文件访问 vs SAF | 全屋钥匙（个人用省事，监听可用）vs 临时门卡（商店合规，但没"门铃"= 不能监听文件变化） | FolderPickerPort 两种实现；SAF 下 watch()=null → 降级为回前台刷新 |
 | 后台冻结 / Doze | app 退后台会被系统冻结，Timer 停摆 | 提醒改由 AlarmPort 预约系统闹钟，到点由系统唤醒 |
 | 精确闹钟权限 / 电池白名单 | 安卓 12+ 准点响铃要单独授权；省电模式会推迟闹钟 | PermissionPort 的职责范围 |
-| 中文路径 | 部分开发/构建工具遇非 ASCII 路径出错（本项目已实测：分析器崩溃；Gradle 有前科） | 多平台开发建议项目挪纯 ASCII 路径。**状态：已执行（v1.4，2026-10-07）**——工作副本已复制到 `C:\Users\zzz\dev\gtd_todo`（纯 ASCII），并补建 `android/` 平台；原中文路径目录保留为旧快照（含迁移说明），分析与构建一律在新路径进行。另：本机 maven.google.com 不可达，`android/` 构建已配置 dl.google.com 官方 CDN + 阿里云镜像链 |
+| maven.google.com 不可达 | 本机直连 Google Maven 会失败 | `android/` 构建已配置 dl.google.com 官方 CDN + 阿里云镜像链 |
 
 ## 附录 B：Markdown 文件格式约定（双文档，v1.7）
 
