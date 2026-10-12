@@ -3,7 +3,10 @@ import '../domain/task.dart';
 import '../domain/time_context.dart';
 import 'scheduler.dart';
 
-/// 第一版调度算法：基于 Slack（裕度）的动态提醒间隔。
+/// 第一版调度算法（**v1.9 起不再默认**）：基于 Slack（裕度）的动态提醒间隔。
+///
+/// 默认算法已换成 [SlackPriorityScheduler]（时间裕度优先，`priority = risk × importance`）；
+/// 本算法留在注册表里做**对照与影子运行**，排序口径仍是 `urgency` 降序。
 ///
 /// 对每个未完成任务计算：
 ///   available = WorkTime(now, deadline)   —— 跳过休息时间的真实可用工时
@@ -15,6 +18,8 @@ import 'scheduler.dart';
 /// 多任务排序：urgency 高者优先（文档 §11），importance 作并列裁决。
 /// 派生状态：infeasible（urgency > 1，按期已不可行）需要升级处理，
 /// overdue（已过截止）退出提醒循环，只做展示。
+/// **提醒门槛**（v1.9 补上，D15）与默认算法同一套：标准模式下只有被显式要求提醒的
+/// 任务才会出声——换算法不能绕过模式，否则"默认安静"就有了后门。
 class SlackScheduler implements Scheduler {
   static const String defaultId = 'slack.v1';
 
@@ -61,6 +66,7 @@ class SlackScheduler implements Scheduler {
     required List<Task> tasks,
     required DateTime now,
     required WorkTimeRule workRule,
+    ReminderMode reminderMode = ReminderMode.standard,
   }) {
     final metrics = <TaskMetric>[];
     final infeasible = <String>[];
@@ -122,8 +128,13 @@ class SlackScheduler implements Scheduler {
         displayStatus: display,
         availableMinutes: available,
         slackMinutes: slack,
+        // 风险/调度优先级与默认算法同一套公式（TaskMetric 是统一方言），
+        // 只是本算法的**排序**仍按 urgency——这才是两个算法的差别所在。
+        risk: slackRisk(slack),
+        priority: slackRisk(slack) * task.importance,
         urgency: urgency,
         nextReminderAt: nextReminderAt,
+        reminds: schedulable && reminderAllowed(task, reminderMode),
         intervalMinutes: interval,
       );
       metrics.add(metric);
@@ -154,13 +165,14 @@ class SlackScheduler implements Scheduler {
       }
     }
 
+    // 下一站 = **会响**的提醒里最早的那个（锚点 ∩ 门槛，D15）；标准模式下通常没有。
     DateTime? nextReminderAt;
     String? nextReminderTaskId;
     for (final m in ordered) {
-      if (m.nextReminderAt != null &&
-          (nextReminderAt == null ||
-              m.nextReminderAt!.isBefore(nextReminderAt))) {
-        nextReminderAt = m.nextReminderAt;
+      final at = m.reminderAt;
+      if (at != null &&
+          (nextReminderAt == null || at.isBefore(nextReminderAt))) {
+        nextReminderAt = at;
         nextReminderTaskId = m.taskId;
       }
     }

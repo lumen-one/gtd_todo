@@ -10,7 +10,7 @@ import 'package:gtd_todo/domain/event.dart';
 import 'package:gtd_todo/domain/schedule.dart';
 import 'package:gtd_todo/domain/time_context.dart';
 import 'package:gtd_todo/repository/memory_task_repository.dart';
-import 'package:gtd_todo/scheduler/slack_scheduler.dart';
+import 'package:gtd_todo/scheduler/slack_priority_scheduler.dart';
 
 String _two(int n) => n.toString().padLeft(2, '0');
 
@@ -30,9 +30,10 @@ void printSchedule(TaskService svc, String label) {
       '  ${t.title.padRight(10)} 剩余${t.remainingWork.toString().padLeft(4)}分'
       ' | 可用${m.availableMinutes.toString().padLeft(5)}'
       ' | 裕度${m.slackMinutes.toString().padLeft(5)}'
-      ' | 紧急度${(m.urgency * 100).toStringAsFixed(0).padLeft(3)}%'
+      ' | 风险${(m.risk * 100).toStringAsFixed(0).padLeft(3)}%'
+      ' | 优先级${m.priority.toStringAsFixed(2).padLeft(6)}'
       ' | 间隔${(m.intervalMinutes?.toString() ?? '—').padLeft(4)}分'
-      ' | 下次提醒${m.nextReminderAt == null ? '  —      ' : fmt(m.nextReminderAt!)}'
+      ' | 下次提醒${m.reminderAt == null ? '  —      ' : fmt(m.reminderAt!)}'
       '$flag',
     );
   }
@@ -51,8 +52,11 @@ Future<void> main() async {
   var now = DateTime(2026, 10, 7, 15, 40); // 周三下午
   final svc = TaskService(
     repo: repo,
-    scheduler: const SlackScheduler(),
+    // v1.9 默认算法 = 时间裕度优先（priority = risk × importance）。
+    scheduler: const SlackPriorityScheduler(),
     workRule: WorkTimeRule.standard,
+    // 仿真演示的是"动态提醒"这条链路，所以用完整模式（默认是标准模式 = 不提醒）。
+    reminderMode: ReminderMode.full,
     clock: () => now,
   );
   final events = <DomainEvent>[];
@@ -99,4 +103,9 @@ Future<void> main() async {
     print('  ${fmt(e.at)}  origin=${e.origin.name.padRight(6)} '
         '${e.type.name.padRight(19)} $title');
   }
+
+  // 默认模式是**标准**（只排列不提醒）：同一批任务，一个"下一站"都没有，
+  // 但顺序、锚点（今日清单准入）照旧——差别只在"出不出声"（决议 38）。
+  await svc.updateReminderMode(ReminderMode.standard);
+  printSchedule(svc, '切回默认的标准模式（只排列不提醒）');
 }

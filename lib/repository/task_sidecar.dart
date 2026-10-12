@@ -66,6 +66,7 @@ class TaskSidecarCodec {
     'routine_remind',
     'routine_skipped',
     'point_fired',
+    'remind', // v1.9：逐任务提醒开关（标准模式下让这一件出声，决议 38）
   ];
 
   /// 应用拥有的键 = 内核字段 + 登记的 metadata 键（这两类都要改写，不是"未知"）。

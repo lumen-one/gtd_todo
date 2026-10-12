@@ -120,6 +120,7 @@ class TaskListPanelState extends State<TaskListPanel> {
           warningCount: warnings.length,
           firstWarning: warnings.isEmpty ? null : warnings.first,
           infeasibleCount: infeasible,
+          reminderMode: controller.reminderMode,
         ),
         const Divider(height: 1),
         Expanded(
@@ -300,12 +301,17 @@ class _ScheduleHeader extends StatelessWidget {
   final String? firstWarning;
   final int infeasibleCount;
 
+  /// 提醒模式（v1.9）：标准模式下"没有待提醒的任务"是默认状态而不是故障，
+  /// 所以这句话要说清原因，免得被当成通知没配好。
+  final ReminderMode reminderMode;
+
   const _ScheduleHeader({
     required this.schedule,
     this.nextTaskTitle,
     this.warningCount = 0,
     this.firstWarning,
     this.infeasibleCount = 0,
+    this.reminderMode = ReminderMode.standard,
   });
 
   @override
@@ -344,7 +350,11 @@ class _ScheduleHeader extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            nextReminder == null ? '没有待提醒的任务' : '下次提醒：${fmt(nextReminder)}',
+            nextReminder != null
+                ? '下次提醒：${fmt(nextReminder)}'
+                : reminderMode == ReminderMode.standard
+                    ? '不提醒（标准模式：给任务开『提醒我』，或切完整模式）'
+                    : '没有待提醒的任务',
             style: theme.textTheme.bodySmall,
           ),
           if (warningCount > 0) ...[
@@ -385,8 +395,10 @@ class _TaskCard extends StatelessWidget {
       _ => metric == null
           ? const _Chip(label: '已完成', color: Colors.green)
           : _Chip(
-              label: '紧急度 ${(metric.urgency * 100).toStringAsFixed(0)}%',
-              color: metric.urgency > 0.7 ? Colors.orange : Colors.teal),
+              // v1.9：排序键是"调度优先级 = 风险 × 重要度"，展示风险比旧的
+              // 紧急度更贴近现在的口径（数值本身不落盘、不进人类文档）。
+              label: '风险 ${(metric.risk * 100).toStringAsFixed(0)}%',
+              color: metric.risk > 0.7 ? Colors.orange : Colors.teal),
     };
 
     return Card(
@@ -410,7 +422,7 @@ class _TaskCard extends StatelessWidget {
               ' · 剩余 ${task.remainingWork}/${task.estimatedWork} 分钟'
               ' · 重要度 ${task.importance}'
               '${metric == null ? '' : ' · 裕度 ${metric.slackMinutes} 分钟'
-                  '${metric.nextReminderAt == null ? '' : ' · 下次提醒 ${fmt(metric.nextReminderAt!)}'}'}',
+                  '${metric.reminderAt == null ? '' : ' · 下次提醒 ${fmt(metric.reminderAt!)}'}'}',
               style: theme.textTheme.bodySmall,
             ),
             const SizedBox(height: 8),

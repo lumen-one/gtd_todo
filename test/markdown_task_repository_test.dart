@@ -447,6 +447,21 @@ created: 2026-10-07T15:30
       expect(raw2, contains('pool_order: 7'));
     });
 
+    test('remind：逐任务提醒开关（v1.9）落盘、读回，关掉即删行', () async {
+      final t = makeTask();
+      await repo.save(t);
+      expect(kernel('task-001').readAsStringSync(), isNot(contains('remind:')));
+
+      await repo.save(t.copyWith(metadata: const {'remind': 'true'}));
+      expect(kernel('task-001').readAsStringSync(), contains('remind: true'));
+      expect((await repo.loadAll()).single.remindEnabled, isTrue,
+          reason: '漏登记这个键，开关会在命令自己的重读里蒸发');
+
+      await repo.save(t);
+      expect(kernel('task-001').readAsStringSync(), isNot(contains('remind:')));
+      expect((await repo.loadAll()).single.remindEnabled, isFalse);
+    });
+
     test('周期实例键与 point_fired 落盘并读回', () async {
       final inst = makeTask().copyWith(metadata: const {
         'type': 'routine',

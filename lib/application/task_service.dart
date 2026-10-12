@@ -22,6 +22,11 @@ class TaskService {
   final Scheduler scheduler;
   final WorkTimeRule workRule;
 
+  /// **提醒门槛**（v1.9，D15）：默认**标准模式**——只排列不提醒，只有被显式
+  /// 要求提醒的任务（metadata `remind`，或规则设了响的周期实例）才会出声。
+  /// 设置页改动经装配点回调调 [updateReminderMode]；它只改调度的入参，不动任何数据。
+  ReminderMode reminderMode;
+
   /// 可注入时钟：测试与仿真可以自由拨动时间。
   final DateTime Function() now;
 
@@ -35,6 +40,7 @@ class TaskService {
     required this.repo,
     required this.scheduler,
     this.workRule = WorkTimeRule.standard,
+    this.reminderMode = ReminderMode.standard,
     DateTime Function()? clock,
   }) : now = clock ?? DateTime.now;
 
@@ -63,9 +69,20 @@ class TaskService {
       tasks: _tasks,
       now: now(),
       workRule: workRule,
+      reminderMode: reminderMode,
     );
     _emit(DomainEventType.scheduleReanchored, lastSchedule?.nextTaskId ?? '',
         origin);
+  }
+
+  /// 切换提醒模式（设置页 → 装配点回调，D15）。
+  ///
+  /// **不改任何数据**：提醒是计算结果（D1），重算即生效；模式没变就什么都不做，
+  /// 避免装配/回前台时的无谓重锚（C2 的精神：只在真的有事发生时重锚）。
+  Future<void> updateReminderMode(ReminderMode mode) async {
+    if (mode == reminderMode) return;
+    reminderMode = mode;
+    await refreshSchedule();
   }
 
   Future<void> _reload() async {
@@ -299,6 +316,24 @@ class TaskService {
   /// 回收站清单（查询，不经缓存）。
   Future<List<Task>> loadTrash() => repo.loadTrash();
 
+  /// **逐任务提醒开关**（v1.9 决议 38）：在标准模式下让**这一件**出声（metadata
+  /// `remind`）。它**不改顺序**、不改其他字段；完整模式下开了也等于没开（本来就全响）。
+  /// 不可推（fixed）与周期实例也适用——时点性提醒走同一道门槛（D15）。
+  Future<Task> setTaskReminder(String id,
+      {required bool enabled, EventOrigin origin = EventOrigin.user}) async {
+    final updated = _withMeta(_require(id), (m) {
+      final next = Map<String, String>.from(m);
+      if (enabled) {
+        next['remind'] = 'true';
+      } else {
+        next.remove('remind');
+      }
+      return next;
+    });
+    await _persist(updated, origin, DomainEventType.taskReminderSet);
+    return updated;
+  }
+
   /// 插队（决议 9）：持久意图记在任务上，保持到完成；栈式压顶（后插在上）。
   /// 仅对可推任务生效（决议 11）。
   Future<Task> pinToTop(String id,
@@ -463,11 +498,14 @@ class TaskService {
 
   /// 时点性提醒候选（决议 3/18）：不可推到点 + 设了响的周期实例。
   /// 已响过（point_fired 与当前时刻一致）与超过补响宽限的不再返回。
+  /// **v1.9：再过一道提醒门槛**（D15）——标准模式下只有被显式要求提醒的才出声。
   PointReminder? nextPointReminder() {
     final current = now();
     PointReminder? best;
     for (final t in _tasks) {
       if (t.isCompleted) continue;
+      // 提醒门槛（v1.9，D15）：标准模式下只有被显式要求提醒的任务才出声。
+      if (!reminderAllowed(t, reminderMode)) continue;
       final at = t.pointReminderAt;
       if (at == null) continue;
       if (t.pointFiredMark == at.toIso8601String()) continue; // 只到点响一次
@@ -482,6 +520,9 @@ class TaskService {
   /// 由 UI/定时器周期调用：时点性提醒优先，其次 Slack 软提醒。
   /// 到点则产出 ReminderEvent 并重锚；未到点返回 null。
   /// 绝对不要在这里无条件 refreshSchedule（C2）。
+  ///
+  /// 两种提醒都已过**门槛**（D15）：时点提醒在 [nextPointReminder] 里过滤，
+  /// 软提醒取 `ScheduleResult.nextReminderAt`（那是"会响的下一站"，标准模式下通常为 null）。
   Future<ReminderEvent?> pollReminder() async {
     final current = now();
     final point = nextPointReminder();

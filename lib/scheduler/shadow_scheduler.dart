@@ -28,11 +28,14 @@ class ShadowScheduler implements Scheduler {
     required List<Task> tasks,
     required DateTime now,
     required WorkTimeRule workRule,
+    ReminderMode reminderMode = ReminderMode.standard,
   }) {
-    final result = primary.schedule(tasks: tasks, now: now, workRule: workRule);
+    // 门槛原样透传给两边：影子对比的是"算法差异"，不是"模式差异"。
+    final result = primary.schedule(
+        tasks: tasks, now: now, workRule: workRule, reminderMode: reminderMode);
     try {
-      final ghost =
-          shadow.schedule(tasks: tasks, now: now, workRule: workRule);
+      final ghost = shadow.schedule(
+          tasks: tasks, now: now, workRule: workRule, reminderMode: reminderMode);
       final diff = _describeDiff(result, ghost);
       if (diff != null) {
         diffLog.add('${now.toIso8601String()}: $diff');
@@ -53,6 +56,11 @@ class ShadowScheduler implements Scheduler {
       if (mb == null) return 'task ${ma.taskId} 在影子结果中缺失';
       if (ma.intervalMinutes != mb.intervalMinutes) {
         return 'task ${ma.taskId} 间隔 ${ma.intervalMinutes} vs ${mb.intervalMinutes}';
+      }
+      // 排序口径（v1.9：调度优先级）也在观察范围内——换了排序键要看得见。
+      if ((ma.priority - mb.priority).abs() > 1e-9) {
+        return 'task ${ma.taskId} 调度优先级 '
+            '${ma.priority.toStringAsFixed(4)} vs ${mb.priority.toStringAsFixed(4)}';
       }
     }
     return null;

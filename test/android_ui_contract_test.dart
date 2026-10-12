@@ -3,6 +3,7 @@ import 'package:gtd_todo/application/notes_reader.dart';
 import 'package:gtd_todo/application/settings.dart';
 import 'package:gtd_todo/application/task_service.dart';
 import 'package:gtd_todo/application/today_view.dart';
+import 'package:gtd_todo/domain/schedule.dart';
 import 'package:gtd_todo/domain/task.dart';
 import 'package:gtd_todo/domain/time_context.dart';
 import 'package:gtd_todo/repository/markdown_task_codec.dart';
@@ -282,6 +283,17 @@ void main() {
       expect(back.alarmMode, isTrue);
       expect(back.pickIntervalDays, 3);
       expect(back.notesPath, s.notesPath);
+    });
+
+    test('提醒模式：默认标准，完整模式往返不丢（v1.9）', () {
+      expect(AppSettings.defaults.reminderMode, ReminderMode.standard,
+          reason: '默认标准模式：只排列不提醒');
+      const full = AppSettings(reminderMode: ReminderMode.full);
+      final back = decodeSettings(encodeSettings(full));
+      expect(back.reminderMode, ReminderMode.full);
+      // 老设置文件没有这个键 → 落到标准模式（不因为缺键而变成"全提醒"）
+      final legacy = AppSettings.fromJson(const {'alarm_mode': true});
+      expect(legacy.reminderMode, ReminderMode.standard);
     });
   });
 }

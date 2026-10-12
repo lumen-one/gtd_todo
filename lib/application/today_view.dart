@@ -49,7 +49,9 @@ class TodayView {
       routines.isEmpty &&
       picked == null;
 
-  /// 会响的事（提醒口径，§1 名词表）：可推组 + 固定时点组的总数。
+  /// 今日清单上要编号的条目数（固定时点组 + 可推组 + 插队件；见 §1 名词表）。
+  /// **不含提醒门槛**（v1.9）："会不会真的响"要看 `ScheduleResult` 里各任务的
+  /// `reminds` / `reminderAt`——分组与编号在两种模式下完全一致，所以这里也不需要模式。
   int get count => overdue.length + fixed.length + pinned.length + flex.length;
 }
 
@@ -111,7 +113,7 @@ String dayMark(DateTime d) =>
 bool _sameDay(DateTime a, DateTime b) =>
     a.year == b.year && a.month == b.month && a.day == b.day;
 
-/// 聚合今日清单。[schedule] 为当前调度结果（可推组排序与"会响"口径来源）。
+/// 聚合今日清单。[schedule] 为当前调度结果（可推组排序 + "提醒锚点"口径来源）。
 TodayView buildTodayView({
   required List<Task> tasks,
   required ScheduleResult? schedule,
@@ -152,8 +154,10 @@ TodayView buildTodayView({
           overdue.add(t);
           continue;
         }
-        // "今天有提醒或今天到期"（§6.1）；snoozed 到期前不出现，
+        // "提醒锚点落在今天"或今天到期（§6.1）；snoozed 到期前不出现，
         // 到期后下一次重锚自然回来。无截止散件不进今日（进池子/被挑）。
+        // v1.9：锚点是调度计算，**不受提醒模式影响**——标准/完整两种模式下
+        // 这一页的构成与顺序完全一样，差别只在会不会真的弹通知（D15）。
         final metric = schedule?.metricOf(t.id);
         final reminderToday = metric?.nextReminderAt != null &&
             _sameDay(metric!.nextReminderAt!, now);

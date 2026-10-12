@@ -33,12 +33,14 @@ void main() {
 
   test('单任务：interval = alpha * slack，nextReminder 落在工作窗内', () {
     // available = 16:00→18:00 = 120min，remaining 60 → slack 60 → interval 30
+    // v1.9：要"会响"就得在完整模式下断言（默认标准模式只排列不提醒）。
     final r = scheduler.schedule(
       tasks: [
         task(id: 'a', deadline: DateTime(2026, 10, 7, 18, 0), remaining: 60),
       ],
       now: now,
       workRule: rule,
+      reminderMode: ReminderMode.full,
     );
     final m = r.metricOf('a')!;
     expect(m.slackMinutes, 60);
@@ -128,5 +130,25 @@ void main() {
     expect(r.overdueTaskIds, ['a']);
     expect(m.nextReminderAt, isNull);
     expect(r.nextReminderAt, isNull);
+  });
+
+  test('提醒门槛：换算法不能绕过模式（v1.9，D15）', () {
+    final tasks = [
+      task(id: 'a', deadline: DateTime(2026, 10, 7, 18, 0), remaining: 60),
+    ];
+
+    final standard = scheduler.schedule(tasks: tasks, now: now, workRule: rule);
+    expect(standard.metricOf('a')!.nextReminderAt, isNotNull,
+        reason: '锚点照算（今日清单准入用它）');
+    expect(standard.metricOf('a')!.reminderAt, isNull);
+    expect(standard.nextReminderAt, isNull, reason: '标准模式没有下一站');
+
+    final full = scheduler.schedule(
+      tasks: tasks,
+      now: now,
+      workRule: rule,
+      reminderMode: ReminderMode.full,
+    );
+    expect(full.nextReminderAt, DateTime(2026, 10, 7, 16, 30));
   });
 }

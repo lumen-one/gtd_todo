@@ -54,6 +54,10 @@ class AppController extends ChangeNotifier {
   /// 装配点注入的回调：闹钟模式变化时同步给 ReminderDispatcher（决议 18）。
   final void Function(bool alarmMode)? onAlarmModeChanged;
 
+  /// 装配点注入的回调：提醒模式变化时同步给 TaskService（v1.9 / D15）。
+  /// 它改的是调度入参——重锚之后"下一站会响的提醒"随之变。
+  final void Function(ReminderMode reminderMode)? onReminderModeChanged;
+
   ReminderEvent? _lastReminder;
   StreamSubscription<DomainEvent>? _sub;
   StreamSubscription<DomainEvent>? _routineSub;
@@ -117,6 +121,7 @@ class AppController extends ChangeNotifier {
     this.folderPicker,
     this.onWindowsChanged,
     this.onAlarmModeChanged,
+    this.onReminderModeChanged,
     Stream<ShownNotification>? notificationSurface,
   }) {
     _sub = service.events.listen((_) => notifyListeners());
@@ -158,6 +163,8 @@ class AppController extends ChangeNotifier {
       _settings = AppSettings.defaults;
     }
     _settingsLoaded = true;
+    // 提醒模式来自设置：装载完就同步给 TaskService（默认标准 = 只排列不提醒）。
+    onReminderModeChanged?.call(_settings.reminderMode);
     notifyListeners();
   }
 
@@ -172,7 +179,11 @@ class AppController extends ChangeNotifier {
     }
     onWindowsChanged?.call(notificationWindowRule);
     onAlarmModeChanged?.call(next.alarmMode);
+    onReminderModeChanged?.call(next.reminderMode);
   }
+
+  /// 提醒模式（v0.9 / 决议 38）：标准（默认，只排列不提醒）/ 完整（全提醒）。
+  ReminderMode get reminderMode => _settings.reminderMode;
 
   /// §4.3：当前送达策略（默认 9:00–21:00 一段；空 = 不限制）。
   NotificationWindowRule get notificationWindowRule => NotificationWindowRule(
@@ -462,6 +473,10 @@ class AppController extends ChangeNotifier {
       service.logWork(id, minutes: minutes);
 
   Future<void> pinToTop(String id) => service.pinToTop(id);
+
+  /// 逐任务提醒开关（v0.9 决议 38）：标准模式下让这一件出声。
+  Future<void> setTaskReminder(String id, {required bool enabled}) =>
+      service.setTaskReminder(id, enabled: enabled);
 
   Future<void> pickForToday(String id) => service.pickForToday(id);
 

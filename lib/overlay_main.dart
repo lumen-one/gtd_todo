@@ -9,7 +9,7 @@ import 'domain/time_context.dart';
 import 'platform/app_adapters.dart';
 import 'repository/markdown_routine_repository.dart';
 import 'repository/markdown_task_repository.dart';
-import 'scheduler/slack_scheduler.dart';
+import 'scheduler/slack_priority_scheduler.dart';
 import 'ui/app_controller.dart';
 import 'ui/dialogs/calendar_dialog.dart';
 import 'ui/panels/side_panel.dart';
@@ -111,7 +111,7 @@ Future<_OverlayCore> _assembleOverlayCore() async {
   final repo = MarkdownTaskRepository(resolved.taskDir);
   final service = TaskService(
     repo: repo,
-    scheduler: const SlackScheduler(),
+    scheduler: const SlackPriorityScheduler(), // 与主引擎同一默认算法（v1.9）
     workRule: WorkTimeRule.standard,
   );
   await service.refreshSchedule();
@@ -128,6 +128,8 @@ Future<_OverlayCore> _assembleOverlayCore() async {
     routineService: routines,
     settingsPort: FileSettingsPort(resolved.taskDir),
     bootstrapPort: resolved.bootstrap,
+    // 提醒模式也要跟上（面板不装交付插座，但清单的"会不会响"口径要与主引擎一致）。
+    onReminderModeChanged: (mode) => service.updateReminderMode(mode),
   );
   controller.notesReader =
       FileNotesReaderPort(() => controller.settings.notesPath);

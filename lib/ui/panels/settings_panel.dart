@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../application/delivery.dart';
 import '../../domain/routine.dart';
+import '../../domain/schedule.dart';
 import '../app_controller.dart';
 import '../dialogs/routine_edit_dialog.dart';
 import '../theme.dart';
@@ -14,7 +15,7 @@ String _mm(int minuteOfDay) {
 
 /// 设置页（ui-interaction.md §9，暂定 App 唯一主体页面）：
 /// 1. 权限引导 + 任务目录 + 悬浮把手；2. 周期任务管理（routines.md）；
-/// 3. 提醒（时间段多段式 / 闹钟模式）；4. 定期挑；5. 疑问笔记路径；
+/// 3. 提醒（**模式：标准/完整** / 时间段多段式 / 闹钟模式）；4. 定期挑；5. 疑问笔记路径；
 /// 6. 周期任务在任务池的显示开关；7. 主题预设；8. 回收站。
 class SettingsPanel extends StatefulWidget {
   final AppController controller;
@@ -218,6 +219,25 @@ class _SettingsPanelState extends State<SettingsPanel>
         ),
 
         _Section('提醒'),
+        ListTile(
+          leading: const Icon(Icons.notifications_paused_outlined),
+          title: const Text('提醒模式'),
+          subtitle: Text(
+            s.reminderMode == ReminderMode.standard
+                ? '标准（默认）：只排列不提醒——要响的任务在编辑表单里开『提醒我』'
+                : '完整：凡算法判定该响的都响（标准模式与它的清单顺序完全一样）',
+          ),
+          trailing: SegmentedButton<ReminderMode>(
+            segments: const [
+              ButtonSegment(
+                  value: ReminderMode.standard, label: Text('标准')),
+              ButtonSegment(value: ReminderMode.full, label: Text('完整')),
+            ],
+            selected: {s.reminderMode},
+            onSelectionChanged: (v) =>
+                _c.updateSettings(s.copyWith(reminderMode: v.first)),
+          ),
+        ),
         SwitchListTile(
           secondary: const Icon(Icons.alarm),
           title: const Text('闹钟模式'),

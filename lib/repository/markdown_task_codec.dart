@@ -40,6 +40,7 @@ class MarkdownTaskCodec implements TaskCodec {
     'routine_skipped',   // 跳过的那一天 yyyy-MM-dd（决议 23）
     'point_fired',       // 已响过的那一次时点提醒（只到点响一次）
     'time_slack',        // 时间裕度（决议 36；旧格式里也认这个键）
+    'remind',            // 逐任务提醒开关（v1.9 决议 38：标准模式下让这一件出声）
   ];
 
   const MarkdownTaskCodec();

@@ -13,6 +13,7 @@ enum DomainEventType {
   taskPicked,     // 挑到今日（散件附今日尾部；决议 8/13）
   taskRestored,   // 软删除恢复（D11）
   trashPurged,    // 清空回收站（D11）
+  taskReminderSet, // 逐任务提醒开关（v1.9 决议 38：标准模式下让这一件出声）
   scheduleReanchored,
   // ---- 周期任务（决议 5/10/12/23）----
   routineCreated,           // 规则新建（taskId = 规则 id）

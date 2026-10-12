@@ -68,7 +68,7 @@ class Task {
   final List<String> tags;
 
   /// 未知 frontmatter 字段 + 应用自有 metadata 键（附录 B 登记表：
-  /// type / pinned / picked_for_today / pool_order），§3.4 字段级保真的载体。
+  /// type / pinned / picked_for_today / pool_order / remind），§3.4 字段级保真的载体。
   final Map<String, String> metadata;
 
   final DateTime created;
@@ -97,6 +97,14 @@ class Task {
 
   /// 规则是否设了响（决议 18：时点性提醒，到点走系统闹钟）。
   bool get routineRemind => metadata['routine_remind'] == 'true';
+
+  /// **逐任务提醒开关**（v0.9 决议 38，metadata `remind`）：标准模式下给**这一件**
+  /// 开提醒。它不改顺序，只改"出不出声"；完整模式下无意义（本来就全响）。
+  bool get remindEnabled => metadata['remind'] == 'true';
+
+  /// 这一件是否被**显式要求提醒**（提醒门槛的判据，§3.2 规则 B4）：
+  /// 逐任务开关，或周期实例的规则设了响——后者同样是人对这一件开了口。
+  bool get reminderRequested => remindEnabled || routineRemind;
 
   /// 跳过标记（决议 23「跳过今天」）：值 = 被跳过的发生日 yyyy-MM-dd。
   String? get routineSkippedDate => metadata['routine_skipped'];

@@ -14,6 +14,7 @@ import 'platform/desktop_adapters.dart';
 import 'repository/markdown_routine_repository.dart';
 import 'repository/markdown_task_repository.dart';
 import 'scheduler/scheduler_registry.dart';
+import 'scheduler/slack_priority_scheduler.dart';
 import 'scheduler/slack_scheduler.dart';
 import 'ui/app_controller.dart';
 import 'ui/shells/android_shell.dart';
@@ -42,9 +43,11 @@ Future<void> main() async {
   final repo = MarkdownTaskRepository(taskDir);
 
   // 具体算法在这里选择（application 不 import 具体实现，§2）。
+  // v1.9：**默认 = 时间裕度优先**（`priority = risk × importance`）；旧 `slack.v1`
+  // 一起注册，供对照与影子运行用。
   final registry = SchedulerRegistry(
-    schedulers: [const SlackScheduler()],
-    defaultId: SlackScheduler.defaultId,
+    schedulers: [const SlackPriorityScheduler(), const SlackScheduler()],
+    defaultId: SlackPriorityScheduler.defaultId,
   );
 
   final service = TaskService(
@@ -86,6 +89,7 @@ Future<void> main() async {
     folderPicker: folderPicker,
     onWindowsChanged: (rule) => dispatcher.updateWindows(rule),
     onAlarmModeChanged: (mode) => dispatcher.updateAlarmMode(mode),
+    onReminderModeChanged: (mode) => service.updateReminderMode(mode),
     notificationSurface: notifications.shown,
   );
   // 疑问笔记路径随设置实时生效（对该文件零写入）。

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../domain/schedule.dart';
 import '../../domain/task.dart';
 import '../app_controller.dart';
 import '../widgets/task_tile.dart' show fmtDateTime;
@@ -18,6 +19,8 @@ Future<void> showEditSheet(BuildContext context, AppController controller,
   DateTime? deadline = task.deadline;
   var deadlineCleared = false;
   var importance = task.importance;
+  // 逐任务提醒开关（v0.9 决议 38）：标准模式下让这一件出声；不改顺序。
+  var remind = task.remindEnabled;
 
   return showModalBottomSheet<void>(
     context: context,
@@ -127,6 +130,19 @@ Future<void> showEditSheet(BuildContext context, AppController controller,
                 ],
               ),
             ],
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              secondary: const Icon(Icons.notifications_active_outlined),
+              title: const Text('提醒我'),
+              subtitle: Text(
+                controller.reminderMode == ReminderMode.full
+                    ? '当前是完整模式：该响的都会响，这个开关不额外做什么'
+                    : '当前是标准模式（只排列不提醒）：打开它，这一件才会出声',
+                style: Theme.of(ctx).textTheme.bodySmall,
+              ),
+              value: remind,
+              onChanged: (v) => setSheet(() => remind = v),
+            ),
             const SizedBox(height: 8),
             FilledButton(
               onPressed: () async {
@@ -149,6 +165,10 @@ Future<void> showEditSheet(BuildContext context, AppController controller,
                         SnackBar(content: Text('保存失败：$e')));
                   }
                   return;
+                }
+                // 提醒开关是独立的持久意图（metadata `remind`），只在真的变了时写一次。
+                if (remind != task.remindEnabled) {
+                  await controller.setTaskReminder(task.id, enabled: remind);
                 }
                 if (ctx.mounted) Navigator.of(ctx).pop();
               },

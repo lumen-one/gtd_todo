@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import '../domain/schedule.dart';
+
 /// 应用设置（ui-interaction.md §9）：提醒时间段、定期挑、疑问笔记路径等。
 /// application 只定义形状与缺省值；落盘走 [SettingsPort]（组装点装配，
 /// 本期实现 = 任务目录下 settings.json，Obsidian 目录里多一个文件可接受）。
@@ -7,6 +9,12 @@ class AppSettings {
   /// 通知时间段（多段式，分钟数对 [start, end)，§7.2/决议 4）。
   /// 空 = 不限制（原样送达）。
   final List<List<int>> notificationWindows;
+
+  /// **提醒模式**（v0.9 决议 38 / D15）：**默认标准**——只排列不提醒；
+  /// 完整 = 凡算法判定该响的都响。落 settings.json 的 `reminder_mode`。
+  ///
+  /// 注意它是"门槛"，与 [notificationWindows]（何时允许打扰）**串联**而非互斥。
+  final ReminderMode reminderMode;
 
   /// 可选闹钟模式（决议 3/18）：只对时点性提醒生效。
   final bool alarmMode;
@@ -32,6 +40,7 @@ class AppSettings {
 
   const AppSettings({
     this.notificationWindows = const [[9 * 60, 21 * 60]],
+    this.reminderMode = ReminderMode.standard,
     this.alarmMode = false,
     this.pickEnabled = false,
     this.pickIntervalDays = 1,
@@ -46,6 +55,7 @@ class AppSettings {
 
   AppSettings copyWith({
     List<List<int>>? notificationWindows,
+    ReminderMode? reminderMode,
     bool? alarmMode,
     bool? pickEnabled,
     int? pickIntervalDays,
@@ -59,6 +69,7 @@ class AppSettings {
   }) {
     return AppSettings(
       notificationWindows: notificationWindows ?? this.notificationWindows,
+      reminderMode: reminderMode ?? this.reminderMode,
       alarmMode: alarmMode ?? this.alarmMode,
       pickEnabled: pickEnabled ?? this.pickEnabled,
       pickIntervalDays: pickIntervalDays ?? this.pickIntervalDays,
@@ -73,6 +84,7 @@ class AppSettings {
 
   Map<String, Object?> toJson() => {
         'notification_windows': notificationWindows,
+        'reminder_mode': reminderMode.name,
         'alarm_mode': alarmMode,
         'pick_enabled': pickEnabled,
         'pick_interval_days': pickIntervalDays,
@@ -91,6 +103,7 @@ class AppSettings {
     return AppSettings(
       notificationWindows:
           windows == null || windows.isEmpty ? const [[9 * 60, 21 * 60]] : windows,
+      reminderMode: ReminderMode.byName(json['reminder_mode'] as String?),
       alarmMode: json['alarm_mode'] == true,
       pickEnabled: json['pick_enabled'] == true,
       pickIntervalDays: (json['pick_interval_days'] as num?)?.toInt() ?? 1,

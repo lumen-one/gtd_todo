@@ -6,6 +6,7 @@ import 'package:gtd_todo/application/notification_window.dart';
 import 'package:gtd_todo/application/reminder_dispatcher.dart';
 import 'package:gtd_todo/application/task_service.dart';
 import 'package:gtd_todo/domain/reminder.dart';
+import 'package:gtd_todo/domain/schedule.dart';
 import 'package:gtd_todo/domain/time_context.dart';
 import 'package:gtd_todo/platform/desktop_adapters.dart';
 import 'package:gtd_todo/repository/memory_task_repository.dart';
@@ -78,6 +79,9 @@ void main() {
       repo: repo,
       scheduler: const SlackScheduler(),
       workRule: WorkTimeRule.standard,
+      // 本文件测的是"响了之后的送达链路"，所以用**完整模式**；
+      // 标准模式（默认）的门槛另有 task_service_test / slack_priority_scheduler_test 覆盖。
+      reminderMode: ReminderMode.full,
       clock: () => now,
     );
     alarm = _FakeAlarm();

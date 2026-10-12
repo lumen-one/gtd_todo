@@ -1,6 +1,6 @@
 # 架构契约：分层与接口设计
 
-> 版本：v1.8（修订记录见 §13）
+> 版本：v1.9（修订记录见 §13）
 > 定位：这是写代码时对照的**合同**。结构或接口变更必须先改本文件，再改代码。
 >
 > **标注约定（全文统一）**：
@@ -10,8 +10,9 @@
 > 未标注的条目默认【规划】。"与代码同步"仅指标注为【现状】的范围。
 >
 > 分工：产品定位、调度数学与阶段规划见原《动态任务调度 Todo 设计文档》。**客户端层的
-> 需求与决议见 docs/ui-interaction.md（v0.7，决议 1–37）**——本文件为它提供结构与插座，
-> 对接点 = §3.5 命令清单 + §4.3 送达策略；结构冲突以本文件为准，产品行为以 UI 文档为准。
+> 需求与决议见 docs/ui-interaction.md（v0.9，决议 1–39）**——本文件为它提供结构与插座，
+> 对接点 = §3.5 命令清单 + §4.3 送达策略 + §4.1 Scheduler 的 `reminderMode`；
+> 结构冲突以本文件为准，产品行为以 UI 文档为准。
 > 本文件接管原设计文档
 > 结构章节（按名称引用）：「总体架构」「Repository 层」「Scheduler 层」「一个非常重要的
 > 边界」「AI Provider」「时间系统必须独立」「推荐项目结构」。两者冲突时以本文件为准。
@@ -20,6 +21,13 @@
 > 人写人看的 `tasks.md`（**一个**文档、`# 标题` 分类、一行一条任务）
 > + 内核属性文档 `.gtd/<任务id>.md`（应用算的：任务 id、工作强度、优先级、
 > 时间裕度、剩余工作量）。两条文档靠**行指纹**对号，人是人类文档唯一作者。
+>
+> **提醒模式（v1.9，见决议 38 与 §3.1）**：默认**标准模式**——算法照常排出先后
+> （时间裕度优先：`risk = f(slack)` **非线性**，`priority = risk × importance`），
+> 但**不产出提醒**；个别任务可手动开提醒（metadata `remind`）。**完整模式** = 原方案，
+> 算法判定该响的都响。模式是"**门槛**"不是"送达策略"：它决定任务**出不出声**
+> （`TaskMetric.reminds` 与结果级的 `nextReminderAt`），与"什么时候允许打扰"
+> （§4.3 的通知时间段）正交，两者串联而不是互相覆盖。
 
 **术语约定**：全文混用同义——**插座 = 端口 = 接口**；**插头 = 适配器 = 实现**；
 **客户端** = 从外部调用核心的构件（UI、AI）。
@@ -117,7 +125,7 @@
 
 | 类型 | 职责 | 状态 |
 |---|---|---|
-| `Task` | 任务事实：id、title、**created（= 人类文档的「创建」；v1.7 起由人类文档持有）**、**deadline（可空：fixed=时点 / flex=截止 / null=散件，v1.4）**、estimatedWork、remainingWork、importance、status、snoozedUntil、description、**tags（v1.7）**、**completedAt（v1.7）**、metadata；**不可变 + copyWith（v1.2 起由编译器强制写路径唯一）**；类型 TaskType 走 metadata 缓冲带 | 现状 |
+| `Task` | 任务事实：id、title、**created（= 人类文档的「创建」；v1.7 起由人类文档持有）**、**deadline（可空：fixed=时点 / flex=截止 / null=散件，v1.4）**、estimatedWork、remainingWork、importance、status、snoozedUntil、description、**tags（v1.7）**、**completedAt（v1.7）**、**remindEnabled（v1.9：metadata `remind`，标准模式下的逐任务提醒开关）**、metadata；**不可变 + copyWith（v1.2 起由编译器强制写路径唯一）**；类型 TaskType 走 metadata 缓冲带 | 现状 |
 | `TaskType` | flex（可推）/ fixed（不可推）/ **routine（周期实例，v1.5）**——三者的调度与完成语义不同 | 现状 |
 | `Routine` | 周期规则：频率（每天/每周 X）、时点、响不响、启用开关；**不是任务**（住在 `routines.md`），每天生成一个当天实例（TaskType.routine） | 现状 |
 | `RoutineOccurrence` | 一次具体发生（规则 + 时刻）：任务池计划段插入与日历打点用 | 现状 |
@@ -125,25 +133,47 @@
 | `TaskStatus` | pending / active / snoozed / completed / **overdue（派生，不写入存储）**；只增不改 | 现状 |
 | `WorkTimeRule` / `WorkWindow` | 工时日历：每周工作窗、节假日；`workMinutesBetween`、`addWorkMinutes`、`nextWindowStart`（D8「到下个工作窗」） | 现状 |
 | `Clock` | 当前时间 `DateTime now()`，构造注入【现状，形态为 `DateTime Function()`】 | 现状 |
-| `TaskMetric` | 单任务派生指标：available、slack、urgency、displayStatus、interval、nextReminderAt；计算结果，不持久化【现状】 | 现状 |
-| `ScheduleResult` | 一次调度的输出：items（已排序）、nextTaskId、nextReminderAt、infeasible/overdue 名单；所有算法的统一方言【现状】 | 现状 |
+| `TaskMetric` | 单任务派生指标：available、slack、**risk（v1.9，裕度的非线性函数）**、**priority（v1.9 = risk × importance，排序键）**、urgency、displayStatus、interval、nextReminderAt（**提醒锚点**）、**reminds（v1.9：当前模式下会不会出声）**；计算结果，不持久化【现状】 | 现状 |
+| `ScheduleResult` | 一次调度的输出：items（已排序）、nextTaskId、nextReminderAt（**下一站"会响"的提醒**，v1.9 起已过模式门槛）、infeasible/overdue 名单；所有算法的统一方言【现状】 | 现状 |
+| `ReminderMode` | 提醒**门槛**：**standard**（标准，默认：只排列不提醒，逐任务可手动开）/ **full**（完整：算法判定该响的都响）。v1.9 起进 `Scheduler.schedule` 的入参 | 现状 |
 | `ReminderEvent` | 到点提醒事件：firedAt + **taskId + kind（soft 软提醒 / point 时点提醒）** + 当时的调度快照 | 现状 |
 | `PointReminder` | 时点性提醒候选（不可推到点 + 设了响的周期实例）：到点时刻 + 目标任务；到点后 30 分钟内仍可补响（`pointReminderGrace`） | 现状 |
 | `DomainEvent` | 领域事件：type、taskId、at、**origin(user/ai/migration/system)** | 现状 |
 
-调度核心公式（第一版 SlackScheduler 的语义，属 domain 词汇的一部分）【现状】：
+调度核心公式（**默认算法 `slack-priority.v1`「时间裕度优先」**，v1.9 起取代 v0 的
+`slack.v1`；属 domain 词汇的一部分）【现状】：
 
 ```text
 available = workMinutesBetween(now, deadline)      # 跳过休息时间
-slack     = available - remainingWork              # 裕度，唯一的压力表
-urgency   = remainingWork / available              # >1 → 按期不可行
-interval  = clamp(α·slack, minInterval, maxInterval)   # slack≤0 → minInterval
-nextReminderAt = addWorkMinutes(now, interval)     # 结果自动落在工作窗内
-默认：α=0.5，minInterval=30，maxInterval=480（工作分钟，即 1 个工作日）
+remaining = estimatedWork × remainingLoad          # = Task.remainingWork（工作分钟）
+slack     = available − remaining                  # 时间裕度，唯一的压力表
+urgency   = remaining / available                  # >1 → 按期不可行（派生，仍保留展示）
+risk      = slack ≤ 0 ? 1 : exp(−(slack/τ)^γ)      # 【非线性】误期风险 ∈ (0,1]
+priority  = risk × importance                      # 调度优先级 = 排序键（importance 缺省 3）
+interval  = clamp(α·slack, minInterval, maxInterval)   # 提醒节奏；slack≤0 → minInterval
+nextReminderAt = addWorkMinutes(now, interval)     # 锚点，结果自动落在工作窗内
+默认：τ=480（1 个工作日的裕度换 e⁻¹ 的风险）、γ=1、α=0.5、minInterval=30、maxInterval=480
 ```
 
-排序：infeasible 与 normal 同池按 urgency 降序（importance 降序、deadline 升序裁决）；
+- **裕度优先**：谁的风险高谁排前面；`importance`（人的优先级，1–5，缺省 3）是**乘数**，
+  让"重要的事"整体前移，但**盖不过**已经贴住截止的事（risk→1 时乘数再小也靠前）；
+- **风险是非线性的（D16）**：线性 f 要给 slack 凭空规定"到哪算 0"、还会算出负数；
+  指数族只要一个尺度 τ，且恒落在 (0,1]：**裕度还宽时催得少，裕度一薄就陡然变急**。
+  γ>1 = 裕度充足时把风险压得更低（更平）、裕度一薄就迅速冲到 1（更陡）——
+  "到点前才慌"的那类人；
+
+排序：infeasible 与 normal 同池按 **priority 降序**（deadline 升序、id 升序裁决）；
 overdue、snoozed 沉底；overdue 退出提醒循环。
+
+**提醒门槛（v1.9，两个模式，D15）**：`reminderAllowed(task, mode)` 不成立时这一件**不出声**
+——`TaskMetric.reminds = false`、`reminderAt = null`，于是 `ScheduleResult.nextReminderAt`
+（下一站**会响**的提醒）取不到它，**标准模式下通常为 null**（= 没有下一站）：
+单闹钟、通知链路、前台轮询全都自然安静，谁都不必各自判断模式。
+而**锚点与间隔照算**：`TaskMetric.nextReminderAt` / `intervalMinutes` 不受门槛影响——
+"今天该看哪几件"（今日清单准入）是调度问题，不是打扰问题。
+
+**旧算法 `slack.v1`（v0.9 版语义）保留在注册表里**，供对照与影子运行；其差异只有两点：
+排序键用 `urgency` 降序（importance 降序裁决），提醒门槛与上面同一套（v1.9 同步补上）。
 
 ### 3.2 核心规则（三类分开：不变量 / 派生规则 / 架构规则）
 
@@ -152,7 +182,8 @@ overdue、snoozed 沉底；overdue 退出提醒循环。
 - A1. `0 ≤ remainingWork ≤ estimatedWork`【现状：已守护——updateTask 缩减预估时同步 clamp】；
 - A2. `estimatedWork ≥ 1`（创建与更新均校验，违反抛 ArgumentError）；
   **fixed 类型豁免**（允许 0，v1.4）【现状：已守护】；
-- A3. `1 ≤ importance ≤ 5`【现状：构造时 clamp】；
+- A3. `1 ≤ importance ≤ 5`（**缺省 3**＝人的优先级；v1.9 明确缺省值，它同时是调度
+  优先级的乘数）【现状：构造时 clamp、缺省 3】；
 - A4. `snoozed` 状态必须伴随未来的 `snoozedUntil`；到期自动回 `active`【现状】。
 
 **派生规则**（由状态与时间计算，不写入存储）：
@@ -161,6 +192,14 @@ overdue、snoozed 沉底；overdue 退出提醒循环。
   **无 deadline（散件）不参与派生**（v1.4）【现状】；
 - B2. `available < remainingWork` → `infeasible`，升级处理（改截止/砍范围/加班），
   不得静默；**fixed 不进调度**（走 AlarmPort 时点闹钟，v1.4）【现状】。
+- B3. `risk = f(slack)`（非线性，§3.1 公式）与 `priority = risk × importance` 都是
+  **派生值**：算出来的排序键，**不写入任何文档**（D16）。内核属性文档里的
+  `priority` 键始终指**人定的优先级**（= `Task.importance`），与调度优先级同名不同物【现状】。
+- B4. **提醒门槛**：`reminderAllowed(task, mode) = mode == full || task.reminderRequested`
+  （= metadata `remind`，或周期实例的规则设了响）。不满足时这一件 `reminds = false`、
+  `reminderAt` 为 null（**锚点与间隔照算**，只是 `ScheduleResult.nextReminderAt` 取不到它），
+  也不进 `nextPointReminder()`——"不出声"在调度结果里就是**事实**（null），
+  下游不需要各自判断模式（D15）【现状】。
 
 **架构规则**（对代码的约束）：
 
@@ -202,7 +241,7 @@ TaskService 每个命令完成后广播 `DomainEvent`（含 origin）。通知�
    旧文件而没有 `tasks.md`，首次读取自动迁移，旧文件原样挪进 `legacy-tasks/` 存档
    （**只进不出，可人工回捞**），不删数据。【现状】
 
-### 3.5 命令清单（正典）【现状，v1.4】
+### 3.5 命令清单（正典）【现状，v1.4（v1.5/v1.9 的新增标在各行）】
 
 一切状态变更（用户 / AI / 迁移）走本清单的命令；**UI 动作 ↔ 命令** 的映射以此为准
 （来源：ui-interaction.md §10，CommandKind 按 §6 由此生成）。
@@ -215,6 +254,7 @@ TaskService 每个命令完成后广播 `DomainEvent`（含 origin）。通知�
 | `completeTask` / `snoozeTask` / `snoozeUntil` / `snoozeToNextWindow` / `logWork` | 完成 / 推迟（D8 两档）/ 绝对档位推迟（明早 9 点、自选，决议 26）/ 记工时 |
 | `updateTask` | 更新（含类型转换 fixed↔flex、清截止；fixed 必须有截止的合并后校验） |
 | `pinToTop(taskId)` | 插队 = 持久意图记在任务（metadata `pinned`），保持到完成、栈式压顶；仅对可推组生效 |
+| `setTaskReminder(taskId, enabled)` | **逐任务提醒开关**（v1.9，D15）：写 metadata `remind`；标准模式下这是让单个任务出声的**唯一**手段，完整模式下无意义（本来就全响） |
 | `pickForToday` / `returnToPool` | 挑散件到今日尾部（`picked_for_today` 标记，当日手动挑优先、尾部最多一件）/ 放回池子 |
 | `setPoolOrder(taskId, order)` | 池子显示序（`pool_order`，仅整理无调度含义，重启保留） |
 | `deleteTask` / `restoreTask` / `purgeTrash` | 软删除三件套：移入 `.gtd/.trash/` / 从回收站恢复 / 清空回收（D11） |
@@ -227,7 +267,7 @@ TaskService 每个命令完成后广播 `DomainEvent`（含 origin）。通知�
 
 领域事件相应扩充：taskPinned / taskPicked / taskRestored / trashPurged（v1.4）、
 **routineCreated / routineUpdated / routineDeleted / routineInstanceGenerated /
-routineSkipped（v1.5，taskId = 规则 id 或实例 id）**。
+routineSkipped（v1.5，taskId = 规则 id 或实例 id）**、**taskReminderSet（v1.9，逐任务提醒开关）**。
 
 ---
 
@@ -262,13 +302,14 @@ abstract class TaskCodec {
 
 /// 调度：纯函数、无 IO、时间注入、参数自描述。【现状】
 abstract class Scheduler {
-  String get id;                         // 'slack.v1'
-  String get displayName;
+  String get id;                         // 'slack-priority.v1'（默认）/ 'slack.v1'（旧，保留）
+  String get displayName;                // '时间裕度优先' / '裕度几何递减'
   List<ParamSpec> get params;            // 设置页据此自动渲染；AI 只许在范围内调参
   ScheduleResult schedule({
     required List<Task> tasks,
     required DateTime now,
     required WorkTimeRule workRule,
+    ReminderMode reminderMode = ReminderMode.standard,   // v1.9：提醒门槛（D15）
   });
 }
 ```
@@ -346,6 +387,10 @@ class MarkdownTaskRepository implements TaskRepository { /* … */ }
   （内核属性文档本来就不含任务名，重新渲染必然不等）。
 - **Scheduler 注册表 + 影子运行**：当前选择存设置；切换算法无需迁移（nextReminder 是
   计算结果，重算即生效）；新算法可影子运行（只记日志对比）【现状】。
+  v1.9 起注册的是**两个**算法：`slack-priority.v1`（**默认**，时间裕度优先，公式见 §3.1）
+  与 `slack.v1`（旧，裕度几何递减）；默认由组装点（main.dart）挑，设置页暂不提供切换入口。
+  `ShadowScheduler` 把 `reminderMode` 原样透传给两边，影子差异除 nextTask / interval 外
+  也看 `priority`——排序口径变了，要看得见。
 
 **UI 文档带来的新座位（v1.4–v1.7 陆续落地）**：
 
@@ -476,6 +521,13 @@ application 层的 **ReminderDispatcher**（见 §4.3）。装配点负责把 Al
 `alarm.cancel()` → 计算送达时刻（两个提醒源，见下）→ `alarm.scheduleNext()`（带草案）；
 订阅 `alarm.fired` → `TaskService.pollReminder()` → `NotificationPort.show(...)`
 （带 actions：完成 / 推迟1小时）→ 再排下一站（链路自续）。
+
+**v1.9：门槛在算法/服务那一层，协调者不必知道模式。** 标准模式下
+`ScheduleResult.nextReminderAt` 为 null（除非有任务手动开了提醒），于是 `_reschedule()`
+自然算不出软提醒那一站；时点提醒同理——`TaskService.nextPointReminder()` 按同一门槛过滤
+（标准模式下只返回手动开了提醒的 fixed 与设了响的周期实例）。
+"默认不打扰"因此不需要在通知实现里各写一遍 if，也不会出现"调度算出下一站、通知层再吞掉"
+这种两处口径。
 
 **两个提醒源（v1.5）**：
 
@@ -669,9 +721,9 @@ class SystemSnapshot {
 
 已成立【现状】：domain/scheduler/application 零平台依赖；接口与实现分离（一处已知违规，
 见 §2）；通知已是接口；时间可注入；ScheduleResult 不落盘；snoozed_until 持久化；
-测试覆盖跨日历/临界/逾期场景（**v1.7：118 个测试全绿**）。
+测试覆盖跨日历/临界/逾期场景（**v1.9：146 个测试全绿**）。
 
-**进度（2026-10-11）：第 1–12 条全部完成**（各条末尾记着落地版本）。各条目：
+**进度（2026-10-11）：第 1–13 条全部完成**（各条末尾记着落地版本）。各条目：
 
 1. **Task 不可变 + copyWith**：字段全 final，变更 = 经 TaskService 生成新实例；
    "写路径唯一"（C1）从约定变编译器强制；顺带修复 A1/A2 两个已知 bug ✅
@@ -708,9 +760,17 @@ class SystemSnapshot {
     软删除改 `%%…%%` 注释 + `.gtd/.trash/`；**操作流水另立 `.gtd/log.md`**
     （决议 37：`EventLogPort` + `EventLog` 订阅者，只在主引擎挂，内核扫描与文件监听
     都跳过它）；示例数据已按新格式重建。
+13. **算法层：时间裕度优先 + 两种提醒模式（v1.9）**：**完成**——
+    新增默认算法 `slack-priority.v1`（`risk = f(slack)` 非线性、`priority = risk × importance`，
+    D16），旧 `slack.v1` 留在注册表里做对照；`Scheduler.schedule` 增加 `reminderMode`
+    （domain 新增 `ReminderMode`，D15），`TaskMetric` 增加 `risk` / `priority` / `reminds`；
+    逐任务提醒开关走 `setTaskReminder`（metadata `remind`，附录 B.2 登记）；
+    `AppSettings.reminderMode` 落 `settings.json`（**默认标准模式**），设置页可切；
+    旧算法、影子运行、ReminderDispatcher、时点提醒全部按同一门槛对齐。
 
-1→4 是一次纯内部小迭代；5–7 是存储改造；8 是算法层升级；9 起进入多平台；
-12 是人机数据归属的再切分（不改调度数学）。
+1→4 是一次纯内部小迭代；5–7 是存储改造；8 与 13 是算法层升级；
+9 起进入多平台；12 是人机数据归属的再切分（不改调度数学）；
+13 是"**默认安静**"这条产品决定在算法层的落地（顺序不变，只把"出声"变成可选）。
 
 ---
 
@@ -732,6 +792,8 @@ class SystemSnapshot {
 | D12 | 今日清单聚合查询放 application（`todayView()`），UI 只消费查询结果 | 四种来源的聚合是查询不是渲染；守住"UI 不含逻辑"（原则 3） |
 | D13 | **双文档存储**：人写 `tasks.md`（一行一条任务，`# 标题` 分类），内核写 `.gtd/<id>.md`；两文档靠**行指纹**配对 | 人机混写一个文件必然互相糟蹋。分开之后"谁写谁负责"落到文件层面：应用改自己那半边时物理上碰不到人的内容，Obsidian 共享的那一个文档也保持纯净（无 id、无裕度、无优先级噪声） |
 | D14 | 人类文档的**复选框只认显式完成**（status/completed_at），不认 `isCompleted` 里"flex 剩余工时归零"的派生判断 | 派生语义写进文档会让"读→写"往返自己篡改人的意图（`- [ ]` 变 `- [x]`），行指纹随之失效。派生是调度语义，不该落盘成人的决定 |
+| D15 | **两种提醒模式，默认标准**：标准 = 只排列不提醒（逐任务可手动开，metadata `remind`）；完整 = 原方案（该响的都响）。门槛做在**算法产出这一层**（`reminderAllowed` → `nextReminderAt` / `nextPointReminder` 为 null），不是做在通知实现里 | 提醒是打扰，默认应该安静；要推着走的事再逐个开。**放算法层的理由**：这样"不出声"在调度结果里就是事实，单闹钟、前台轮询、通知实现、今日徽标都不用各写一遍 if，也不会出现"算出一站、通知层再吞掉"的两处口径。门槛与送达策略（D10）**串联**：先过门槛（要不要出声）再过时间段（什么时候出声） |
+| D16 | 排序键 = **调度优先级** `priority = risk × importance`，`risk` 是裕度的**非线性**（指数族）函数 `exp(−(slack/τ)^γ)`；`importance` 缺省 3。**命名**：人定的 1–5 叫优先级（内核属性文档 `priority` 键 = `Task.importance`），算出来的叫调度优先级（**不落盘**） | 裕度是唯一压力表，但压力不该随裕度**线性**变化：线性要给 slack 凭空规定"到哪算 0"，还会给出负风险；指数族只要一个尺度 τ、恒在 (0,1]，且"裕度还宽时催得少、一薄就陡然变急"正是想要的非线性。importance 作乘数让重要的事整体前移，却盖不过已经贴住截止的事（risk→1）。同名不同物（输入 vs 输出）在 §3.2 B3 与本表写明，避免两份"优先级"打架 |
 
 ---
 
@@ -751,6 +813,10 @@ class SystemSnapshot {
 | **系统级悬浮面板本体**（v1.5 → **v1.6 已落地**） | 把手拖出即在当前 App 上方就地展开面板（第二个 Flutter 引擎 + 透明 overlay 窗口，复用同一份 panels）；进应用只走『设置 / 编辑规则』 | —（已落地；新局限见上两条关于调度与并发写的行） |
 | 周期实例按天物化成任务文件（v1.5） | 每天一份：人类文档里一行（`- [ ] 晨跑 创建 …`，Obsidian 可见）+ 内核属性文档 `.gtd/<规则id>-<yyyy-MM-dd>.md`（完成/跳过都有地方落）；规则多时目录文件数会增长，需靠回收站/手工清理历史 | 目录膨胀到影响浏览时（改为归档子目录或按需生成） |
 | 主题预设只换强调色（v1.5） | 状态语义色（逾期橙红、时间徽标橙）固定不随预设变；不是完整主题包 | 需要夜间配色/完整主题包时（§8 的"最后做"项） |
+| **标准模式下不会自动提醒**（v1.9） | 默认模式只排列不提醒：没手动开提醒的任务，只有清单顺序在推着你，错过截止不会有声音。这是**产品选择不是缺陷**（改设置或给那一件开提醒即可） | "忘了"成为主诉时（考虑按截止逼近度自动升级为提醒，或首次创建时问一句要不要响） |
+| **风险的尺度 τ 是全局的**（v1.9） | 同一个 τ（默认 1 个工作日）套在所有任务上："三天后交"和"三小时后交"用同一个尺度；个人对"紧"的感受只能靠调 τ/γ 或改 importance 表达 | 出现"同一批任务需要不同压力尺度"的真实需求时（按标签/分类配尺度） |
+| **旧算法只在注册表里留着**（v1.9） | `slack.v1` 保留是为了对照与影子运行；设置页**没有**"换算法"入口（要改得动组装点）。这符合 §8"换/加算法 = 注册一个新 Scheduler"，但用户当下无法自选 | 需要"用户自选算法"时（设置里补一个选择器；注册表与 `params` 都已就绪） |
+| **两种模式的差别只在"要不要出声"**（v1.9） | 顺序、分组、编号、今日清单准入在两种模式下**完全一样**（`TaskMetric.nextReminderAt` 是锚点，不受门槛影响），所以标准模式不会"少看到事"，只会"少听到响" | 若将来要求标准模式也改动清单构成（例如"没开提醒的都不进今日"），先改 §6.1 与 `buildTodayView` |
 
 ---
 
@@ -967,6 +1033,43 @@ class SystemSnapshot {
   "中文路径迁移"注（那份 ASCII 副本已删除，分析与构建只在本工作目录进行），
   只保留其中的构建镜像信息。
 
+- **v1.9**（2026-10-11）：**算法层：时间裕度优先 + 两种提醒模式**（与 ui-interaction.md
+  v0.9 配对，决议 38/39；用户提出的"默认只排列不提醒"与排序公式）。要点——
+  ① **默认算法换成 `slack-priority.v1`（§3.1 公式重写，D16）**：排序键从 `urgency` 降序
+  改为**调度优先级** `priority = risk × importance`，其中
+  `risk = slack ≤ 0 ? 1 : exp(−(slack/τ)^γ)` 是裕度的**非线性**函数
+  （τ 默认 480 工作分钟 = 1 个工作日、γ 默认 1）；`importance`（人的优先级 1–5，
+  **缺省 3**，A3 补明）作乘数。旧 `slack.v1` 保留在注册表里供对照与影子运行。
+  ② **两种提醒模式（D15）**：默认**标准模式**只排列不提醒，单个任务可手动开提醒
+  （metadata `remind`）；**完整模式** = 原方案（该响的都响）。门槛落在**算法产出这一层**：
+  `reminderAllowed(task, mode)` 不过 → `nextReminderAt`/`interval` 为 null、
+  `nextPointReminder()` 不返回它；于是 `ScheduleResult.nextReminderAt`（下一站**会响**的提醒）
+  天然为空——单闹钟、前台轮询、通知链路、送达策略（D10）**全都不用改**，
+  也不会出现"算法算出一站、通知层再吞掉"的两处口径。
+  **锚点不受门槛影响**：`TaskMetric.nextReminderAt` 照算，今日清单准入
+  （"今天该看哪几件"）与清单顺序在两种模式下**完全一致**。
+  ③ **新构件/新字段**：`domain/schedule.dart` 的 `ReminderMode` + `reminderAllowed` +
+  `slackRisk`；`TaskMetric` 增 `risk`/`priority`/`reminds` 与派生 getter `reminderAt`；
+  `Scheduler.schedule` 增 `reminderMode`（默认 `standard`，v1.9 的接口变更）；
+  `TaskService` 增 `reminderMode`/`updateReminderMode`/`setTaskReminder`
+  （新领域事件 `taskReminderSet`）；`Task.remindEnabled`/`reminderRequested`；
+  `AppSettings.reminderMode`（缺省 standard，落 `settings.json`）；
+  附录 B.2 登记 `remind` 键（sidecar 与旧 codec 都要写回，否则开关会在命令后的重读里蒸发）。
+  ④ **一致性收口（同名不同物）**：内核属性文档的 `priority` 键**始终指人定的优先级**
+  （= `Task.importance`），调度算出的那个叫**调度优先级**且**不落盘**——§3.2 B3、D16、
+  附录 B.2 三处写明，避免两份"优先级"打架。
+  ⑤ **验证**：`flutter analyze` 干净（只剩 3 条既有的 `deprecated_member_use` info，
+  在 `pool_panel` / `today_panel` 的 `onReorder` 上，与本版无关）；
+  **146 个测试全绿**。本次新增 21 个用例：`slack_priority_scheduler_test`（12 个：
+  风险非线性含 γ 形状、`priority = risk × importance`、门槛两模式、派生与过滤、
+  参数自描述）、`task_service_test` 的"提醒模式"组（5 个：默认标准不产出提醒、
+  `setTaskReminder` 出声/静音、时点提醒同门槛、切模式不动数据、importance 缺省 3）、
+  旧算法门槛 1 个、`remind` 键落盘回归 1 个、设置往返 1 个、widget 拆成
+  标准/完整两条断言。**实现期的一处必要调整**：既有的调度与提醒用例断言的就是
+  "会响"这条链路，因此它们显式改用 `ReminderMode.full`——这恰好证明默认值真的是
+  "安静"（不改就一个都响不了）。桌面实测：`dart run example/simulation.dart`
+  走通新算法（风险/优先级随裕度变化，T4 进入不可行并给出升级提示）。
+
 ---
 
 ## 附录 A：安卓平台备忘（人话版）
@@ -1096,10 +1199,15 @@ snoozed_until: 2026-10-11T17:10   # 与 status: snoozed 配套（D8：用户意�
 | `routine_remind` | 该实例的规则设了响（时点性提醒，只写 `true`） | ui 文档决议 18 |
 | `routine_skipped` | 被"跳过今天"的那一天（yyyy-MM-dd；不完成、当天不再显示） | ui 文档决议 23 |
 | `point_fired` | 已响过的那一次时点提醒（值 = 当时的到点时刻 ISO；改期/推迟后清除） | v1.5 实现（只到点响一次） |
+| `remind` | **逐任务提醒开关**（标准模式下让这一件出声；只写 `true`，关掉即删键）。完整模式下无意义 | ui 文档 §7.0 / 决议 38（v1.9） |
 
 - **解析宽容**：坏文件降级进 `warnings`，不崩溃。**warnings 流向**：现暂存于
   `repo.warnings` 仅供诊断；目标形态 = 进领域事件流 + UI"待整理"清单【规划】；
 - 未知字段必须无损往返（载体 = `DecodeResult.task.metadata`）。
+- **调度优先级与 risk 不落盘**（v1.9，D16）：上表的 `priority` 键是**人定的优先级**
+  （= `Task.importance`，缺省 3）；`risk × importance` 算出来的**调度优先级**是一次
+  计算的输出，换算法/换 τ 即变，写进文件只会产生需要同步的脏数据。同理，
+  `time_slack` 允许缺行（丢了也能重算）。
 
 ### B.3 两条文档怎么对上号（连接键 + 三档降级）
 
