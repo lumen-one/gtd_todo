@@ -4,12 +4,12 @@ import '../../domain/task.dart';
 import '../app_controller.dart';
 import '../theme.dart';
 
-/// 创建流程（§5.1）：完整对话框（侧边栏内弹出）→ 分类档位 → 日期弹窗。
-/// - 标题首焦点；回车 = 跳到备注（对话框常驻提示文案）；
-/// - 确认键手势 = 按住不松一滑到底：长按升起档位，滑到"不可推"→ 弹日期弹窗；
-///   滑到"可推"→ 档位再二分一次（有截止日 / 无截止日）；
-/// - 直接点按 = 默认创建三无（可推、无截止、无提醒），之后可再编辑补属性。
-enum CreateIntent { fixedAtTime, flexWithDeadline, flexNoDeadline }
+/// 创建流程（§5.1，v0.11 去手势化）：类型与日期档位**常驻**在对话框里，确认键纯点按。
+/// - 标题首焦点；回车 = 跳到备注（对话框上有提示文案）；
+/// - 类型档位【三无 / 有截止 / 定点】，默认『三无』；点后两个才升起日期档位
+///   （有截止 → 今天 / 明天 / 自选…；定点 → 只给自选…）；点回『三无』清掉已选日期；
+/// - 确认 = 纯点按：三无态直接建三无入池散件段；选了类型但没选日期 → 弹日期+时间弹窗。
+enum CreateKind { plain, withDeadline, fixedAtTime }
 
 /// 选日期+时间的级联弹窗（fixed 与 flex·有截止 共用）。
 Future<DateTime?> pickDateTime(
@@ -35,9 +35,19 @@ Future<DateTime?> pickDateTime(
   return DateTime(date.year, date.month, date.day, time.hour, time.minute);
 }
 
-/// 打开创建对话框并完成后续（选日期 / 直接入池）。各面板与壳共用。
-Future<void> showCreateFlow(BuildContext context, AppController controller,
-    {bool jumpToDate = true}) async {
+/// 『今天』/『明天』这两个快捷档位落在该日 18:00（§5.1 第 4 条）。
+DateTime _dayCutoff(DateTime base) =>
+    DateTime(base.year, base.month, base.day, 18);
+
+String _format(DateTime d) =>
+    '${d.month}-${d.day.toString().padLeft(2, '0')} '
+    '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+
+/// 打开创建对话框并完成后续（缺日期时弹日期弹窗 / 直接入池）。各面板与壳共用。
+Future<void> showCreateFlow(
+  BuildContext context,
+  AppController controller,
+) async {
   final result = await showDialog<_CreateResult>(
     context: context,
     builder: (_) => const _CreateTaskDialog(),
@@ -45,45 +55,35 @@ Future<void> showCreateFlow(BuildContext context, AppController controller,
   if (result == null || !context.mounted) return;
   final title = result.title.trim();
   if (title.isEmpty) return;
-  final messenger = ScaffoldMessenger.of(context);
-  switch (result.intent) {
-    case CreateIntent.fixedAtTime:
-      final dt = await pickDateTime(context, title: '固定时点：哪天几点？');
-      if (dt == null) return;
-      await controller.createTask(
-        title: title,
-        description: result.description,
-        type: TaskType.fixed,
-        deadline: dt,
-      );
-    case CreateIntent.flexWithDeadline:
-      final dt = await pickDateTime(context, title: '截止到哪天？');
-      if (dt == null) return;
-      await controller.createTask(
-        title: title,
-        description: result.description,
-        type: TaskType.flex,
-        deadline: dt,
-      );
-    case CreateIntent.flexNoDeadline:
-      await controller.createTask(
-        title: title,
-        description: result.description,
-      );
-    case null:
-      return;
+  var date = result.date;
+  if (result.kind != CreateKind.plain && date == null) {
+    date = await pickDateTime(
+      context,
+      title: result.kind == CreateKind.fixedAtTime ? '固定时点：哪天几点？' : '截止到哪天？',
+    );
+    if (date == null) return;
   }
-  messenger.showSnackBar(
+  await controller.createTask(
+    title: title,
+    description: result.description,
+    type: result.kind == CreateKind.fixedAtTime
+        ? TaskType.fixed
+        : TaskType.flex,
+    deadline: date,
+  );
+  if (!context.mounted) return;
+  ScaffoldMessenger.of(context).showSnackBar(
     const SnackBar(content: Text('已创建'), duration: Duration(seconds: 2)),
   );
 }
 
 class _CreateResult {
-  final CreateIntent? intent;
+  final CreateKind kind;
+  final DateTime? date;
   final String title;
   final String description;
 
-  const _CreateResult(this.intent, this.title, this.description);
+  const _CreateResult(this.kind, this.date, this.title, this.description);
 }
 
 class _CreateTaskDialog extends StatefulWidget {
@@ -98,11 +98,9 @@ class _CreateTaskDialogState extends State<_CreateTaskDialog> {
   final _noteCtrl = TextEditingController();
   final _titleFocus = FocusNode();
   final _noteFocus = FocusNode();
-  final _optionsKey = GlobalKey();
 
-  bool _active = false; // 长按进行中（档位升起）
-  bool _stage2 = false; // 可推已二分（有截止 / 无截止）
-  int? _hover; // 0 = 左目标，1 = 右目标
+  CreateKind _kind = CreateKind.plain; // 默认三无
+  DateTime? _date; // 三无态恒为 null
 
   @override
   void dispose() {
@@ -113,59 +111,51 @@ class _CreateTaskDialogState extends State<_CreateTaskDialog> {
     super.dispose();
   }
 
-  void _pop(CreateIntent? intent) {
-    Navigator.of(context).pop(_CreateResult(
-      intent,
-      _titleCtrl.text,
-      _noteCtrl.text,
-    ));
-  }
+  DateTime get _today => _dayCutoff(DateTime.now());
+  DateTime get _tomorrow =>
+      _dayCutoff(DateTime.now().add(const Duration(days: 1)));
 
-  void _onMoveUpdate(LongPressMoveUpdateDetails d) {
-    final box =
-        _optionsKey.currentContext?.findRenderObject() as RenderBox?;
-    if (box == null) return;
-    final local = box.globalToLocal(d.globalPosition);
-    final size = box.size;
-    int? hover;
-    if (local.dy >= 0 && local.dy <= size.height) {
-      hover = local.dx < size.width / 2 ? 0 : 1;
-    } else {
-      hover = null;
-    }
-    var stage2 = _stage2;
-    if (!_stage2 && _active && hover == 1) stage2 = true; // 滑入"可推"→ 二分
-    if (hover != _hover || stage2 != _stage2) {
-      setState(() {
-        _hover = hover;
-        _stage2 = stage2;
-      });
-    }
-  }
-
-  void _onEnd(LongPressEndDetails d) {
-    final intent = _resolve(_stage2, _hover);
+  void _pickKind(CreateKind kind) {
     setState(() {
-      _active = false;
-      _stage2 = false;
-      _hover = null;
+      _kind = kind;
+      if (kind == CreateKind.plain) _date = null; // 点回三无 → 清掉已选日期
     });
-    if (intent != null) {
-      _pop(intent);
-    }
   }
 
-  static CreateIntent? _resolve(bool stage2, int? hover) {
-    if (hover == null) return null;
-    if (!stage2) return hover == 0 ? CreateIntent.fixedAtTime : null;
-    return hover == 0
-        ? CreateIntent.flexWithDeadline
-        : CreateIntent.flexNoDeadline;
+  void _pickDay(DateTime day) => setState(() => _date = day);
+
+  Future<void> _pickCustom() async {
+    final dt = await pickDateTime(
+      context,
+      title: _kind == CreateKind.fixedAtTime ? '固定时点：哪天几点？' : '截止到哪天？',
+    );
+    if (dt == null || !mounted) return;
+    setState(() => _date = dt);
+  }
+
+  void _confirm() {
+    Navigator.of(
+      context,
+    ).pop(_CreateResult(_kind, _date, _titleCtrl.text, _noteCtrl.text));
+  }
+
+  String get _hint {
+    switch (_kind) {
+      case CreateKind.plain:
+        return '点确认 = 稍后整理（入池散件段）';
+      case CreateKind.withDeadline:
+        return _date == null ? '点确认会先问截止到哪天' : '截止 ${_format(_date!)}';
+      case CreateKind.fixedAtTime:
+        return _date == null ? '点确认会先问哪天几点' : '定点 ${_format(_date!)}';
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final today = _today;
+    final tomorrow = _tomorrow;
+    final customPicked = _date != null && _date != today && _date != tomorrow;
     return Dialog(
       backgroundColor: theme.cardTheme.color,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -177,9 +167,12 @@ class _CreateTaskDialogState extends State<_CreateTaskDialog> {
           children: [
             Text('新建待办', style: theme.textTheme.titleMedium),
             const SizedBox(height: 4),
-            Text('回车 = 跳到备注 · 长按确认滑档位 · 直接点按 = 三无',
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+            Text(
+              '回车 = 跳到备注 · 直接点确认 = 三无',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
             const SizedBox(height: 12),
             TextField(
               controller: _titleCtrl,
@@ -196,55 +189,92 @@ class _CreateTaskDialogState extends State<_CreateTaskDialog> {
               maxLines: 2,
               minLines: 1,
               textInputAction: TextInputAction.done,
-              onSubmitted: (_) => _pop(CreateIntent.flexNoDeadline),
+              onSubmitted: (_) => _confirm(),
               decoration: const InputDecoration(hintText: '备注…（选填）'),
             ),
-            const SizedBox(height: 10),
-            // 档位区：长按后原地升起，滑入"可推"再二分一次
-            SizedBox(
-              key: _optionsKey,
-              height: 52,
-              child: _active
-                  ? Row(
-                      children: [
-                        Expanded(
-                          child: _TargetPill(
-                            label: _stage2 ? '有截止日' : '不可推',
-                            icon: _stage2 ? Icons.event : Icons.push_pin,
-                            hovered: _hover == 0,
-                            emphasize: !_stage2,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: _TargetPill(
-                            label: _stage2 ? '无截止日' : '可推',
-                            icon: _stage2 ? Icons.waves : Icons.schedule,
-                            hovered: _hover == 1,
-                            emphasize: false,
-                          ),
-                        ),
-                      ],
-                    )
-                  : Center(
-                      child: Text(
-                        '长按确认，档位在这里升起',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant),
+            const SizedBox(height: 12),
+            Text(
+              '类型',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(
+                  child: _Chip(
+                    label: '三无',
+                    icon: Icons.waves,
+                    selected: _kind == CreateKind.plain,
+                    onTap: () => _pickKind(CreateKind.plain),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _Chip(
+                    label: '有截止',
+                    icon: Icons.event,
+                    selected: _kind == CreateKind.withDeadline,
+                    onTap: () => _pickKind(CreateKind.withDeadline),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _Chip(
+                    label: '定点',
+                    icon: Icons.push_pin,
+                    selected: _kind == CreateKind.fixedAtTime,
+                    onTap: () => _pickKind(CreateKind.fixedAtTime),
+                  ),
+                ),
+              ],
+            ),
+            if (_kind != CreateKind.plain) ...[
+              const SizedBox(height: 10),
+              Text(
+                '日期',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  if (_kind == CreateKind.withDeadline) ...[
+                    Expanded(
+                      child: _Chip(
+                        label: '今天',
+                        icon: Icons.today,
+                        selected: _date == today,
+                        onTap: () => _pickDay(today),
                       ),
                     ),
-            ),
-            const SizedBox(height: 4),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _Chip(
+                        label: '明天',
+                        icon: Icons.event_note,
+                        selected: _date == tomorrow,
+                        onTap: () => _pickDay(tomorrow),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  Expanded(
+                    child: _Chip(
+                      label: customPicked ? _format(_date!) : '自选…',
+                      icon: Icons.more_time,
+                      selected: customPicked,
+                      onTap: _pickCustom,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 12),
             GestureDetector(
-              onLongPressStart: (_) => setState(() => _active = true),
-              onLongPressMoveUpdate: _onMoveUpdate,
-              onLongPressEnd: _onEnd,
-              onLongPressCancel: () => setState(() {
-                _active = false;
-                _stage2 = false;
-                _hover = null;
-              }),
-              onTap: () => _pop(CreateIntent.flexNoDeadline),
+              onTap: _confirm,
               child: Container(
                 height: 52,
                 alignment: Alignment.center,
@@ -255,19 +285,21 @@ class _CreateTaskDialogState extends State<_CreateTaskDialog> {
                 child: const Text(
                   '✱ 确认',
                   style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 2),
+                    color: Colors.white,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 2,
+                  ),
                 ),
               ),
             ),
             const SizedBox(height: 8),
             Center(
               child: Text(
-                '点按 = 稍后整理（入池散件段）',
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                _hint,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
           ],
@@ -277,48 +309,55 @@ class _CreateTaskDialogState extends State<_CreateTaskDialog> {
   }
 }
 
-class _TargetPill extends StatelessWidget {
+/// 档位按钮（类型与日期共用）：选中 = 强调色填充，未选中 = 描边。
+class _Chip extends StatelessWidget {
   final String label;
   final IconData icon;
-  final bool hovered;
-  final bool emphasize;
+  final bool selected;
+  final VoidCallback onTap;
 
-  const _TargetPill({
+  const _Chip({
     required this.label,
     required this.icon,
-    required this.hovered,
-    required this.emphasize,
+    required this.selected,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final color = hovered
-        ? AppColors.accent
-        : emphasize
-            ? AppColors.accent.withValues(alpha: 0.85)
-            : Theme.of(context).colorScheme.outline;
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 120),
-      height: 46,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: hovered
-            ? AppColors.accent
-            : AppColors.accent.withValues(alpha: 0.10),
-        border: Border.all(color: color, width: hovered ? 0 : 1.2),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, size: 16, color: hovered ? Colors.white : color),
-          const SizedBox(width: 6),
-          Text(label,
-              style: TextStyle(
-                color: hovered ? Colors.white : color,
-                fontWeight: FontWeight.w600,
-              )),
-        ],
+    final theme = Theme.of(context);
+    // 橙只给关键元素（§8）：选中态用强调色填充，未选中退回中性描边。
+    final color = selected ? Colors.white : theme.colorScheme.onSurfaceVariant;
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        height: 44,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: selected
+              ? AppColors.accent
+              : AppColors.accent.withValues(alpha: 0.10),
+          border: Border.all(
+            color: selected ? AppColors.accent : theme.colorScheme.outline,
+            width: 1.2,
+          ),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 16, color: color),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                label,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: color, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
