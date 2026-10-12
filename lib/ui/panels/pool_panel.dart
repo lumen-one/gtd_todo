@@ -141,10 +141,6 @@ class PoolPanel extends StatelessWidget {
       for (final r in list)
         if (r is PoolTaskRow) r.task.id,
     ];
-    if (controller.isManualSort) {
-      await controller.setManualOrder(ids);
-      return;
-    }
     await controller.setPoolOrders(ids);
   }
 
@@ -154,10 +150,6 @@ class PoolPanel extends StatelessWidget {
     final ids = [for (final t in section) t.id]
       ..removeAt(oldIndex)
       ..insert(insert, section[oldIndex].id);
-    if (controller.isManualSort) {
-      await controller.setManualOrder(ids);
-      return;
-    }
     await controller.setPoolOrders(ids);
   }
 

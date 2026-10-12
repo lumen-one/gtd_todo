@@ -244,7 +244,6 @@ class AppController extends ChangeNotifier {
         now: DateTime.now(),
         routineOccurrences: upcomingOccurrences(),
         routineShowInPool: _settings.routineShowInPool,
-        sortMode: _settings.sortMode,
       );
 
   /// 计划段/日历要用的周期发生（决议 24/27）。

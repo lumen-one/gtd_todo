@@ -169,11 +169,9 @@ TodayView buildTodayView({
         final reminderToday = metric?.nextReminderAt != null &&
             _sameDay(metric!.nextReminderAt!, now);
         final dueToday = deadline != null && _sameDay(deadline, now);
-        // 无排序模式：锚点准入一起关（它也是算法在替人挑今天看哪几件，决议 43）；
-        // 锚点本身照算（提醒节奏与"下一站"都不受影响）。
-        if (sortMode == SortMode.manual || reminderToday || dueToday) {
-          flexCandidates.add(t);
-        }
+        // 准入**不受排序模式影响**（决议 43 修正）：无排序只是"今天这几件不排序"，
+        // 不是"把所有任务都塞进今天"——成员与自动模式完全一致，只有顺序不同。
+        if (reminderToday || dueToday) flexCandidates.add(t);
     }
   }
 
@@ -205,8 +203,9 @@ TodayView buildTodayView({
     return a.title.compareTo(b.title);
   });
 
-  // 无排序模式：整组就是手动序，没有"插队"这一层（顺序本身就是人拖出来的）。
-  // 插队标记（pinned）仍然留在任务上——切回自动模式时它照旧生效。
+  // 无排序：整组改用手动序（人拖出来的顺序），没有"插队压顶"这一层——
+  // 插队是为算法排序打的补丁，顺序本身就由人定的时候不需要它。
+  // 插队标记（pinned）仍然留在任务上——切回标准/完整时它照旧生效。
   if (sortMode == SortMode.manual) {
     return TodayView(
       day: now,
@@ -236,7 +235,6 @@ PoolView buildPoolView({
   required DateTime now,
   List<RoutineOccurrence> routineOccurrences = const [],
   bool routineShowInPool = true,
-  SortMode sortMode = SortMode.auto,
 }) {
   final plan = <Task>[];
   final loose = <Task>[];
@@ -263,9 +261,6 @@ PoolView buildPoolView({
   }
 
   int cmp(Task a, Task b) {
-    if (sortMode == SortMode.manual) {
-      return compareManualOrder(a, b);
-    }
     final oa = a.poolOrder;
     final ob = b.poolOrder;
     if (oa != null && ob != null) return oa.compareTo(ob);
@@ -280,24 +275,6 @@ PoolView buildPoolView({
 
   plan.sort(cmp);
   loose.sort(cmp);
-
-  // 无排序模式：周期条目不是任务、没有手动序，按发生日期升序
-  // **接在手动排的任务之后**（决议 27 的"按日期插入对应位置"只在自动模式下生效——
-  // 任务不再按日期排，就没有"对应位置"可插）。
-  if (sortMode == SortMode.manual) {
-    final routineRows = <PoolRow>[
-      if (routineShowInPool)
-        for (final o in routineOccurrences) PoolRoutineRow(o.routine, o.at),
-    ]..sort((a, b) => a.sortKey.compareTo(b.sortKey));
-    return PoolView(
-      plan: List.unmodifiable(plan),
-      loose: List.unmodifiable(loose),
-      rows: List.unmodifiable([
-        for (final t in plan) PoolTaskRow(t),
-        ...routineRows,
-      ]),
-    );
-  }
 
   // 计划段显示行：手工整理过的任务在前；其余任务与周期条目按日期混排
   // （决议 27：周期任务按下一次发生日期升序插入对应位置）。
