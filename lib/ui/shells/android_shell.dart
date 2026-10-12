@@ -208,7 +208,7 @@ class _AndroidShellState extends State<AndroidShell> {
     final panelWidth = size.width * 0.88 > 420 ? 420.0 : size.width * 0.88;
     final children = <Widget>[];
 
-    // 把手：贴屏、上下拖动停靠；横拖/flick 向屏内 = 拖出展开；长按 = 换边。
+    // 把手：贴屏白条、上下拖动停靠；点按 / 横拖朝屏内 = 展开；长按 = 换边。
     // 与外层系统级把手分工（v1.5 修订）：应用在前台时系统把手自动隐藏（原生侧
     // 监听 Activity 前后台），所以应用内把手**始终显示**——每个场景恰好一个把手，
     // 不会出现"两个把手叠在一起"或"把手指着面板碍事"。
@@ -270,6 +270,10 @@ class _AndroidShellState extends State<AndroidShell> {
   }
 }
 
+// 把手（v1.10 / 决议 40）：贴在边缘的一段半透明白条，10×88dp、白色 55% 不透明，
+// 与原生悬浮把手同一套参数——两个场景共用一个把手（决议 34），外观必须一致。
+// 外观改了，**能做的事一条没少**：竖向拖动换位置、横向拖出展开、点按展开、长按换边。
+// 点按是后补的：它同时是决议 41 的兜底入口（ROM 不认手势排除区时仍打得开）。
 class _Handle extends StatelessWidget {
   final double dy;
   final bool onLeft;
@@ -298,33 +302,24 @@ class _Handle extends StatelessWidget {
           final towardCenter = onLeft ? v > 500 : v < -500;
           if (towardCenter) onOpen();
         },
+        onTap: onOpen,
         onLongPress: onDockSwitch, // 长按：停靠到另一侧
         child: Container(
-          width: 26,
-          height: 72,
+          width: 10,
+          height: 88,
           decoration: BoxDecoration(
-            color: AppColors.accent.withValues(alpha: 0.9),
+            color: Colors.white.withValues(alpha: 0.55),
             borderRadius: BorderRadius.horizontal(
-              left: onLeft ? Radius.zero : const Radius.circular(16),
-              right: onLeft ? const Radius.circular(16) : Radius.zero,
+              left: onLeft ? Radius.zero : const Radius.circular(5),
+              right: onLeft ? const Radius.circular(5) : Radius.zero,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.25),
-                blurRadius: 6,
-                offset: Offset(onLeft ? 2 : -2, 1),
+                color: Colors.black.withValues(alpha: 0.12),
+                blurRadius: 3,
+                offset: Offset(onLeft ? 1 : -1, 1),
               ),
             ],
-          ),
-          child: Center(
-            child: Container(
-              width: 4,
-              height: 40,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.85),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
           ),
         ),
       ),

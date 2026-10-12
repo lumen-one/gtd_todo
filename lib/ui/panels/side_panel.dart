@@ -302,7 +302,7 @@ class PanelOnboardDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const steps = [
-      (Icons.swipe_left_alt, '拖出展开', '点右上角按钮或从屏幕边缘横拖把手，展开侧边栏；长按把手可换边停靠。'),
+      (Icons.swipe_left_alt, '拖出展开', '点一下屏幕边缘那道白色细条，或从它上面朝屏幕里横拖，展开侧边栏；长按细条可换边停靠。'),
       (Icons.swap_vert, '重手势翻页', '三页竖翻：今日 → 疑问 → 池子。翻页故意做了"重"手势，浏览清单时不会误翻。'),
       (Icons.add_circle_outline, '右下角添加', '「+」进完整创建（长按确认滑档位），「～」两秒堆三无。'),
     ];

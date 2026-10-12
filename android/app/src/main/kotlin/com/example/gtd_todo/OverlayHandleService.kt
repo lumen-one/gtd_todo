@@ -8,6 +8,7 @@ import android.content.pm.ServiceInfo
 import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.Rect
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Handler
@@ -87,9 +88,18 @@ class OverlayHandleService : Service() {
         private const val KEY_DOCKED_RIGHT = "docked_right"
         private const val KEY_Y = "y"
 
-        /** 手柄尺寸（dp）：细长竖条。 */
-        private const val HANDLE_WIDTH_DP = 26
-        private const val HANDLE_HEIGHT_DP = 72
+        /**
+         * 手柄尺寸（dp）：**贴在边缘的一段半透明白条**（v1.10 / 决议 40）。
+         *
+         * 原先是 26×72 的橙色圆角块；现在故意做窄做淡——日常它就该是"几乎看不见"的，
+         * 只在用户主动去找时才注意到。竖向留到 88dp 是为了抓握与点按够得着：
+         * 宽度还能再砍，高度再短就一次摁不准了。
+         */
+        private const val HANDLE_WIDTH_DP = 10
+        private const val HANDLE_HEIGHT_DP = 88
+
+        /** 白条的不透明度（0–255 的 alpha）：55% ≈ 140。 */
+        private const val HANDLE_ALPHA = 140
 
         /** 判定为"拖拽"的最小位移（px），低于它算点击。 */
         private const val TOUCH_SLOP_DP = 6
@@ -337,22 +347,9 @@ class OverlayHandleService : Service() {
 
         val view = FrameLayout(this).apply {
             background = handleBackground()
-            // 白色握把：中间一条细横杆，暗示"可以拖"。
-            addView(
-                View(this@OverlayHandleService).apply {
-                    background = GradientDrawable().apply {
-                        shape = GradientDrawable.RECTANGLE
-                        cornerRadius = 2f * density
-                        setColor(Color.WHITE)
-                    }
-                },
-                FrameLayout.LayoutParams(
-                    (12 * density).toInt(),
-                    (2 * density).toInt(),
-                    Gravity.CENTER,
-                ),
-            )
-            elevation = 6f * density
+            // 不放任何子 View：白条本身就是提示，再画一道白色握把线等于没有
+            // （v1.10 / 决议 40 删掉了原来那条）。
+            elevation = 4f * density
         }
 
         val params = WindowManager.LayoutParams(
@@ -384,6 +381,7 @@ class OverlayHandleService : Service() {
             return
         }
         attachTouchHandler(view)
+        declareGestureExclusion(view)
         applyVisibility()
     }
 
@@ -410,6 +408,8 @@ class OverlayHandleService : Service() {
         val hide = hostForeground || panelExpanded
         val target = if (hide) View.GONE else View.VISIBLE
         if (view.visibility != target) view.visibility = target
+        // 隐藏一轮之后再显示，排除区可能被丢掉：重新声明一次（幂等）。
+        if (!hide) declareGestureExclusion(view)
     }
 
     /** 应用进退前台。契约：进前台要**收起面板** + 隐藏把手。 */
@@ -435,11 +435,51 @@ class OverlayHandleService : Service() {
         persistPosition(params.y)
     }
 
+    /**
+     * 白条的底色（v1.10 / 决议 40）：带一层极淡描边，压在浅色壁纸上也不至于消失。
+     *
+     * 刻意**不跟随主题预设**：它浮在别人的 App、别人的壁纸上，"在哪都看得见"这一层
+     * 保证比配色一致重要（理由同 ui-interaction.md §17C）。
+     */
     private fun handleBackground(): GradientDrawable = GradientDrawable().apply {
         shape = GradientDrawable.RECTANGLE
-        cornerRadius = 13f * density
-        setColor(Color.parseColor("#FF8A3D"))
-        setStroke((1 * density).toInt(), Color.parseColor("#33FFFFFF"))
+        // 圆角 = 宽度的一半 → 一条胶囊状竖条，而不是一块方板。
+        cornerRadius = (HANDLE_WIDTH_DP / 2f) * density
+        setColor(Color.argb(HANDLE_ALPHA, 255, 255, 255))
+        setStroke(1, Color.parseColor("#2B000000"))
+    }
+
+    /**
+     * 把这块区域从系统返回手势的边缘带里抠出来（v1.10 / 决议 41，API 29+）。
+     *
+     * 屏幕两侧各约 20dp 属于系统的返回手势：把手整块压在上面，用户的横拖就会被
+     * InputMonitor **同时**判成 back —— 面板因此时开时不开，同一台机器上还随
+     * "三键导航 / 全面屏手势"的切换而变。声明排除区之后，从把手起手的触摸不再被系统
+     * 拿去判定返回手势。
+     *
+     * 两个要注意的点（踩错就是静默失效，没有任何报错）：
+     * - **必须 attach 之后设**，所以放在 `view.post{}` 里；
+     * - **坐标是视图自身坐标系**（`Rect(0,0,w,h)`），ViewRootImpl 会按视图在窗口里的位置
+     *   叠加偏移，不需要自己换算成窗口坐标。
+     *
+     * 只罩住把手这一小块，远在系统给每边的配额内。面板是**全屏**窗口，**不给**它声明——
+     * 那里的横向返回已经等同于收起面板，加了反而丢掉"边缘 = 返回"这个自然退出口
+     * （局限记在架构合同 §12）。
+     */
+    private fun declareGestureExclusion(view: View) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+        view.post {
+            if (!view.isAttachedToWindow) return@post
+            val w = view.width
+            val h = view.height
+            if (w <= 0 || h <= 0) return@post
+            try {
+                view.systemGestureExclusionRects = listOf(Rect(0, 0, w, h))
+                Log.i(TAG, "overlay handle gesture exclusion declared: ${w}x$h")
+            } catch (t: Throwable) {
+                Log.w(TAG, "overlay handle gesture exclusion failed: ${t.message}")
+            }
+        }
     }
 
     private fun canDrawOverlays(): Boolean = try {
