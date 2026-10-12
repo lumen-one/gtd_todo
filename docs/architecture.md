@@ -143,7 +143,7 @@
 | `TaskMetric` | 单任务派生指标：available、slack、**risk（v1.9，裕度的非线性函数）**、**priority（v1.9 = risk × importance，排序键）**、urgency、displayStatus、interval、nextReminderAt（**提醒锚点**）、**reminds（v1.9：当前模式下会不会出声）**；计算结果，不持久化【现状】 | 现状 |
 | `ScheduleResult` | 一次调度的输出：items（**已排序**；无排序模式下按手动序）、nextTaskId、nextReminderAt（**下一站"会响"的提醒**，v1.9 起已过模式门槛）、infeasible/overdue 名单；所有算法的统一方言【现状】 | 现状 |
 | `ReminderMode` | 提醒**门槛**：**standard**（标准，默认：只排列不提醒，逐任务可手动开）/ **full**（完整：算法判定该响的都响）。v1.9 起进 `Scheduler.schedule` 的入参 | 现状 |
-| `SortMode` | 排序**口径**：**auto**（自动，默认：按调度优先级 `priority` 排先后）/ **manual**（无排序：不按任何排序键，只按人拖出来的 `manual_order`，见 D17）。v1.12 起进 `Scheduler.schedule` 的入参 | 规划（v1.12） |
+| `SortMode` | 排序**口径**：**auto**（自动，默认：按调度优先级 `priority` 排先后）/ **manual**（无排序：不按任何排序键，只按人拖出来的 `manual_order`，见 D17）。v1.12 起进 `Scheduler.schedule` 的入参 | 现状（v1.12） |
 | `ReminderEvent` | 到点提醒事件：firedAt + **taskId + kind（soft 软提醒 / point 时点提醒）** + 当时的调度快照 | 现状 |
 | `PointReminder` | 时点性提醒候选（不可推到点 + 设了响的周期实例）：到点时刻 + 目标任务；到点后 30 分钟内仍可补响（`pointReminderGrace`） | 现状 |
 | `DomainEvent` | 领域事件：type、taskId、at、**origin(user/ai/migration/system)** | 现状 |
@@ -763,8 +763,7 @@ class SystemSnapshot {
 见 §2）；通知已是接口；时间可注入；ScheduleResult 不落盘；snoozed_until 持久化；
 测试覆盖跨日历/临界/逾期场景（**v1.9：146 个测试全绿**）。
 
-**进度（2026-10-12）：第 1–13 条全部完成**（各条末尾记着落地版本）；
-**第 14 条（v1.12，无排序模式）= 需求已定稿、代码未动**。各条目：
+**进度（2026-10-12）：第 1–14 条全部完成**（各条末尾记着落地版本）。各条目：
 
 1. **Task 不可变 + copyWith**：字段全 final，变更 = 经 TaskService 生成新实例；
    "写路径唯一"（C1）从约定变编译器强制；顺带修复 A1/A2 两个已知 bug ✅
@@ -808,7 +807,7 @@ class SystemSnapshot {
     逐任务提醒开关走 `setTaskReminder`（metadata `remind`，附录 B.2 登记）；
     `AppSettings.reminderMode` 落 `settings.json`（**默认标准模式**），设置页可切；
     旧算法、影子运行、ReminderDispatcher、时点提醒全部按同一门槛对齐。
-14. **排序模式：无排序（v1.12，决议 43）**：**需求已定稿、代码未动**——domain 新增
+14. **排序模式：无排序（v1.12，决议 43）**：**已落地**——domain 新增
     `SortMode`（`auto` 默认 / `manual`）进 `Scheduler.schedule` 与 `buildTodayView` /
     `poolView`（**不新增第三个算法**）；metadata `manual_order`（附录 B.2 登记）+ 命令
     `setManualOrder(taskIds)` / `updateSortMode(mode)`；`AppSettings.sortMode` 落
@@ -1195,13 +1194,22 @@ class SystemSnapshot {
   ④ **新决策 D17**（§11）与三条新局限（§12：今日清单变长 / 手动序只覆盖拖过的那一段 /
   周期条目沉末尾）。与提醒模式的关系写进 D15 的近邻：**两者正交**——提醒模式管出不出声，
   排序模式管谁排前面；§12 那条"两种模式（提醒）的差别只在要不要出声"因此不受影响。
-  ⑤ **状态：只改文档，代码未动**——`domain/schedule.dart` 还没有 `SortMode`，
-  `slack_priority_scheduler.dart` / `slack_scheduler.dart` / `shadow_scheduler.dart` 的
-  `schedule` 还没有 `sortMode` 入参，`TaskService` 没有 `sortMode` / `updateSortMode` /
-  `setManualOrder`，`today_view.dart` / `pool_view.dart` 的排序与准入仍是自动模式那一套，
-  设置页没有模式开关。`Task.manualOrder` getter 与 sidecar / 旧 codec 的 `manual_order`
-  写回也未落。落地时要补的两项：`flutter analyze`、`flutter test`（预期既有用例全绿——
-  默认 `auto` 与现状一致；新增用例覆盖 manual 的排序、准入、序号落盘、切模式不丢数据）。
+  ⑤ **代码已落地**（同日补齐，落点与上表第 14 条一致）：`domain/schedule.dart` 新增
+  `SortMode` 与 `compareManualOrder`（无排序模式唯一的顺序来源，无序号者沉末尾按 id 升序）；
+  `Scheduler.schedule` 加 `sortMode` 入参（两个算法 + `ShadowScheduler` 同口径透传）；
+  `Task.manualOrder` getter；sidecar 与旧 codec 登记 `manual_order`；
+  `AppSettings.sortMode` 落 `settings.json` 的 `sort_mode`（缺省 auto）；
+  `TaskService` 增 `sortMode` / `updateSortMode` / `setManualOrder`（批量落盘后只重锚一次，
+  不像 `setPoolOrder` 那样一件一重锚）；`buildTodayView` / `buildPoolView` 按 §4.1 的口径
+  分岔；设置页新增『排序』节（自动 / 无排序）；两个引擎的装配点各加一条
+  `onSortModeChanged`；今日与池子的拖拽在 `isManualSort` 下改走 `setManualOrder`。
+  **验证**：`flutter analyze` 干净（只剩 3 条既有的 `onReorder` 弃用 info，与本版无关）；
+  **160 个测试全绿**（原 146 + 新增 12：新增 `test/sort_mode_test.dart` 11 个——
+  manual 排序与"数学不受影响"、无序号沉末尾、今日准入口径、无插队层、四处不跟着变、
+  池子手动序与周期条目沉末尾、整段重编号、切模式不动数据、缺省 auto；
+  `markdown_task_repository_test` 补 1 个 `manual_order` 落盘往返）。
+  **真机必测**：① 设置页切『无排序』后今日清单立刻变长（远期任务进来）、顺序不再按裕度；
+  ② 在今日可推组与任务池各拖一次，重启后顺序还在；③ 切回『自动』手动序不生效但数据仍在。
 
 ---
 
