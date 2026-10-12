@@ -157,11 +157,20 @@ class TaskService {
     return task;
   }
 
+  /// 完成。**完成时刻在此刻落下**（ui 文档 §6.1 / 附录 B）：人类文档那一行补
+  /// `完成 <日期,时间>` 并打勾，内核属性文档同步落 `completed_at`——两者都由
+  /// [Task.completedAt] 这一个字段驱动（[TaskDocumentCodec.encodeLine] 与
+  /// [TaskSidecarCodec] 各取它渲染）。
+  ///
+  /// 人在 Obsidian 里已经手写了完成时刻的，保留人的那个值（§4.3 归属表：
+  /// 完成日期属人写的那半边）。
   Future<Task> completeTask(String id,
       {EventOrigin origin = EventOrigin.user}) async {
-    final updated = _require(id).copyWith(
+    final cur = _require(id);
+    final updated = cur.copyWith(
       status: TaskStatus.completed,
       remainingWork: 0,
+      completedAt: cur.completedAt ?? now(),
       clearSnooze: true,
     );
     await _persist(updated, origin, DomainEventType.taskCompleted);
@@ -207,9 +216,13 @@ class TaskService {
       EventOrigin origin = EventOrigin.user}) async {
     final cur = _require(id);
     final remaining = (cur.remainingWork - minutes).clamp(0, cur.estimatedWork);
+    // 干完即完成（flex 的剩余工时归零）：同样要落完成时刻，否则人类文档里
+    // 只打勾、没有「完成 <时刻>」，与 completeTask 走出来的是两种形状。
+    final done = remaining <= 0;
     final updated = cur.copyWith(
       remainingWork: remaining,
-      status: remaining <= 0 ? TaskStatus.completed : TaskStatus.active,
+      status: done ? TaskStatus.completed : TaskStatus.active,
+      completedAt: done ? (cur.completedAt ?? now()) : cur.completedAt,
       clearSnooze: true, // 用户重新动手了，取消静默
     );
     await _persist(updated, origin, DomainEventType.workLogged);

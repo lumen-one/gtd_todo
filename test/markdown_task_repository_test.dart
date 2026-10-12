@@ -345,6 +345,65 @@ status: active
     expect(reread.completedAt, DateTime(2026, 10, 12, 15, 19));
   });
 
+  test('命令链路回归：completeTask 落完成时刻（人类文档 + 内核属性），重读仍在',
+      () async {
+    var now = DateTime(2026, 10, 12, 15, 19);
+    TaskService service() => TaskService(
+          repo: MarkdownTaskRepository(tmp.path),
+          scheduler: const SlackScheduler(),
+          workRule: WorkTimeRule.standard,
+          clock: () => now,
+        );
+
+    final svc = service();
+    final a = await svc.createTask(
+      title: '写周报',
+      estimatedWorkMinutes: 60,
+      deadline: DateTime(2026, 10, 13, 18, 0),
+    );
+    await svc.completeTask(a.id);
+
+    final human = doc().readAsStringSync();
+    expect(human, contains('- [x] 写周报'));
+    expect(human, contains('完成 2026-10-12,15:19'),
+        reason: 'ui 文档 §6.1：完成后那一行原地打勾并补完成时刻');
+    expect(kernel(a.id).readAsStringSync(),
+        contains('completed_at: 2026-10-12T15:19'));
+
+    // 重复完成（人连点两次）不该把已经记下的时刻冲掉
+    now = DateTime(2026, 10, 12, 20, 0);
+    await svc.completeTask(a.id);
+    expect(doc().readAsStringSync(), contains('完成 2026-10-12,15:19'));
+
+    final svc2 = service();
+    await svc2.refreshSchedule();
+    expect(svc2.byId(a.id)!.completedAt, DateTime(2026, 10, 12, 15, 19));
+    expect(svc2.warnings, isEmpty, reason: '完成时刻落定后行指纹不该再漂移');
+  });
+
+  test('命令链路回归：logWork 干完即完成，同样落完成时刻', () async {
+    var now = DateTime(2026, 10, 12, 16, 0);
+    final svc = TaskService(
+      repo: MarkdownTaskRepository(tmp.path),
+      scheduler: const SlackScheduler(),
+      workRule: WorkTimeRule.standard,
+      clock: () => now,
+    );
+    final a = await svc.createTask(
+      title: '整理笔记',
+      estimatedWorkMinutes: 30,
+      deadline: DateTime(2026, 10, 13, 18, 0),
+    );
+    now = DateTime(2026, 10, 12, 16, 5);
+    await svc.logWork(a.id, minutes: 30);
+
+    expect(svc.byId(a.id)!.status, TaskStatus.completed);
+    expect(doc().readAsStringSync(), contains('完成 2026-10-12,16:05'),
+        reason: '干完即完成也是完成，不能只打勾不记时刻');
+    expect(kernel(a.id).readAsStringSync(),
+        contains('completed_at: 2026-10-12T16:05'));
+  });
+
   test('软删除：内核文件进 .gtd/.trash/，人类文档那行被注释掉', () async {
     await repo.save(makeTask());
     await repo.loadAll();
