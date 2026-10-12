@@ -68,7 +68,6 @@ class _ExplodingScheduler extends SlackScheduler {
     required DateTime now,
     required WorkTimeRule workRule,
     ReminderMode reminderMode = ReminderMode.standard,
-    SortMode sortMode = SortMode.auto,
   }) {
     throw StateError('影子算法故障');
   }

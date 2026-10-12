@@ -42,21 +42,11 @@ abstract class Scheduler {
   /// - [ReminderMode.full] 凡算法判定该响的都响（原方案）。
   ///
   /// 默认值取"标准"是刻意的：忘记传参数时得到的是**安静**，不是打扰。
-  ///
-  /// [sortMode] 是**排序口径**（v1.12，D17）：
-  ///
-  /// - [SortMode.auto]（**默认**）按调度优先级排先后；
-  /// - [SortMode.manual] 无排序：排序键完全不参与，只按手动序
-  ///   （`Task.manualOrder`，没序号的沉末尾按 id 升序）。
-  ///
-  /// 它**不是第三个算法**：注册表里仍然只有那两个 `id`，两个算法各自接受这个入参；
-  /// 数学（`slack` / `risk` / `priority` / 锚点 / 门槛）一行不动。
   ScheduleResult schedule({
     required List<Task> tasks,
     required DateTime now,
     required WorkTimeRule workRule,
     ReminderMode reminderMode = ReminderMode.standard,
-    SortMode sortMode = SortMode.auto,
   });
 }
 

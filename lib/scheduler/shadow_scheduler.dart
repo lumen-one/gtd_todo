@@ -29,23 +29,13 @@ class ShadowScheduler implements Scheduler {
     required DateTime now,
     required WorkTimeRule workRule,
     ReminderMode reminderMode = ReminderMode.standard,
-    SortMode sortMode = SortMode.auto,
   }) {
-    // 门槛与排序口径都原样透传给两边：影子对比的是"算法差异"，
-    // 不是"模式差异"（D17：两边同口径才比得出 priority 的差异）。
+    // 门槛原样透传给两边：影子对比的是"算法差异"，不是"模式差异"。
     final result = primary.schedule(
-        tasks: tasks,
-        now: now,
-        workRule: workRule,
-        reminderMode: reminderMode,
-        sortMode: sortMode);
+        tasks: tasks, now: now, workRule: workRule, reminderMode: reminderMode);
     try {
       final ghost = shadow.schedule(
-          tasks: tasks,
-          now: now,
-          workRule: workRule,
-          reminderMode: reminderMode,
-          sortMode: sortMode);
+          tasks: tasks, now: now, workRule: workRule, reminderMode: reminderMode);
       final diff = _describeDiff(result, ghost);
       if (diff != null) {
         diffLog.add('${now.toIso8601String()}: $diff');

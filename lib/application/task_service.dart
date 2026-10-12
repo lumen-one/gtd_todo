@@ -77,7 +77,6 @@ class TaskService {
       now: now(),
       workRule: workRule,
       reminderMode: reminderMode,
-      sortMode: sortMode,
     );
     _emit(DomainEventType.scheduleReanchored, lastSchedule?.nextTaskId ?? '',
         origin);

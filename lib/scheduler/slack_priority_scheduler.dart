@@ -86,7 +86,6 @@ class SlackPriorityScheduler implements Scheduler {
     required DateTime now,
     required WorkTimeRule workRule,
     ReminderMode reminderMode = ReminderMode.standard,
-    SortMode sortMode = SortMode.auto,
   }) {
     final metrics = <TaskMetric>[];
     final infeasible = <String>[];
@@ -173,23 +172,16 @@ class SlackPriorityScheduler implements Scheduler {
 
     // 排序：不可行/普通同池按**调度优先级**降序（deadline 升序、id 升序裁决）；
     // 逾期沉底。importance 已经是 priority 里的乘数，不再单独裁决。
-    //
-    // 无排序模式（D17）：排序键一格都不用，只按手动序；数学在上面照算完毕
-    // （risk / priority / 锚点 / 门槛都不受影响），只是不再拿来排先后。
-    if (sortMode == SortMode.manual) {
-      sortable.sort((a, b) => compareManualOrder(a.task, b.task));
-    } else {
-      sortable.sort((a, b) {
-        final byStatus = _rank(a.metric.displayStatus)
-            .compareTo(_rank(b.metric.displayStatus));
-        if (byStatus != 0) return byStatus;
-        final byPriority = b.metric.priority.compareTo(a.metric.priority);
-        if (byPriority != 0) return byPriority;
-        final byDeadline = a.task.deadline!.compareTo(b.task.deadline!);
-        if (byDeadline != 0) return byDeadline;
-        return a.task.id.compareTo(b.task.id);
-      });
-    }
+    sortable.sort((a, b) {
+      final byStatus = _rank(a.metric.displayStatus)
+          .compareTo(_rank(b.metric.displayStatus));
+      if (byStatus != 0) return byStatus;
+      final byPriority = b.metric.priority.compareTo(a.metric.priority);
+      if (byPriority != 0) return byPriority;
+      final byDeadline = a.task.deadline!.compareTo(b.task.deadline!);
+      if (byDeadline != 0) return byDeadline;
+      return a.task.id.compareTo(b.task.id);
+    });
 
     final ordered = sortable.map((v) => v.metric).toList();
     // 已 snooze 的排到列表尾部展示。
