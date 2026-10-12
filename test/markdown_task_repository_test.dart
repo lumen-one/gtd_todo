@@ -521,6 +521,23 @@ created: 2026-10-07T15:30
       expect((await repo.loadAll()).single.remindEnabled, isFalse);
     });
 
+    test('manual_order：手动序（v1.12 决议 43）落盘、读回，换号即改行', () async {
+      final t = makeTask();
+      await repo.save(t);
+      expect(kernel('task-001').readAsStringSync(),
+          isNot(contains('manual_order:')));
+
+      await repo.save(t.copyWith(metadata: const {'manual_order': '0'}));
+      expect(kernel('task-001').readAsStringSync(), contains('manual_order: 0'));
+      expect((await repo.loadAll()).single.manualOrder, 0,
+          reason: '漏登记这个键，手动序会在命令自己的重读里蒸发');
+
+      await repo.save(t.copyWith(metadata: const {'manual_order': '3'}));
+      final raw2 = kernel('task-001').readAsStringSync();
+      expect(raw2, contains('manual_order: 3'));
+      expect(raw2, isNot(contains('manual_order: 0')));
+    });
+
     test('周期实例键与 point_fired 落盘并读回', () async {
       final inst = makeTask().copyWith(metadata: const {
         'type': 'routine',

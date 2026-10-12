@@ -22,6 +22,46 @@ enum ReminderMode {
       };
 }
 
+/// 排序模式（ui-interaction.md §6.1、architecture.md D17，v1.12）：
+///
+/// - [auto] **自动（默认）**：算法排先后——可推组按调度优先级
+///   `priority = risk × importance` 排序，今日可推组按"提醒锚点落在今天"准入；
+/// - [manual] **无排序**：排序键**完全不参与**——顺序只按人拖出来的手动序
+///   （metadata `manual_order`），今日可推组**不再按锚点筛选**
+///   （全部未完成、有截止的可推任务都进今日）。
+///
+/// 它与 [ReminderMode] **正交**：提醒模式管"出不出声"，排序模式管"谁排前面"。
+/// 关掉的只有**排序**这一层——`slack` / `risk` / `priority`、提醒锚点与间隔、
+/// 逾期与不可行判定照算（它们管"多久响一次""要不要升级"，不是"谁排前面"）。
+enum SortMode {
+  auto,
+  manual;
+
+  /// 设置落盘的稳定写法（缺省 [auto]：忘记传参数时得到的是现在这套行为）。
+  static SortMode byName(String? name) => switch (name) {
+        'manual' => SortMode.manual,
+        _ => SortMode.auto,
+      };
+}
+
+/// 手动序比较器（D17）：无排序模式下唯一的顺序来源。
+///
+/// 有 [manualOrder] 的按序号升序；没有的**沉在末尾**，用 id 升序裁决
+/// （id 前缀定长 ≈ 创建先后，保证新任务从末尾开始、顺序稳定不抖）。
+int compareManualOrder(Task a, Task b) {
+  final oa = a.manualOrder;
+  final ob = b.manualOrder;
+  if (oa != null && ob != null) {
+    final byOrder = oa.compareTo(ob);
+    if (byOrder != 0) return byOrder;
+  } else if (oa != null) {
+    return -1;
+  } else if (ob != null) {
+    return 1;
+  }
+  return a.id.compareTo(b.id);
+}
+
 /// 该任务在 [mode] 下是否**允许出声**（architecture.md §3.2 规则 B4 的正典实现）。
 ///
 /// 完整模式 = 恒真；标准模式 = 这一件被显式要求提醒过（[Task.reminderRequested]：

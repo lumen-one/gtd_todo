@@ -27,6 +27,12 @@ class TaskService {
   /// 设置页改动经装配点回调调 [updateReminderMode]；它只改调度的入参，不动任何数据。
   ReminderMode reminderMode;
 
+  /// **排序口径**（v1.12，决议 43 / D17）：**默认自动**——按调度优先级排先后；
+  /// 无排序 = 排序键不参与，只按手动序（`manual_order`），且今日可推组不再按锚点筛选。
+  /// 设置页改动经装配点回调调 [updateSortMode]；与 [reminderMode] 一样只改查询口径，
+  /// **不动任何任务数据**（切模式不迁移、手动序原样保留）。
+  SortMode sortMode;
+
   /// 可注入时钟：测试与仿真可以自由拨动时间。
   final DateTime Function() now;
 
@@ -41,6 +47,7 @@ class TaskService {
     required this.scheduler,
     this.workRule = WorkTimeRule.standard,
     this.reminderMode = ReminderMode.standard,
+    this.sortMode = SortMode.auto,
     DateTime Function()? clock,
   }) : now = clock ?? DateTime.now;
 
@@ -70,6 +77,7 @@ class TaskService {
       now: now(),
       workRule: workRule,
       reminderMode: reminderMode,
+      sortMode: sortMode,
     );
     _emit(DomainEventType.scheduleReanchored, lastSchedule?.nextTaskId ?? '',
         origin);
@@ -82,6 +90,17 @@ class TaskService {
   Future<void> updateReminderMode(ReminderMode mode) async {
     if (mode == reminderMode) return;
     reminderMode = mode;
+    await refreshSchedule();
+  }
+
+  /// 切换排序模式（设置页 → 装配点回调，D17）。
+  ///
+  /// **不改任何任务数据**：手动序是持久意图（B5），自动模式下原样躺在 metadata 里，
+  /// 切回来还在；顺序是查询结果，重算即生效。模式没变就什么都不做（C2 的精神）。
+  Future<void> updateSortMode(SortMode mode) async {
+    if (mode == sortMode) return;
+    sortMode = mode;
+    _emit(DomainEventType.sortModeChanged, '', EventOrigin.user);
     await refreshSchedule();
   }
 
@@ -389,6 +408,30 @@ class TaskService {
         _withMeta(_require(id), (m) => {...m, 'pool_order': '$order'});
     await _persist(updated, origin, DomainEventType.taskUpdated);
     return updated;
+  }
+
+  /// 手动序（v1.12，决议 43 / D17）：按 [orderedIds] 的顺序整段重编号（从 0 连续），
+  /// 只在无排序模式下参与排序；自动模式下这些序号原样保留、只是不生效。
+  ///
+  /// 一次拖动手势会重编整段，所以这里**批量落盘后再重锚一次**（不像 [setPoolOrder]
+  /// 那样每写一条就重锚一次——那会放大成 N 次读盘）。
+  Future<List<Task>> setManualOrder(List<String> orderedIds,
+      {EventOrigin origin = EventOrigin.user}) async {
+    final updated = <Task>[];
+    for (var i = 0; i < orderedIds.length; i++) {
+      final cur = byId(orderedIds[i]);
+      if (cur == null) continue;
+      updated.add(_withMeta(cur, (m) => {...m, 'manual_order': '$i'}));
+    }
+    if (updated.isEmpty) return const [];
+    final byIdMap = {for (final t in updated) t.id: t};
+    for (final t in updated) {
+      await repo.save(t);
+    }
+    _tasks = [for (final x in _tasks) byIdMap[x.id] ?? x];
+    _emit(DomainEventType.manualOrderChanged, updated.first.id, origin);
+    await refreshSchedule(origin: origin);
+    return List.unmodifiable(updated);
   }
 
   // ---------- 周期任务的实例（决议 5/12/23）----------

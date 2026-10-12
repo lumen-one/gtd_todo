@@ -16,6 +16,13 @@ class AppSettings {
   /// 注意它是"门槛"，与 [notificationWindows]（何时允许打扰）**串联**而非互斥。
   final ReminderMode reminderMode;
 
+  /// **排序模式**（v0.12 决议 43 / D17）：**默认自动**——算法按调度优先级排先后；
+  /// 无排序 = 排序键完全不参与，顺序只按人拖出来的手动序（metadata `manual_order`），
+  /// 今日可推组也不再按“锚点落在今天”筛选。落 settings.json 的 `sort_mode`。
+  ///
+  /// 与 [reminderMode] **正交**：一个管“谁排前面”，一个管“出不出声”。
+  final SortMode sortMode;
+
   /// 可选闹钟模式（决议 3/18）：只对时点性提醒生效。
   final bool alarmMode;
 
@@ -41,6 +48,7 @@ class AppSettings {
   const AppSettings({
     this.notificationWindows = const [[9 * 60, 21 * 60]],
     this.reminderMode = ReminderMode.standard,
+    this.sortMode = SortMode.auto,
     this.alarmMode = false,
     this.pickEnabled = false,
     this.pickIntervalDays = 1,
@@ -56,6 +64,7 @@ class AppSettings {
   AppSettings copyWith({
     List<List<int>>? notificationWindows,
     ReminderMode? reminderMode,
+    SortMode? sortMode,
     bool? alarmMode,
     bool? pickEnabled,
     int? pickIntervalDays,
@@ -70,6 +79,7 @@ class AppSettings {
     return AppSettings(
       notificationWindows: notificationWindows ?? this.notificationWindows,
       reminderMode: reminderMode ?? this.reminderMode,
+      sortMode: sortMode ?? this.sortMode,
       alarmMode: alarmMode ?? this.alarmMode,
       pickEnabled: pickEnabled ?? this.pickEnabled,
       pickIntervalDays: pickIntervalDays ?? this.pickIntervalDays,
@@ -85,6 +95,7 @@ class AppSettings {
   Map<String, Object?> toJson() => {
         'notification_windows': notificationWindows,
         'reminder_mode': reminderMode.name,
+        'sort_mode': sortMode.name,
         'alarm_mode': alarmMode,
         'pick_enabled': pickEnabled,
         'pick_interval_days': pickIntervalDays,
@@ -104,6 +115,7 @@ class AppSettings {
       notificationWindows:
           windows == null || windows.isEmpty ? const [[9 * 60, 21 * 60]] : windows,
       reminderMode: ReminderMode.byName(json['reminder_mode'] as String?),
+      sortMode: SortMode.byName(json['sort_mode'] as String?),
       alarmMode: json['alarm_mode'] == true,
       pickEnabled: json['pick_enabled'] == true,
       pickIntervalDays: (json['pick_interval_days'] as num?)?.toInt() ?? 1,

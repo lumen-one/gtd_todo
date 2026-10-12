@@ -128,8 +128,10 @@ Future<_OverlayCore> _assembleOverlayCore() async {
     routineService: routines,
     settingsPort: FileSettingsPort(resolved.taskDir),
     bootstrapPort: resolved.bootstrap,
-    // 提醒模式也要跟上（面板不装交付插座，但清单的"会不会响"口径要与主引擎一致）。
+    // 提醒模式也要跟上（面板不装交付插座，但清单的"会不会响"口径要与主引擎一致）；
+    // 排序模式同理——清单的顺序与准入口径两边必须一致（决议 43）。
     onReminderModeChanged: (mode) => service.updateReminderMode(mode),
+    onSortModeChanged: (mode) => service.updateSortMode(mode),
   );
   controller.notesReader =
       FileNotesReaderPort(() => controller.settings.notesPath);

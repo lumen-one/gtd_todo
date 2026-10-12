@@ -90,6 +90,7 @@ Future<void> main() async {
     onWindowsChanged: (rule) => dispatcher.updateWindows(rule),
     onAlarmModeChanged: (mode) => dispatcher.updateAlarmMode(mode),
     onReminderModeChanged: (mode) => service.updateReminderMode(mode),
+    onSortModeChanged: (mode) => service.updateSortMode(mode),
     notificationSurface: notifications.shown,
   );
   // 疑问笔记路径随设置实时生效（对该文件零写入）。

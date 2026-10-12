@@ -133,6 +133,10 @@ class Task {
   /// 池子显示序（仅整理无调度含义）；null = 未整理过。
   int? get poolOrder => int.tryParse(metadata['pool_order'] ?? '');
 
+  /// 手动序（v1.12 决议 43 / D17）：无排序模式下人拖出来的顺序，持久化在任务上；
+  /// null = 没排过序（沉在末尾）。自动模式下原样保留、**不参与排序**。
+  int? get manualOrder => int.tryParse(metadata['manual_order'] ?? '');
+
   /// 已响过的那一次时点提醒（值 = 当时的 pointReminderAt ISO 串）。
   /// 用于「只到点响一次」的幂等判定（改期/推迟后值不再匹配 → 会重新响）。
   String? get pointFiredMark => metadata['point_fired'];

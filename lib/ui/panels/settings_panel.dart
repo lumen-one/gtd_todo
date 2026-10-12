@@ -16,7 +16,8 @@ String _mm(int minuteOfDay) {
 /// 设置页（ui-interaction.md §9，暂定 App 唯一主体页面）：
 /// 1. 权限引导 + 任务目录 + 悬浮把手；2. 周期任务管理（routines.md）；
 /// 3. 提醒（**模式：标准/完整** / 时间段多段式 / 闹钟模式）；4. 定期挑；5. 疑问笔记路径；
-/// 6. 周期任务在任务池的显示开关；7. 主题预设；8. 回收站。
+/// 6. 周期任务在任务池的显示开关；7. 主题预设；8. 回收站；
+/// 9. **排序模式（自动 / 无排序，决议 43）**。
 class SettingsPanel extends StatefulWidget {
   final AppController controller;
 
@@ -256,6 +257,27 @@ class _SettingsPanelState extends State<SettingsPanel>
                   .join('、')),
           trailing: const Icon(Icons.edit_outlined),
           onTap: () => _editWindows(context),
+        ),
+
+        _Section('排序'),
+        ListTile(
+          leading: const Icon(Icons.low_priority),
+          title: const Text('排序模式'),
+          subtitle: Text(
+            s.sortMode == SortMode.auto
+                ? '自动（默认）：按调度优先级排先后（裕度薄的在前，重要度作乘数）'
+                : '无排序：不按任何排序键——顺序全靠手动拖，'
+                    '今日清单会包含所有有截止的未完成任务',
+          ),
+          trailing: SegmentedButton<SortMode>(
+            segments: const [
+              ButtonSegment(value: SortMode.auto, label: Text('自动')),
+              ButtonSegment(value: SortMode.manual, label: Text('无排序')),
+            ],
+            selected: {s.sortMode},
+            onSelectionChanged: (v) =>
+                _c.updateSettings(s.copyWith(sortMode: v.first)),
+          ),
         ),
 
         _Section('周期任务（routines.md）'),

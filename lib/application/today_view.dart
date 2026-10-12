@@ -114,10 +114,17 @@ bool _sameDay(DateTime a, DateTime b) =>
     a.year == b.year && a.month == b.month && a.day == b.day;
 
 /// 聚合今日清单。[schedule] 为当前调度结果（可推组排序 + "提醒锚点"口径来源）。
+///
+/// [sortMode] 只改两件事（v1.12 决议 43 / D17）：
+/// ① 可推组的**准入**——自动模式用"锚点落在今天 / 今天到期"筛"今天该看哪几件"，
+///    无排序模式**不筛**（全部未完成、有截止的可推任务都进今日）；
+/// ② 可推组的**顺序**——自动模式是插队件 + 调度序，无排序模式是手动序。
+/// 其余（逾期置顶、固定时点按时刻、例行按发生时刻、被挑散件在最后）两种模式一致。
 TodayView buildTodayView({
   required List<Task> tasks,
   required ScheduleResult? schedule,
   required DateTime now,
+  SortMode sortMode = SortMode.auto,
 }) {
   final today = DateTime(now.year, now.month, now.day);
   final mark = dayMark(today);
@@ -162,7 +169,11 @@ TodayView buildTodayView({
         final reminderToday = metric?.nextReminderAt != null &&
             _sameDay(metric!.nextReminderAt!, now);
         final dueToday = deadline != null && _sameDay(deadline, now);
-        if (reminderToday || dueToday) flexCandidates.add(t);
+        // 无排序模式：锚点准入一起关（它也是算法在替人挑今天看哪几件，决议 43）；
+        // 锚点本身照算（提醒节奏与"下一站"都不受影响）。
+        if (sortMode == SortMode.manual || reminderToday || dueToday) {
+          flexCandidates.add(t);
+        }
     }
   }
 
@@ -175,7 +186,7 @@ TodayView buildTodayView({
     ..sort((a, b) => b.pinnedAt!.compareTo(a.pinnedAt!));
   final pinnedIds = pinned.map((t) => t.id).toSet();
 
-  // 其余可推按调度序（schedule.items 已按 urgency 降序，infeasible 优先）。
+  // 其余可推按调度序（schedule.items 已按 priority 降序，infeasible 优先）。
   final orderIndex = <String, int>{
     for (var i = 0; i < (schedule?.items.length ?? 0); i++)
       schedule!.items[i].taskId: i,
@@ -193,6 +204,19 @@ TodayView buildTodayView({
     if (db != null) return 1;
     return a.title.compareTo(b.title);
   });
+
+  // 无排序模式：整组就是手动序，没有"插队"这一层（顺序本身就是人拖出来的）。
+  // 插队标记（pinned）仍然留在任务上——切回自动模式时它照旧生效。
+  if (sortMode == SortMode.manual) {
+    return TodayView(
+      day: now,
+      overdue: List.unmodifiable(overdue),
+      fixed: List.unmodifiable(fixed),
+      flex: List.unmodifiable(flexCandidates..sort(compareManualOrder)),
+      routines: List.unmodifiable(routines),
+      picked: pickedTask,
+    );
+  }
 
   return TodayView(
     day: now,
@@ -212,6 +236,7 @@ PoolView buildPoolView({
   required DateTime now,
   List<RoutineOccurrence> routineOccurrences = const [],
   bool routineShowInPool = true,
+  SortMode sortMode = SortMode.auto,
 }) {
   final plan = <Task>[];
   final loose = <Task>[];
@@ -238,6 +263,9 @@ PoolView buildPoolView({
   }
 
   int cmp(Task a, Task b) {
+    if (sortMode == SortMode.manual) {
+      return compareManualOrder(a, b);
+    }
     final oa = a.poolOrder;
     final ob = b.poolOrder;
     if (oa != null && ob != null) return oa.compareTo(ob);
@@ -252,6 +280,24 @@ PoolView buildPoolView({
 
   plan.sort(cmp);
   loose.sort(cmp);
+
+  // 无排序模式：周期条目不是任务、没有手动序，按发生日期升序
+  // **接在手动排的任务之后**（决议 27 的"按日期插入对应位置"只在自动模式下生效——
+  // 任务不再按日期排，就没有"对应位置"可插）。
+  if (sortMode == SortMode.manual) {
+    final routineRows = <PoolRow>[
+      if (routineShowInPool)
+        for (final o in routineOccurrences) PoolRoutineRow(o.routine, o.at),
+    ]..sort((a, b) => a.sortKey.compareTo(b.sortKey));
+    return PoolView(
+      plan: List.unmodifiable(plan),
+      loose: List.unmodifiable(loose),
+      rows: List.unmodifiable([
+        for (final t in plan) PoolTaskRow(t),
+        ...routineRows,
+      ]),
+    );
+  }
 
   // 计划段显示行：手工整理过的任务在前；其余任务与周期条目按日期混排
   // （决议 27：周期任务按下一次发生日期升序插入对应位置）。

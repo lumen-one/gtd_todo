@@ -128,6 +128,9 @@ class PoolPanel extends StatelessWidget {
 
   /// 拖拽整理 = 仅显示序（决议 14）：整段重编 pool_order，重启保留。
   /// 周期条目不可拖：拖动后取"任务行的相对顺序"落盘。
+  ///
+  /// 无排序模式下改为写 `manual_order`（决议 43）——与今日清单共用同一个序号，
+  /// 两处顺序一致；pool_order 是自动模式下的"整理序"，两套各管各的。
   Future<void> _persistRows(List<PoolRow> rows, int oldIndex, int newIndex) async {
     if (rows[oldIndex] is! PoolTaskRow) return;
     final insert = newIndex > oldIndex ? newIndex - 1 : newIndex;
@@ -138,6 +141,10 @@ class PoolPanel extends StatelessWidget {
       for (final r in list)
         if (r is PoolTaskRow) r.task.id,
     ];
+    if (controller.isManualSort) {
+      await controller.setManualOrder(ids);
+      return;
+    }
     await controller.setPoolOrders(ids);
   }
 
@@ -147,6 +154,10 @@ class PoolPanel extends StatelessWidget {
     final ids = [for (final t in section) t.id]
       ..removeAt(oldIndex)
       ..insert(insert, section[oldIndex].id);
+    if (controller.isManualSort) {
+      await controller.setManualOrder(ids);
+      return;
+    }
     await controller.setPoolOrders(ids);
   }
 

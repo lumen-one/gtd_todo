@@ -135,12 +135,24 @@ class TodayPanel extends StatelessWidget {
     );
   }
 
-  /// 拖拽插队（决议 9/11）：拖入插队区（栈顶 k 件之内）即插队；插队件按当前
-  /// 视觉顺序重新栈式落位（后插在上，保持到完成）。调度区内部拖动不落盘。
+  /// 拖拽落位，两种排序模式两套语义（决议 43）：
+  ///
+  /// - **无排序模式** = 定序：整组按拖动结果重编 `manual_order`，重启保留；
+  /// - **自动模式** = 插队（决议 9/11）：拖入插队区（栈顶 k 件之内）即插队，
+  ///   插队件按当前视觉顺序重新栈式落位（后插在上，保持到完成）。
   Future<void> _onReorder(TodayView view, List<Task> combined, int oldIndex,
       int newIndex) async {
-    final item = combined[oldIndex];
     final insert = newIndex > oldIndex ? newIndex - 1 : newIndex;
+
+    if (controller.isManualSort) {
+      final newOrder = [...combined]
+        ..removeAt(oldIndex)
+        ..insert(insert, combined[oldIndex]);
+      await controller.setManualOrder([for (final t in newOrder) t.id]);
+      return;
+    }
+
+    final item = combined[oldIndex];
     final oldPinnedCount = view.pinned.length;
     if (insert >= oldPinnedCount) return;
 
