@@ -11,7 +11,7 @@
 >
 > 分工：产品定位、调度数学与阶段规划见原《动态任务调度 Todo 设计文档》。**客户端层的
 > 需求与决议见 docs/ui-interaction.md（v0.12，决议 1–43）**——本文件为它提供结构与插座，
-> 对接点 = §3.5 命令清单 + §4.3 送达策略 + §4.1 Scheduler 的 `reminderMode` / `sortMode`；
+> 对接点 = §3.5 命令清单 + §4.3 送达策略 + §4.1 Scheduler 的 `reminderMode`；
 > 结构冲突以本文件为准，产品行为以 UI 文档为准。
 > 本文件接管原设计文档
 > 结构章节（按名称引用）：「总体架构」「Repository 层」「Scheduler 层」「一个非常重要的
@@ -29,12 +29,16 @@
 > （`TaskMetric.reminds` 与结果级的 `nextReminderAt`），与"什么时候允许打扰"
 > （§4.3 的通知时间段）正交，两者串联而不是互相覆盖。
 >
-> **排序模式（v1.12，见决议 43 与 §3.1）**：默认**自动模式**——可推组按调度优先级
-> （`priority = risk × importance`）排先后；**无排序模式**关掉这一层：不按任何排序键，
-> 顺序完全由人拖（metadata `manual_order`），今日清单可推组也不再按"锚点落在今天"筛选。
-> 它只管**顺序**（以及无排序模式下可推组的准入），与提醒模式（出不出声）正交；
-> 裕度、风险、提醒锚点与间隔、逾期与不可行判定**照算**——算法没被拆掉，只是不再替人
-> 决定谁排前面。
+> **调度模式三档（v1.12，见决议 43、D17 与 §3.1）**：**完整 → 标准 → 无排序**，
+> 逐级弱化算法替人做主的程度，一次只能选一个（不是两个正交开关）：
+> - **标准（默认）**：算法照常排先后，但不产出提醒（个别任务可手动开 `remind`）；
+> - **完整**：在标准之上把门槛也放开——算法判定该响的都响；
+> - **无排序**：在标准之上把**排序**这一层也去掉——今日可推组的**成员不变**
+>   （仍按"锚点落在今天 / 今天到期"准入），只有组内顺序改由人拖（`manual_order`）。
+>
+> 三档**都下沉不到内核**：`Scheduler.schedule` 只知道 `ReminderMode`（门槛），
+> 排序是**业务层的查询口径**（`buildTodayView`）——裕度、风险、锚点与间隔、
+> 逾期与不可行判定在任何一档里照算，算法没被拆掉，只是不再替人决定谁排前面。
 
 **术语约定**：全文混用同义——**插座 = 端口 = 接口**；**插头 = 适配器 = 实现**；
 **客户端** = 从外部调用核心的构件（UI、AI）。
@@ -141,9 +145,9 @@
 | `WorkTimeRule` / `WorkWindow` | 工时日历：每周工作窗、节假日；`workMinutesBetween`、`addWorkMinutes`、`nextWindowStart`（D8「到下个工作窗」） | 现状 |
 | `Clock` | 当前时间 `DateTime now()`，构造注入【现状，形态为 `DateTime Function()`】 | 现状 |
 | `TaskMetric` | 单任务派生指标：available、slack、**risk（v1.9，裕度的非线性函数）**、**priority（v1.9 = risk × importance，排序键）**、urgency、displayStatus、interval、nextReminderAt（**提醒锚点**）、**reminds（v1.9：当前模式下会不会出声）**；计算结果，不持久化【现状】 | 现状 |
-| `ScheduleResult` | 一次调度的输出：items（**已排序**；无排序模式下按手动序）、nextTaskId、nextReminderAt（**下一站"会响"的提醒**，v1.9 起已过模式门槛）、infeasible/overdue 名单；所有算法的统一方言【现状】 | 现状 |
-| `ReminderMode` | 提醒**门槛**：**standard**（标准，默认：只排列不提醒，逐任务可手动开）/ **full**（完整：算法判定该响的都响）。v1.9 起进 `Scheduler.schedule` 的入参 | 现状 |
-| `SortMode` | 排序**口径**：**auto**（自动，默认：按调度优先级 `priority` 排先后）/ **manual**（无排序：不按任何排序键，只按人拖出来的 `manual_order`，见 D17）。v1.12 起进 `Scheduler.schedule` 的入参 | 现状（v1.12） |
+| `ScheduleResult` | 一次调度的输出：items（**已排序**：永远按调度优先级排，不知道有"无排序"这一回事）、nextTaskId、nextReminderAt（**下一站"会响"的提醒**，v1.9 起已过模式门槛）、infeasible/overdue 名单；所有算法的统一方言【现状】 | 现状 |
+| `ReminderMode` | 提醒**门槛**（内核方言）：**standard**（标准：只排列不提醒，逐任务可手动开）/ **full**（完整：算法判定该响的都响）。v1.9 起进 `Scheduler.schedule` 的入参 | 现状 |
+| `ScheduleMode` | **调度模式**（用户可见的三档，domain）：**full** / **standard**（默认）/ **manual**，逐级弱化算法替人做主的程度；由 [ReminderMode] 派生出内核门槛 + `isManual` 决定业务层是否用手动序（D17）。**只活在 application 与 UI**，内核不认得它 | 现状（v1.12） |
 | `ReminderEvent` | 到点提醒事件：firedAt + **taskId + kind（soft 软提醒 / point 时点提醒）** + 当时的调度快照 | 现状 |
 | `PointReminder` | 时点性提醒候选（不可推到点 + 设了响的周期实例）：到点时刻 + 目标任务；到点后 30 分钟内仍可补响（`pointReminderGrace`） | 现状 |
 | `DomainEvent` | 领域事件：type、taskId、at、**origin(user/ai/migration/system)** | 现状 |
@@ -173,14 +177,20 @@ nextReminderAt = addWorkMinutes(now, interval)     # 锚点，结果自动落在
 排序：infeasible 与 normal 同池按 **priority 降序**（deadline 升序、id 升序裁决）；
 overdue、snoozed 沉底；overdue 退出提醒循环。
 
-**无排序模式（v1.12，D17）**：`sortMode = manual` 时上面这套排序键**完全不参与**——
-`ScheduleResult.items`、今日清单可推组、任务池一律按 `manual_order` 排（没序号的按
-**id 升序**沉在末尾，即"创建先后"作稳定裁决）。关掉的只有**排序**这一层：
-`slack` / `risk` / `priority` 照算，逾期（B1）与不可行（B2）判定、提醒锚点与间隔、
-提醒门槛（B4）**全部不变**——它们管的是"多久响一次""要不要升级""出不出声"，
-不是"谁排前面"。所以无排序模式下**算法并没有被拆掉**，只是不再替人决定先后；
-也因为锚点照算，**今日清单的"锚点准入"要单独关**（否则仍是算法在挑今天看哪几件）——
-无排序模式下可推组 = 全部未完成、有截止的可推任务（口径见 ui-interaction.md §6.1）。
+**无排序（第三档，v1.12，D17）**：这一层**完全不属于内核**——`Scheduler.schedule`
+不收任何排序口径，`ScheduleResult.items` 在任何一档都按上面的排序键排。
+`ScheduleMode.manual` 只让**业务层**（`buildTodayView`）不再采用这个顺序：
+今日可推组改按 `manual_order`（metadata，没序号的按**id 升序**沉在末尾，
+即"创建先后"作稳定裁决）。
+
+关掉的只有**"今日清单里谁排前面"**这一件事：
+- **成员不变**：可推组仍按"锚点落在今天 / 今天到期"准入（ui-interaction.md §6.1），
+  无排序**不是**把所有有截止的任务都塞进今天；
+- **数学不变**：`slack` / `risk` / `priority` 照算，逾期（B1）与不可行（B2）判定、
+  提醒锚点与间隔、提醒门槛（B4）**全部不变**——它们管"多久响一次""要不要升级"
+  "出不出声"，不是"谁排前面"；
+- **任务池不变**：池子本来就是手动整理序（`pool_order`），没有算法排序可言，
+  周期条目按发生日期混排（决议 27）照旧。
 
 **提醒门槛（v1.9，两个模式，D15）**：`reminderAllowed(task, mode)` 不成立时这一件**不出声**
 ——`TaskMetric.reminds = false`、`reminderAt = null`，于是 `ScheduleResult.nextReminderAt`
@@ -220,8 +230,8 @@ overdue、snoozed 沉底；overdue 退出提醒循环。
 - B5. **手动序是用户意图**（v1.12，D17）：`manual_order`（metadata，非负整数序号）
   = 人拖出来的顺序，**持久化在任务上**；与 `pinned`（插队）、`pool_order`（池子整理）
   同属"人的意图"一类，和 B3 的调度优先级正好相反——后者不落盘、换算法即变。手动序
-  **只在 `sortMode == manual` 时参与比较**：自动模式下它原样躺在 metadata 里不生效，
-  切模式不迁移、不改写任何数据（视图重算即可）。
+  **只在无排序档（`ScheduleMode.manual`）参与比较**：标准/完整两档下它原样躺在
+  metadata 里不生效，切档不迁移、不改写任何数据（视图重算即可）。
 
 **架构规则**（对代码的约束）：
 
@@ -279,8 +289,8 @@ TaskService 每个命令完成后广播 `DomainEvent`（含 origin）。通知�
 | `setTaskReminder(taskId, enabled)` | **逐任务提醒开关**（v1.9，D15）：写 metadata `remind`；标准模式下这是让单个任务出声的**唯一**手段，完整模式下无意义（本来就全响） |
 | `pickForToday` / `returnToPool` | 挑散件到今日尾部（`picked_for_today` 标记，当日手动挑优先、尾部最多一件）/ 放回池子 |
 | `setPoolOrder(taskId, order)` | 池子显示序（`pool_order`，仅整理无调度含义，重启保留） |
-| `setManualOrder(taskIds)` | **手动序**（v1.12，D17）：按给定顺序整段重编 `manual_order`（从 0 连续编号）；只在无排序模式下参与排序，自动模式下原样保留 |
-| `updateSortMode(mode)` | 排序模式开关（**auto** 默认 / **manual**）：与 `updateReminderMode` 同款——只重算视图，不动任何任务数据、无迁移 |
+| `setManualOrder(taskIds)` | **手动序**（v1.12，D17）：按给定顺序整段重编 `manual_order`（从 0 连续编号）；只在无排序档参与今日清单的顺序，其余两档下原样保留 |
+| `updateScheduleMode(mode)` | **调度模式**三档切换（**full** / **standard** 默认 / **manual**）：同时决定给内核的门槛与业务层的顺序口径；只重算，不动任何任务数据、无迁移 |
 | `deleteTask` / `restoreTask` / `purgeTrash` | 软删除三件套：移入 `.gtd/.trash/` / 从回收站恢复 / 清空回收（D11） |
 | `refreshSchedule` | 重锚（C2：只在事件发生时调用） |
 | **周期任务（v1.5）** | |
@@ -291,7 +301,7 @@ TaskService 每个命令完成后广播 `DomainEvent`（含 origin）。通知�
 
 领域事件相应扩充：taskPinned / taskPicked / taskRestored / trashPurged（v1.4）、
 **routineCreated / routineUpdated / routineDeleted / routineInstanceGenerated /
-routineSkipped（v1.5，taskId = 规则 id 或实例 id）**、**taskReminderSet（v1.9，逐任务提醒开关）**、**manualOrderChanged / sortModeChanged（v1.12：手动序改写与排序模式切换，订阅者只需重算视图）**。
+routineSkipped（v1.5，taskId = 规则 id 或实例 id）**、**taskReminderSet（v1.9，逐任务提醒开关）**、**manualOrderChanged / scheduleModeChanged（v1.12：手动序改写与调度模式切换，订阅者只需重算视图）**。
 
 ---
 
@@ -334,7 +344,8 @@ abstract class Scheduler {
     required DateTime now,
     required WorkTimeRule workRule,
     ReminderMode reminderMode = ReminderMode.standard,   // v1.9：提醒门槛（D15）
-    SortMode sortMode = SortMode.auto,                   // v1.12：排序口径（D17）
+    // 没有 sortMode 是**故意的**（v1.12 D17）：内核那份排序还服务于 nextTask /
+    // 提醒锚点等计算，排序是业务层的查询口径，下沉到这里会让它出现在所有算法的实现里。
   });
 }
 ```
@@ -416,10 +427,9 @@ class MarkdownTaskRepository implements TaskRepository { /* … */ }
   与 `slack.v1`（旧，裕度几何递减）；默认由组装点（main.dart）挑，设置页暂不提供切换入口。
   `ShadowScheduler` 把 `reminderMode` 原样透传给两边，影子差异除 nextTask / interval 外
   也看 `priority`——排序口径变了，要看得见。
-  **v1.12 起 `schedule` 多一个 `sortMode`**：它**不是第三个算法**——注册表里仍然只有
-  那两个 `id`，两个算法各自都接受这个入参（`manual` 时排序键不参与比较，
-  `priority` 照算并照旧暴露给影子对比）；`ShadowScheduler` 同样原样透传，两边同口径
-  才比得出差异。
+  **v1.12 的"无排序"不进注册表**：它不是第三个算法，`sortMode` 也不是 `schedule` 的
+  入参——这一档改的是"清单按什么顺序展示"，属业务层查询（见下条）。注册表里
+  仍然只有那两个 `id`。
 
 **UI 文档带来的新座位（v1.4–v1.7 陆续落地）**：
 
@@ -435,11 +445,12 @@ class MarkdownTaskRepository implements TaskRepository { /* … */ }
   聚合 ScheduleResult（可推/逾期）+ 固定时点组 + 例行实例 + 被挑散件四种来源，
   UI 只消费查询结果（D12）【现状（v1.4）；v1.5 补：例行组落地，
   计划段以 `PoolRow`（任务行 / 周期条目）按日期混排，决议 27/14】；
-  **v1.12 起这两处与 Scheduler 共用同一个 `sortMode`**：自动模式按调度优先级排可推部分，
-  无排序模式按 `Task.manualOrder`（无序号者按 id 升序沉末尾）；**今日清单可推组的准入
-  在两种排序模式下不同**——自动模式用提醒锚点筛"今天该看哪几件"，无排序模式不再筛选
-  （见 ui-interaction.md §6.1）；周期条目没有手动序（每天新生），无排序模式下按发生日期
-  升序**接在手动排的任务之后**（决议 27 的"按日期插入对应位置"只在自动模式下生效）；
+  **v1.12 起 `buildTodayView` 收 `ScheduleMode`**：只有**无排序**这一档换个排法——
+  今日可推组改按 `Task.manualOrder`（无序号者按 id 升序沉末尾），插队压顶那一层取消
+  （顺序本身就由人定，不需要补丁）。**可推组的成员不变**——三档都用提醒锚点筛
+  "今天该看哪几件"（见 ui-interaction.md §6.1）；
+  `buildPoolView` **不收**这个入参：池子本来就是手动整理序（`pool_order`），
+  周期条目按发生日期混排（决议 27）在任何一档都一样；
 - **SettingsPort**：应用设置（通知时间段、定期挑、疑问笔记路径、主题预设、
   周期任务是否进池等）的存取端口【现状（v1.4）：application/settings.dart +
   platform 落盘实现】；**v1.5 起设置文件仍在任务目录 `settings.json`**，
@@ -807,20 +818,24 @@ class SystemSnapshot {
     逐任务提醒开关走 `setTaskReminder`（metadata `remind`，附录 B.2 登记）；
     `AppSettings.reminderMode` 落 `settings.json`（**默认标准模式**），设置页可切；
     旧算法、影子运行、ReminderDispatcher、时点提醒全部按同一门槛对齐。
-14. **排序模式：无排序（v1.12，决议 43）**：**已落地**——domain 新增
-    `SortMode`（`auto` 默认 / `manual`）进 `Scheduler.schedule` 与 `buildTodayView` /
-    `poolView`（**不新增第三个算法**）；metadata `manual_order`（附录 B.2 登记）+ 命令
-    `setManualOrder(taskIds)` / `updateSortMode(mode)`；`AppSettings.sortMode` 落
-    `settings.json` 的 `sort_mode`；无排序模式下今日可推组**不再按锚点准入**（全部未完成、
-    有截止的可推任务进今日），周期条目按发生日期升序接在手动排的任务之后。落地点：
-    `domain/schedule.dart`、`scheduler/*.dart`、`application/{task_service,today_view,
-    pool_view,settings}.dart`、`repository/task_sidecar.dart` + `markdown_task_codec.dart`
-    （`manual_order` 写回）、`ui/panels/settings_panel.dart`。预期不影响既有用例（默认 auto）。
+14. **调度模式三档：无排序（v1.12，决议 43）**：**已落地**——domain 新增
+    `ScheduleMode`（`full` / `standard` 默认 / `manual`）取代原先两个并列开关，
+    由它派生内核门槛（`ScheduleMode.reminderMode`）与业务层排序口径（`isManual`）；
+    metadata `manual_order`（附录 B.2 登记）+ 命令 `setManualOrder(taskIds)` /
+    `updateScheduleMode(mode)`；`AppSettings.scheduleMode` 落 `settings.json` 的
+    `schedule_mode`（仍读得懂旧字段 `reminder_mode`）。**内核一行未改**：
+    `Scheduler.schedule` 只有 `reminderMode`，"无排序"纯粹是 `buildTodayView`
+    不采用 `ScheduleResult.items` 的顺序——可推组**成员不变**（仍按锚点准入），
+    任务池与周期条目混排不受影响。落地点：`domain/schedule.dart`、
+    `application/{task_service,today_view,settings}.dart`、`ui/app_controller.dart` +
+    两个引擎的装配、`ui/panels/settings_panel.dart`（三档一组）。
+    既有用例不受影响（默认 standard）。
 
 1→4 是一次纯内部小迭代；5–7 是存储改造；8 与 13 是算法层升级；
 9 起进入多平台；12 是人机数据归属的再切分（不改调度数学）；
 13 是"**默认安静**"这条产品决定在算法层的落地（顺序不变，只把"出声"变成可选）；
-14 是"**默认由算法排**"这条产品决定的对应档位（把顺序也交回给人，数学一行不动）。
+14 是"**默认由算法排**"这条产品决定的对应档位——把"今天这几件的先后"交回给人，
+**只改顺序**：今天该看哪几件、多久催一次、要不要升级、出不出声，三档全部一致。
 
 ---
 
@@ -842,9 +857,9 @@ class SystemSnapshot {
 | D12 | 今日清单聚合查询放 application（`todayView()`），UI 只消费查询结果 | 四种来源的聚合是查询不是渲染；守住"UI 不含逻辑"（原则 3） |
 | D13 | **双文档存储**：人写 `tasks.md`（一行一条任务，`# 标题` 分类），内核写 `.gtd/<id>.md`；两文档靠**行指纹**配对 | 人机混写一个文件必然互相糟蹋。分开之后"谁写谁负责"落到文件层面：应用改自己那半边时物理上碰不到人的内容，Obsidian 共享的那一个文档也保持纯净（无 id、无裕度、无优先级噪声） |
 | D14 | 人类文档的**复选框只认显式完成**（status/completed_at），不认 `isCompleted` 里"flex 剩余工时归零"的派生判断 | 派生语义写进文档会让"读→写"往返自己篡改人的意图（`- [ ]` 变 `- [x]`），行指纹随之失效。派生是调度语义，不该落盘成人的决定 |
-| D15 | **两种提醒模式，默认标准**：标准 = 只排列不提醒（逐任务可手动开，metadata `remind`）；完整 = 原方案（该响的都响）。门槛做在**算法产出这一层**（`reminderAllowed` → `nextReminderAt` / `nextPointReminder` 为 null），不是做在通知实现里 | 提醒是打扰，默认应该安静；要推着走的事再逐个开。**放算法层的理由**：这样"不出声"在调度结果里就是事实，单闹钟、前台轮询、通知实现、今日徽标都不用各写一遍 if，也不会出现"算出一站、通知层再吞掉"的两处口径。门槛与送达策略（D10）**串联**：先过门槛（要不要出声）再过时间段（什么时候出声） |
+| D15 | **两种提醒模式，默认标准**：标准 = 只排列不提醒（逐任务可手动开，metadata `remind`）；完整 = 原方案（该响的都响）。门槛做在**算法产出这一层**（`reminderAllowed` → `nextReminderAt` / `nextPointReminder` 为 null），不是做在通知实现里 | 提醒是打扰，默认应该安静；要推着走的事再逐个开。**放算法层的理由**：这样"不出声"在调度结果里就是事实，单闹钟、前台轮询、通知实现、今日徽标都不用各写一遍 if，也不会出现"算出一站、通知层再吞掉"的两处口径。门槛与送达策略（D10）**串联**：先过门槛（要不要出声）再过时间段（什么时候出声）。**v1.12 起这两档并入 `ScheduleMode` 三档**（D17）：多加的那一档只改业务层的顺序口径，门槛那一套逻辑一行没动 |
 | D16 | 排序键 = **调度优先级** `priority = risk × importance`，`risk` 是裕度的**非线性**（指数族）函数 `exp(−(slack/τ)^γ)`；`importance` 缺省 3。**命名**：人定的 1–5 叫优先级（内核属性文档 `priority` 键 = `Task.importance`），算出来的叫调度优先级（**不落盘**） | 裕度是唯一压力表，但压力不该随裕度**线性**变化：线性要给 slack 凭空规定"到哪算 0"，还会给出负风险；指数族只要一个尺度 τ、恒在 (0,1]，且"裕度还宽时催得少、一薄就陡然变急"正是想要的非线性。importance 作乘数让重要的事整体前移，却盖不过已经贴住截止的事（risk→1）。同名不同物（输入 vs 输出）在 §3.2 B3 与本表写明，避免两份"优先级"打架 |
-| D17 | **排序模式：自动（默认）/ 无排序**（v1.12）。无排序模式下排序键**完全不参与**顺序（`ScheduleResult.items`、今日可推组、任务池都按 `manual_order`，无序号者按 id 升序沉末尾），且今日可推组**不再按"锚点落在今天"筛选**（全部未完成、有截止的可推任务都进今日）；关掉的只有**排序**这一层，`slack`/`risk`/`priority` 与提醒锚点、逾期、不可行判定、提醒门槛**照算**。**不新增第三个 Scheduler 的 `id`**——`sortMode` 是入参不是算法（否则"换算法 = 注册一个新 Scheduler"（§8）这条会被绕开，注册表里也会多一个没有数学的假算法）；`manual_order` 是**用户意图**、持久化（B5），只在无排序模式下生效，切模式不迁移、不改写数据 | 顺序是"今天先做哪件"的判断，算法替人做这个判断在系统里无处不在（排序键、插队、锚点准入三层都在替人决定），总要有"全都交给人"这一档。**只关排序、不关数学**的理由：锚点与间隔管的是"多久响一次"、逾期与不可行管的是"要不要升级"——把它们一起关掉等于把提醒系统拆了，那不是"不排序"而是"不调度"，代价远超收益。**准入要一起关**的理由：锚点准入本身就是算法在挑"今天看哪几件"，只改顺序不改准入的话，人能拖的仍然是算法替他挑好的那一小撮，"无排序"名不副实。**序号存 metadata 而非独立文件**的理由：行级/字段级保真（§3.4）已经保证它跟着任务走，任务删了序号自然消失，不需要第二份需要同步的真相 |
+| D17 | **调度模式三档：完整 / 标准（默认）/ 无排序**（v1.12），取代原先"提醒模式 + 排序模式"两个并列开关。无排序 = **标准的再弱化版**：今日可推组的顺序改按 `manual_order`（无序号者按 id 升序沉末尾）、插队压顶那一层取消；**除此之外与标准一模一样**——可推组仍按"锚点落在今天"准入，任务池仍是 `pool_order` 整理序，`slack`/`risk`/`priority`、提醒锚点与间隔、逾期与不可行判定、提醒门槛全部照算。**内核不知道有三档**：`Scheduler.schedule` 只收 `ReminderMode`，`ScheduleMode` 是 application/UI 层的概念（由它派生内核门槛 + 排序口径），注册表里不会多出一个没有数学的假算法，§8"换算法 = 注册一个新 Scheduler"不被绕开。`manual_order` 是**用户意图**、持久化（B5），只在无排序档生效，切档不迁移、不改写数据 | 三档是**一条逐级弱化的谱系**而不是三个正交维度：它们回答的是同一个问题——"算法替人做主到什么程度"（排先后、要不要出声）。做成一组三选一，用户不需要理解两个开关的组合含义。**准入不跟着关**的理由：用户要的是"今天这几件的先后由我定"，不是"今天该看哪几件也由我定"——后者会让远期任务全涌进今日清单，那是另一个产品（手工 Todo），不是无排序。**不下沉到内核**的理由：内核那份排序还服务于 nextTask / 提醒锚点等计算，把它关掉等于把下一站也弄丢；而且一旦进 `schedule` 的签名，每个算法实现都得处理一个没有数学的分支。**序号存 metadata 而非独立文件**的理由：行级/字段级保真（§3.4）已经保证它跟着任务走，任务删了序号自然消失，不需要第二份需要同步的真相 |
 
 ---
 
@@ -869,9 +884,8 @@ class SystemSnapshot {
 | **风险的尺度 τ 是全局的**（v1.9） | 同一个 τ（默认 1 个工作日）套在所有任务上："三天后交"和"三小时后交"用同一个尺度；个人对"紧"的感受只能靠调 τ/γ 或改 importance 表达 | 出现"同一批任务需要不同压力尺度"的真实需求时（按标签/分类配尺度） |
 | **旧算法只在注册表里留着**（v1.9） | `slack.v1` 保留是为了对照与影子运行；设置页**没有**"换算法"入口（要改得动组装点）。这符合 §8"换/加算法 = 注册一个新 Scheduler"，但用户当下无法自选 | 需要"用户自选算法"时（设置里补一个选择器；注册表与 `params` 都已就绪） |
 | **两种模式的差别只在"要不要出声"**（v1.9） | 顺序、分组、编号、今日清单准入在两种模式下**完全一样**（`TaskMetric.nextReminderAt` 是锚点，不受门槛影响），所以标准模式不会"少看到事"，只会"少听到响" | 若将来要求标准模式也改动清单构成（例如"没开提醒的都不进今日"），先改 §6.1 与 `buildTodayView` |
-| **无排序模式下今日清单会变长**（v1.12） | 可推组不再按"锚点落在今天"筛选：所有未完成且有截止的可推任务都进今日（含一周后才到期的），顺序由人定。代价是清单长、滚动多 | 清单长到影响浏览时（加"只看 N 天内截止"的过滤开关，或允许把单件显式"收回池子"） |
-| **手动序只覆盖被拖过的那一段**（v1.12） | 拖动一次就对当前列表整段重编号；没排过序的任务没有 `manual_order` → 按 id 升序沉在末尾，新任务同样从末尾开始 | 出现"新任务要能插到中间"的需求时（创建后给它一个"插到某件之前"的入口，本质仍是写一个序号） |
-| **周期条目在无排序模式下沉末尾**（v1.12） | 周期条目不是任务、每天新生，没有手动序，只能按发生日期升序接在手动排的任务之后；决议 27 的"按日期插入对应位置"只在自动模式下生效 | 要求周期条目也参与手动排序时（给**规则**一个序号，实例继承它） |
+| **手动序只覆盖被拖过的那一段**（v1.12） | 拖动一次就对当前今天的 flex 组整段重编号；没排过序的任务没有 `manual_order` → 按 id 升序沉在末尾，新任务同样从末尾开始 | 出现"新任务要能插到中间"的需求时（创建后给它一个"插到某件之前"的入口，本质仍是写一个序号） |
+| **无排序只管今日的 flex 组**（v1.12） | 逾期组仍置顶、固定时点组仍按时刻升序（时刻就是序）、例行组仍按当天发生时刻、被挑散件仍在最后；任务池仍按 `pool_order` 整理序、周期条目仍按发生日期混排（决议 27）。`manual_order` 对池子无效 | 要求固定时点组或周期条目也能随手拖时（要动决议 11/27，先改 UI 文档再改 §3.1） |
 
 ---
 
@@ -1172,44 +1186,42 @@ class SystemSnapshot {
   `side_panel.dart` 引导文案同步）。**验证状态 = 未验证**：`flutter analyze` /
   `flutter test` 因 Windows 命名管道耗尽（OS error 231）跑不起来，只过了 `dart format`
   （可解析 + 格式整洁）——两项待补，不是结论。
-- **v1.12**（2026-10-12）：**无排序模式：关掉算法排序，顺序完全手动**（与 ui-interaction.md
-  v0.12 配对，决议 43；用户提的"增加无排序模式，关闭算法，不按任何排序，可随意手动拖动
-  顺序"）。要点——
-  ① **新增 `SortMode`（domain）**：`auto`（默认，按调度优先级 `priority` 排）/
-  `manual`（无排序：不按任何排序键，只按 `manual_order`）。它进 `Scheduler.schedule`
-  的入参、`buildTodayView` / `poolView` 与 `ShadowScheduler`（同一口径透传），
-  **但不是第三个算法**——注册表里仍然只有 `slack-priority.v1` 与 `slack.v1` 两个 `id`，
-  §8"换/加算法 = 注册一个新 Scheduler"与 §14"用户自选算法不做"两条口径不变。
-  ② **关掉的只有排序这一层**：`slack` / `risk` / `priority` 照算，逾期（B1）与不可行
-  （B2）判定、提醒锚点与间隔、提醒门槛（B4/D15）**全部不变**——它们管"多久响一次"
-  "要不要升级""出不出声"，不管"谁排前面"。**例外**：今日清单可推组的**准入**要一起关
-  （锚点准入也是算法在挑今天看哪几件），无排序模式下 = 全部未完成、有截止的可推任务。
-  周期条目没有手动序，按发生日期升序**接在手动排的任务之后**（决议 27 只在自动模式生效）。
-  ③ **手动序是用户意图（B5）**：`manual_order`（metadata 非负整数，拖动时整段重编号）
-  **持久化在任务上**，只在无排序模式下参与比较；自动模式下原样保留、不生效——
-  切模式只重算视图，**不迁移、不改写任何任务数据**（与 D15 的提醒模式同款）。
-  新增命令 `setManualOrder(taskIds)` 与 `updateSortMode(mode)`（§3.5），
-  领域事件 `manualOrderChanged` / `sortModeChanged`；模式落 `settings.json` 的 `sort_mode`；
-  附录 B.2 登记 `manual_order` 键（漏登记会让手动序在命令自己的重锚里蒸发，v1.7 那次的教训）。
-  ④ **新决策 D17**（§11）与三条新局限（§12：今日清单变长 / 手动序只覆盖拖过的那一段 /
-  周期条目沉末尾）。与提醒模式的关系写进 D15 的近邻：**两者正交**——提醒模式管出不出声，
-  排序模式管谁排前面；§12 那条"两种模式（提醒）的差别只在要不要出声"因此不受影响。
-  ⑤ **代码已落地**（同日补齐，落点与上表第 14 条一致）：`domain/schedule.dart` 新增
-  `SortMode` 与 `compareManualOrder`（无排序模式唯一的顺序来源，无序号者沉末尾按 id 升序）；
-  `Scheduler.schedule` 加 `sortMode` 入参（两个算法 + `ShadowScheduler` 同口径透传）；
-  `Task.manualOrder` getter；sidecar 与旧 codec 登记 `manual_order`；
-  `AppSettings.sortMode` 落 `settings.json` 的 `sort_mode`（缺省 auto）；
-  `TaskService` 增 `sortMode` / `updateSortMode` / `setManualOrder`（批量落盘后只重锚一次，
-  不像 `setPoolOrder` 那样一件一重锚）；`buildTodayView` / `buildPoolView` 按 §4.1 的口径
-  分岔；设置页新增『排序』节（自动 / 无排序）；两个引擎的装配点各加一条
-  `onSortModeChanged`；今日与池子的拖拽在 `isManualSort` 下改走 `setManualOrder`。
-  **验证**：`flutter analyze` 干净（只剩 3 条既有的 `onReorder` 弃用 info，与本版无关）；
-  **160 个测试全绿**（原 146 + 新增 12：新增 `test/sort_mode_test.dart` 11 个——
-  manual 排序与"数学不受影响"、无序号沉末尾、今日准入口径、无插队层、四处不跟着变、
-  池子手动序与周期条目沉末尾、整段重编号、切模式不动数据、缺省 auto；
-  `markdown_task_repository_test` 补 1 个 `manual_order` 落盘往返）。
-  **真机必测**：① 设置页切『无排序』后今日清单立刻变长（远期任务进来）、顺序不再按裕度；
-  ② 在今日可推组与任务池各拖一次，重启后顺序还在；③ 切回『自动』手动序不生效但数据仍在。
+- **v1.12**（2026-10-12，**2026-10-13 修订**）：**调度模式三档：完整 / 标准（默认）/
+  无排序**（与 ui-interaction.md v0.12 配对，决议 43；用户提的"增加无排序模式，关闭算法，
+  不按任何排序，可随意手动拖动顺序"）。要点——
+  ① **`ScheduleMode`（domain）取代两个并列开关**：原先"提醒模式 + 排序模式"是两套枚举，
+  用户指出**无排序应该是标准模式的再弱化版**、三者是并列档位而不是正交维度，于是合并成
+  一组三选一：`full` / `standard`（默认）/ `manual`，由它派生内核门槛
+  （`ScheduleMode.reminderMode`）与业务层排序口径（`isManual`）。旧的 `settings.json`
+  字段 `reminder_mode` 仍读得懂（两个值正好是三档里的前两档）。
+  ② **内核一行未改**：`Scheduler.schedule` 只收 `ReminderMode`，**没有 `sortMode` 入参**——
+  用户指出"实现这一模式不是只改业务层就好了吗"，这条是对的：内核那份排序还服务于
+  nextTask / 提醒锚点等计算，下游想要另一种顺序，在业务层不采用它即可。
+  于是"无排序"= `buildTodayView` 不按 `ScheduleResult.items` 排今日 flex 组，**也不是第三个
+  算法**（注册表里仍然只有那两个 `id`，§8/§14 两条口径不变）。
+  ③ **只改顺序，不改成员**（第二版修订）：可推组仍按"锚点落在今天 / 今天到期"准入——
+  用户指出"无排序只是今天的任务不排序，不是把所有任务都塞在今天"。相应地
+  `buildPoolView` 也不再收这个入参：池子本来就是手动整理序（`pool_order`），
+  周期条目按发生日期混排（决议 27）在三档下都一样。
+  ④ **手动序是用户意图（B5）**：`manual_order`（metadata 非负整数，拖动时整段重编号）
+  **持久化在任务上**，只在无排序档参与比较；其余两档下原样保留、不生效——切档只重算视图，
+  不迁移、不改写任何任务数据。命令 `setManualOrder(taskIds)` / `updateScheduleMode(mode)`
+  （§3.5），领域事件 `manualOrderChanged` / `scheduleModeChanged`；模式落
+  `settings.json` 的 `schedule_mode`；附录 B.2 登记 `manual_order` 键
+  （漏登记会让手动序在命令自己的重锚里蒸发，v1.7 那次的教训）。
+  ⑤ **数学一行不动**：`slack` / `risk` / `priority` 照算，逾期（B1）与不可行（B2）判定、
+  提醒锚点与间隔、提醒门槛（B4/D15）全部不变——它们管"多久响一次""要不要升级"
+  "出不出声"，不管"谁排前面"。
+  ⑥ **新决策 D17**（§11）与两条新局限（§12：手动序只覆盖拖过的那一段 / 无排序只管今日
+  flex 组；原先那条"今日清单会变长"的局限随第二版作废，锚点准入不再放开）。**代码已落地**（2026-10-13 完成第二版）：
+  `domain/schedule.dart` 的 `ScheduleMode` + `compareManualOrder`（无序号者沉末尾、
+  按 id 升序）、`Task.manualOrder`、sidecar 与旧 codec 登记 `manual_order`、
+  `AppSettings.scheduleMode`、`TaskService.scheduleMode` / `updateScheduleMode` /
+  `setManualOrder`（批量落盘后只重锚一次）、`buildTodayView` 的 `scheduleMode` 入参、
+  设置页『提醒与排序』节三选一、两个引擎各一条 `onScheduleModeChanged`、
+  今日面板拖动在 `isManualSort` 下写 `manual_order`。
+  **待补**：`flutter analyze` 与全量 `flutter test` 因 Windows 命名管道耗尽（OS error 231）
+  在本机反复崩溃，本版只做了静态自查与口径复核，**两项仍是未验证**；
 
 ---
 
@@ -1341,7 +1353,7 @@ snoozed_until: 2026-10-11T17:10   # 与 status: snoozed 配套（D8：用户意�
 | `routine_skipped` | 被"跳过今天"的那一天（yyyy-MM-dd；不完成、当天不再显示） | ui 文档决议 23 |
 | `point_fired` | 已响过的那一次时点提醒（值 = 当时的到点时刻 ISO；改期/推迟后清除） | v1.5 实现（只到点响一次） |
 | `remind` | **逐任务提醒开关**（标准模式下让这一件出声；只写 `true`，关掉即删键）。完整模式下无意义 | ui 文档 §7.0 / 决议 38（v1.9） |
-| `manual_order` | **手动序**（无排序模式下的显示序，非负整数；拖动一次整段重编号）。自动模式下**保留但不生效**，切模式不迁移 | ui 文档 §6.1 / 决议 43（v1.12） |
+| `manual_order` | **手动序**（**无排序档**下今日可推组的显示序，非负整数；拖动一次整段重编号）。标准/完整两档下**保留但不生效**，切档不迁移 | ui 文档 §6.1 / 决议 43（v1.12） |
 
 - **解析宽容**：坏文件降级进 `warnings`，不崩溃。**warnings 流向**：现暂存于
   `repo.warnings` 仅供诊断；目标形态 = 进领域事件流 + UI"待整理"清单【规划】；
