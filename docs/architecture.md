@@ -290,7 +290,9 @@ TaskService 每个命令完成后广播 `DomainEvent`（含 origin）。通知�
 | `pinToTop(taskId)` | 插队 = 持久意图记在任务（metadata `pinned`），保持到完成、栈式压顶；仅对可推组生效，**且无排序档下不生效**（那一档顺序整体由 `manual_order` 定，见 B5 / D17） |
 | `setTaskReminder(taskId, enabled)` | **逐任务提醒开关**（v1.9，D15）：写 metadata `remind`；标准模式下这是让单个任务出声的**唯一**手段，完整模式下无意义（本来就全响） |
 | `pickForToday` / `returnToPool` | 挑散件到今日尾部（`picked_for_today` 标记，当日手动挑优先、尾部最多一件）/ 放回池子 |
-| `setPoolOrder(taskId, order)` | 池子显示序（`pool_order`，仅整理无调度含义，重启保留） |
+| `setPoolOrder(taskId, order)` | 池子显示序（`pool_order`，仅整理无调度含义，重启保留）；**单条改序**——一次手势要改整段时走下一条 |
+| `setPoolOrders(taskIds)` | 池子显示序的**整段重编号**（0 连续）：一次拖动手势 = 一次写盘 + 一个事件 + 一次重锚 |
+| `setPinnedStack(taskIds)` | 插队栈的**整段重写**：按给定顺序决定谁压最上面（越靠上 `pinned` 时刻越新）；同样一次写盘 + 一次重锚 |
 | `setManualOrder(taskIds)` | **手动序**（v1.12，D17）：按给定顺序整段重编 `manual_order`（从 0 连续编号）；只在无排序档参与今日清单的顺序，其余两档下原样保留 |
 | `updateScheduleMode(mode)` | **调度模式**三档切换（**full** / **standard** 默认 / **manual**）：同时决定给内核的门槛与业务层的顺序口径；只重算，不动任何任务数据、无迁移 |
 | `deleteTask` / `restoreTask` / `purgeTrash` | 软删除三件套：移入 `.gtd/.trash/` / 从回收站恢复 / 清空回收（D11） |
@@ -303,7 +305,12 @@ TaskService 每个命令完成后广播 `DomainEvent`（含 origin）。通知�
 
 领域事件相应扩充：taskPinned / taskPicked / taskRestored / trashPurged（v1.4）、
 **routineCreated / routineUpdated / routineDeleted / routineInstanceGenerated /
-routineSkipped（v1.5，taskId = 规则 id 或实例 id）**、**taskReminderSet（v1.9，逐任务提醒开关）**、**manualOrderChanged / scheduleModeChanged（v1.12：手动序改写与调度模式切换，订阅者只需重算视图）**。
+routineSkipped（v1.5，taskId = 规则 id 或实例 id）**、**taskReminderSet（v1.9，逐任务提醒开关）**、**manualOrderChanged / scheduleModeChanged（v1.12：手动序改写与调度模式切换，订阅者只需重算视图）**、**poolOrderChanged（v1.13：池子整理序整段改写）**。
+
+> **一次用户手势 = 一次写盘 + 一个事件 + 一次重锚**（v1.13）。拖动定序这类"整段
+> 重编号"的命令如果拆成 N 次单条写，每写一条都会重锚并广播一次：第 k 条写完时
+> 只有前 k 个序号是新的，那个半成品顺序会被立刻渲染出来，清单就在几个位置之间
+> 来回跳。**批量落盘 + 内存态先整体换成终态再发事件**，第一次重建就是最终顺序。
 
 ---
 
@@ -508,7 +515,11 @@ abstract class AlarmPort {
   Stream<String> get fired;    // 到点（安卓=系统闹钟回调；桌面=Timer）
 }
 
-abstract class FolderPickerPort { Future<String?> pickDirectory(); }  // SAF / 桌面选择器
+abstract class FolderPickerPort {
+  Future<String?> pickDirectory();
+  Future<String?> pickFile({required String dialogTitle,
+      required List<String> allowedExtensions});  // 疑问笔记路径（ui §6.2）
+}  // SAF / 桌面选择器
 
 abstract class PermissionPort {
   Future<bool> ensure(PermissionKind kind);   // 申请（必要时弹系统界面）
@@ -518,13 +529,14 @@ abstract class PermissionPort {
 
 桌面适配器（`lib/platform/desktop_adapters.dart`【现状】）：`TimerAlarmPort`（前台 Timer，
 系统闹钟在桌面的等价物）、`StreamNotificationPort`（应用内弹窗回流）、
-`GrantedPermissionPort`、`UnavailableFolderPickerPort`。
+`GrantedPermissionPort`、`DesktopFolderPickerPort`（**文件可挑，目录仍不挑**——
+桌面任务目录走环境变量 `GTD_TASKS_DIR` / 引导配置，v1 不做目录选择 UI）。
 
 安卓适配器（`lib/platform/android_adapters.dart` + `android/…/gtd/` 原生侧【现状，v1.5】）：
 `AndroidAlarmPort` / `AndroidNotificationPort`（系统精确闹钟 AlarmManager + 通知渠道
 `gtd_normal`/`gtd_alarm`/`gtd_overlay` + 通知按钮 + full-screen intent）、
 `AndroidPermissionPort`（permission_handler + 原生全屏 intent/悬浮窗查询）、
-`AndroidFolderPickerPort`（所有文件访问 + 系统目录选择器）；
+`AndroidFolderPickerPort`（所有文件访问 + 系统目录选择器 / 文件选择器）；
 原生侧另有 `OverlayHandleService`（贴屏把手，前台服务 + WindowManager）。
 `platform/` 不受 §2 矩阵约束（组装点装配），但不得被 domain/scheduler/application import。
 
