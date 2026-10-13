@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../application/today_view.dart';
 import '../../domain/task.dart';
 import '../app_controller.dart';
+import '../dialogs/task_detail_sheet.dart';
 import '../theme.dart';
 import '../widgets/task_actions.dart';
 import '../widgets/task_tile.dart';
@@ -59,6 +60,8 @@ class TodayPanel extends StatelessWidget {
             TaskTile(
               controller: controller,
               task: t,
+              onTap: () => showTaskDetailSheet(context, controller, t,
+                  kind: TaskMenuKind.overdue),
               onLongPress: () => showTaskMenu(context, controller, t,
                   kind: TaskMenuKind.overdue),
             ),
@@ -71,6 +74,8 @@ class TodayPanel extends StatelessWidget {
               controller: controller,
               task: t,
               number: ++number,
+              onTap: () => showTaskDetailSheet(context, controller, t,
+                  kind: TaskMenuKind.fixed),
               onLongPress: () => showTaskMenu(context, controller, t,
                   kind: TaskMenuKind.fixed),
             ),
@@ -92,6 +97,9 @@ class TodayPanel extends StatelessWidget {
                 task: combined[i],
                 number: ++number,
                 highlight: combined[i].id == controller.focusedTaskId,
+                onTap: () => showTaskDetailSheet(context, controller,
+                    combined[i],
+                    kind: TaskMenuKind.flex),
                 onLongPress: () => showTaskMenu(context, controller,
                     combined[i],
                     kind: TaskMenuKind.flex),
@@ -115,6 +123,8 @@ class TodayPanel extends StatelessWidget {
               task: t,
               number: ++number,
               highlight: t.id == controller.focusedTaskId,
+              onTap: () => showTaskDetailSheet(context, controller, t,
+                  kind: TaskMenuKind.routine),
               onLongPress: () => showTaskMenu(context, controller, t,
                   kind: TaskMenuKind.routine),
             ),
@@ -127,6 +137,8 @@ class TodayPanel extends StatelessWidget {
             task: view.picked!,
             dimmed: true,
             highlight: view.picked!.id == controller.focusedTaskId,
+            onTap: () => showTaskDetailSheet(context, controller, view.picked!,
+                kind: TaskMenuKind.picked),
             onLongPress: () => showTaskMenu(context, controller, view.picked!,
                 kind: TaskMenuKind.picked),
           ),

@@ -19,7 +19,39 @@ Future<void> showTaskMenu(
     return _showRoutineInstanceMenu(context, controller, task);
   }
 
-  final entries = <_MenuEntry>[
+  return _showMenuSheet(
+    context,
+    title: task.title,
+    tag: switch (kind) {
+      TaskMenuKind.picked => '被挑散件',
+      TaskMenuKind.fixed => '固定时点',
+      TaskMenuKind.overdue => '逾期',
+      _ => null,
+    },
+    entries: taskMenuEntries(context, controller, task, kind),
+  );
+}
+
+/// 条目动作表（正典）：**长按菜单与详情卡底部按钮共用这一份**（决议 44）。
+///
+/// 两处各写一套，动作迟早漂移（今天加个『转正』，只有一处记得加）。
+/// 按组上下文相关（决议 23/25）；例行实例与池子条目各有一套。
+List<TaskMenuEntry> taskMenuEntries(
+  BuildContext context,
+  AppController controller,
+  Task task,
+  TaskMenuKind kind,
+) =>
+    switch (kind) {
+      TaskMenuKind.routine => _routineEntries(context, controller, task),
+      TaskMenuKind.pool => _poolEntries(context, controller, task),
+      _ => _todayEntries(context, controller, task, kind),
+    };
+
+/// 今日清单条目（①②③⑤ 组）。
+List<TaskMenuEntry> _todayEntries(BuildContext context,
+    AppController controller, Task task, TaskMenuKind kind) {
+  return [
     ('完成', Icons.check_circle, () => controller.complete(task.id)),
     // ② 的『推迟』= snooze 本次提醒，事件时刻不变（决议 23）；
     // 被挑散件无『推迟』（决议 25）；固定时点照常给档位。
@@ -32,7 +64,12 @@ Future<void> showTaskMenu(
               builder: (_) => SnoozeSheet(controller: controller, task: task),
             )
       ),
-    if (kind == TaskMenuKind.flex) ('插队到最前', Icons.keyboard_double_arrow_up, () => controller.pinToTop(task.id)),
+    if (kind == TaskMenuKind.flex)
+      (
+        '插队到最前',
+        Icons.keyboard_double_arrow_up,
+        () => controller.pinToTop(task.id)
+      ),
     if (kind == TaskMenuKind.picked)
       ('放回池子', Icons.undo, () => controller.returnToPool(task.id)),
     (
@@ -42,46 +79,48 @@ Future<void> showTaskMenu(
           task: task,
           title: kind == TaskMenuKind.picked ? '编辑（可顺手转正）' : '编辑任务')
     ),
-    ('删除', Icons.delete_outline, () => deleteTaskWithUndo(context, controller, task)),
+    (
+      '删除',
+      Icons.delete_outline,
+      () => deleteTaskWithUndo(context, controller, task)
+    ),
   ];
+}
 
-  return _showMenuSheet(
-    context,
-    title: task.title,
-    tag: switch (kind) {
-      TaskMenuKind.picked => '被挑散件',
-      TaskMenuKind.fixed => '固定时点',
-      TaskMenuKind.overdue => '逾期',
-      _ => null,
-    },
-    entries: entries,
-  );
+/// 例行实例条目（决议 23）：无『推迟』，改节奏去『编辑规则』。
+List<TaskMenuEntry> _routineEntries(
+    BuildContext context, AppController controller, Task instance) {
+  final routineId = instance.routineId;
+  return [
+    ('完成', Icons.check_circle, () => controller.complete(instance.id)),
+    (
+      '跳过今天',
+      Icons.skip_next,
+      () => controller.skipRoutineToday(instance.id)
+    ),
+    if (routineId != null)
+      (
+        '编辑规则',
+        Icons.edit_calendar,
+        () async => controller.focusRoutineInSettings(routineId)
+      ),
+    if (routineId != null)
+      (
+        '删除规则',
+        Icons.delete_forever_outlined,
+        () => _deleteRoutineWithConfirm(context, controller, routineId)
+      ),
+  ];
 }
 
 /// 例行实例菜单（决议 23）。
 Future<void> _showRoutineInstanceMenu(
     BuildContext context, AppController controller, Task instance) {
-  final routineId = instance.routineId;
   return _showMenuSheet(
     context,
     title: instance.title,
     tag: '例行',
-    entries: [
-      ('完成', Icons.check_circle, () => controller.complete(instance.id)),
-      ('跳过今天', Icons.skip_next, () => controller.skipRoutineToday(instance.id)),
-      if (routineId != null)
-        (
-          '编辑规则',
-          Icons.edit_calendar,
-          () async => controller.focusRoutineInSettings(routineId)
-        ),
-      if (routineId != null)
-        (
-          '删除规则',
-          Icons.delete_forever_outlined,
-          () => _deleteRoutineWithConfirm(context, controller, routineId)
-        ),
-    ],
+    entries: _routineEntries(context, controller, instance),
   );
 }
 
@@ -111,7 +150,7 @@ Future<void> _deleteRoutineWithConfirm(BuildContext context,
 Future<void> _showMenuSheet(
   BuildContext context, {
   required String title,
-  required List<_MenuEntry> entries,
+  required List<TaskMenuEntry> entries,
   String? tag,
 }) {
   return showModalBottomSheet<void>(
@@ -158,7 +197,9 @@ Future<void> _showMenuSheet(
   );
 }
 
-enum TaskMenuKind { overdue, fixed, flex, picked, routine }
+/// 条目所在的位置：决定长按菜单与详情卡给哪些动作（决议 23/25/44）。
+/// [pool] = 任务池（计划段与散件段同款，决议 13）。
+enum TaskMenuKind { overdue, fixed, flex, picked, routine, pool }
 
 class _MenuTag extends StatelessWidget {
   final String label;
@@ -176,13 +217,13 @@ class _MenuTag extends StatelessWidget {
       );
 }
 
-typedef _MenuEntry = (String, IconData, Future<void> Function());
+typedef TaskMenuEntry = (String, IconData, Future<void> Function());
 
-/// 任务池条目菜单（决议 13：散件段与计划段同款）：
-/// 挑到今日（不转正，附今日尾部）/ 转正（补属性，进调度）/ 完成 / 编辑 / 删除。
-Future<void> showPoolMenu(
+/// 任务池条目（决议 13：散件段与计划段同款）：
+/// 挑到今日（不转正，附今日尾部）/ 完成 / 编辑（补属性即转正）/ 删除。
+List<TaskMenuEntry> _poolEntries(
     BuildContext context, AppController controller, Task task) {
-  final entries = <_MenuEntry>[
+  return [
     ('挑到今日', Icons.today, () => controller.pickForToday(task.id)),
     ('完成', Icons.check_circle, () => controller.complete(task.id)),
     (
@@ -190,8 +231,18 @@ Future<void> showPoolMenu(
       Icons.edit,
       () => showEditSheet(context, controller, task: task)
     ),
-    ('删除', Icons.delete_outline, () => deleteTaskWithUndo(context, controller, task)),
+    (
+      '删除',
+      Icons.delete_outline,
+      () => deleteTaskWithUndo(context, controller, task)
+    ),
   ];
+}
+
+/// 任务池条目菜单（决议 13）。
+Future<void> showPoolMenu(
+    BuildContext context, AppController controller, Task task) {
+  final entries = taskMenuEntries(context, controller, task, TaskMenuKind.pool);
 
   return showModalBottomSheet<void>(
     context: context,

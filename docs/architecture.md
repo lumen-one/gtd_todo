@@ -610,6 +610,7 @@ lib/ui/
 │                 ← 功能面板，平台无关，只被 shell 摆放
 ├── dialogs/      创建对话框（**类型+日期档位按钮、默认三无，v1.11 去手势化**）/
 │                 编辑表单 / 推迟档位 / 日历 /
+│                 task_detail_sheet.dart（详情卡，只读展示件）/
 │                 quick_dump_dialog.dart（堆三无）/ routine_edit_dialog.dart（周期规则）
 │                 ← §5.1 shells 之下，panels 与共享 widgets 的辅助件，平台无关
 ├── widgets/      任务行 / 提醒监听 / 长按菜单（共享小组件）

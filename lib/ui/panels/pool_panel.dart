@@ -4,6 +4,7 @@ import '../../application/today_view.dart';
 import '../../domain/task.dart';
 import '../app_controller.dart';
 import '../dialogs/routine_edit_dialog.dart';
+import '../dialogs/task_detail_sheet.dart';
 import '../theme.dart';
 import '../widgets/task_actions.dart';
 import '../widgets/task_tile.dart';
@@ -70,6 +71,9 @@ class PoolPanel extends StatelessWidget {
                   controller: controller,
                   task: view.loose[i],
                   highlight: view.loose[i].id == controller.focusedTaskId,
+                  onTap: () => showTaskDetailSheet(context, controller,
+                      view.loose[i],
+                      kind: TaskMenuKind.pool),
                   onLongPress: () =>
                       showPoolMenu(context, controller, view.loose[i]),
                   trailing: _grip(i, theme),
@@ -114,6 +118,8 @@ class PoolPanel extends StatelessWidget {
       controller: controller,
       task: task,
       highlight: task.id == controller.focusedTaskId,
+      onTap: () =>
+          showTaskDetailSheet(context, controller, task, kind: TaskMenuKind.pool),
       onLongPress: () => showPoolMenu(context, controller, task),
       trailing: _grip(index, theme),
     );
