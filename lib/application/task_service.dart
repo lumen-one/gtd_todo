@@ -206,19 +206,22 @@ class TaskService {
   /// [Task.completedAt] 这一个字段驱动（[TaskDocumentCodec.encodeLine] 与
   /// [TaskSidecarCodec] 各取它渲染）。
   ///
+  /// 同时清掉**挂起进行标记**（v1.18，ui 决议 47）：挂起保持到完成或主动取消——
+  /// 完成即消，今日页最顶的挂起组里不再出现它。
+  ///
   /// 人在 Obsidian 里已经手写了完成时刻的，保留人的那个值（§4.3 归属表：
   /// 完成日期属人写的那半边）。
   Future<Task> completeTask(String id,
       {EventOrigin origin = EventOrigin.user}) async {
     final cur = _require(id);
-    final updated = cur.copyWith(
+    final updated = _clearInProgress(cur.copyWith(
       status: TaskStatus.completed,
       // '长期'任务没有剩余工作量（D18）：completedAt/status 照落，
       // 但 remainingWork 保持缺位——内核属性文档只有 id，完成态只认人类文档。
       remainingWork: cur.isLongTerm ? null : 0,
       completedAt: cur.completedAt ?? now(),
       clearSnooze: true,
-    );
+    ));
     await _persist(updated, origin, DomainEventType.taskCompleted);
     return updated;
   }
@@ -440,6 +443,30 @@ class TaskService {
     return updated;
   }
 
+  /// **挂起进行**（v1.18，ui 决议 47 / D19）：长期任务的"正在做"标记——今日页
+  /// 最顶的挂起组顶置呈现（见 `buildTodayView` 的 `inProgress` 组）。持久意图
+  /// 记在任务上（metadata `in_progress`，值 = 挂起时刻），**保持到完成或主动
+  /// 取消、不按天过期**（`completeTask` 顺手清除）。仅'长期'任务可挂（有截止的
+  /// 事归调度管）；**取消不受此限**——'转正'后已挂的仍占挂起位，也要能取消。
+  Future<Task> setInProgress(String id,
+      {required bool enabled, EventOrigin origin = EventOrigin.user}) async {
+    final cur = _require(id);
+    if (enabled && !cur.isLongTerm) {
+      throw ArgumentError('仅长期任务可挂起进行（有截止的事归调度管）');
+    }
+    final updated = _withMeta(cur, (m) {
+      final next = Map<String, String>.from(m);
+      if (enabled) {
+        next['in_progress'] = now().toIso8601String();
+      } else {
+        next.remove('in_progress');
+      }
+      return next;
+    });
+    await _persist(updated, origin, DomainEventType.taskInProgressSet);
+    return updated;
+  }
+
   /// 挑到今日（决议 8/13）：不转正，附今日尾部；当日手动挑标记生效。
   Future<Task> pickForToday(String id,
       {EventOrigin origin = EventOrigin.user}) async {
@@ -508,6 +535,29 @@ class TaskService {
           }));
     }
     return _persistBatch(updated, DomainEventType.taskPinned, origin);
+  }
+
+  /// 挂起组的**整段重写**（v1.18，决议 47）：按 [orderedIds] 的顺序决定谁排最顶
+  /// （越靠上 `in_progress` 时刻越新 = 后挂在上）。只对**已挂起**的任务生效——
+  /// '转正'后仍占挂位的也照常重写（取消前它还在组里）。
+  ///
+  /// 时刻按目标顺序**递减 1 毫秒**（同 [setPinnedStack]）：一次手势里逐条写会让
+  /// 它们落在同一毫秒上，而组内按 ISO 串排序——并列时 `sort` 没有稳定依据，
+  /// 落位变成随机。批量落盘的理由同 [setPoolOrders]。
+  Future<List<Task>> setInProgressStack(List<String> orderedIds,
+      {EventOrigin origin = EventOrigin.user}) async {
+    final base = now();
+    final updated = <Task>[];
+    for (var i = 0; i < orderedIds.length; i++) {
+      final cur = byId(orderedIds[i]);
+      if (cur == null || cur.inProgressAt == null) continue;
+      updated.add(_withMeta(cur, (m) => {
+            ...m,
+            'in_progress':
+                base.subtract(Duration(milliseconds: i)).toIso8601String(),
+          }));
+    }
+    return _persistBatch(updated, DomainEventType.taskInProgressSet, origin);
   }
 
   /// 手动序（v1.12，决议 43 / D17）：按 [orderedIds] 的顺序整段重编号（从 0 连续），
@@ -721,6 +771,12 @@ class TaskService {
   static Task _clearPointFired(Task t) {
     if (!t.metadata.containsKey('point_fired')) return t;
     return _withMeta(t, (m) => Map<String, String>.from(m)..remove('point_fired'));
+  }
+
+  /// 完成时清掉挂起标记（"持久到完成"，v1.18 决议 47）：键不在就原样返回。
+  static Task _clearInProgress(Task t) {
+    if (!t.metadata.containsKey('in_progress')) return t;
+    return _withMeta(t, (m) => Map<String, String>.from(m)..remove('in_progress'));
   }
 
   static String _dayMark(DateTime d) =>

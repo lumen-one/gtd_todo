@@ -3,15 +3,22 @@ import '../domain/schedule.dart';
 import '../domain/task.dart';
 
 /// 今日清单聚合查询（D12 / ui-interaction.md §6.1）：
-/// 五种来源——ScheduleResult（可推/逾期）+ 固定时点组 + 例行实例 + 被挑散件。
-/// 这是查询不是渲染：UI 只消费结果，不含分组逻辑（守住"UI 不含逻辑"）。
+/// 六种来源——挂起组（决议 47）+ ScheduleResult（可推/逾期）+ 固定时点组 +
+/// 例行实例 + 被挑散件。这是查询不是渲染：UI 只消费结果，不含分组逻辑（守住"UI 不含逻辑"）。
 ///
-/// 分组构成（决议 11/12/25）：
-/// ① 逾期（无编号置顶）→ ② 固定时点（时间升序）→ ③ 可推（插队件栈式压顶 +
-///    调度序）→ ④ 例行（周期实例，决议 12）→ ⑤ 被挑散件（尾部）。
+/// 分组构成（决议 11/12/25/47）：
+/// ⓿ 挂起进行（最顶、无编号、可拖；决议 47）→ ① 逾期（无编号置顶）→
+/// ② 固定时点（时间升序）→ ③ 可推（插队件栈式压顶 + 调度序）→
+/// ④ 例行（周期实例，决议 12）→ ⑤ 被挑散件（尾部）。
 /// 编号跨 ②③④ 连续，由 UI 按 fixed→pinned→flex→routines 顺序生成。
+/// 挂起组与调度模式无关（三档都在最顶）：它是持久意图，不是算法排序。
 class TodayView {
   final DateTime day;
+
+  /// ⓿ 挂起进行中的任务（v0.17，决议 47）：今日页最顶、逾期组之上、**无编号**；
+  /// 按挂起时刻降序（后挂在上，`Task.inProgressAt`），组内可拖调序。
+  /// 成员与调度模式无关（三档下都在），也不进任务池（`buildPoolView` 同规则隐藏）。
+  final List<Task> inProgress;
 
   /// ① 过截止未完成：橙红徽标置顶，完成/改期前不消失（决议 2）。
   final List<Task> overdue;
@@ -33,6 +40,7 @@ class TodayView {
 
   const TodayView({
     required this.day,
+    this.inProgress = const [],
     this.overdue = const [],
     this.fixed = const [],
     this.pinned = const [],
@@ -42,6 +50,7 @@ class TodayView {
   });
 
   bool get isEmpty =>
+      inProgress.isEmpty &&
       overdue.isEmpty &&
       fixed.isEmpty &&
       pinned.isEmpty &&
@@ -118,7 +127,8 @@ bool _sameDay(DateTime a, DateTime b) =>
 /// [scheduleMode] 只改**一件**事（v1.12 决议 43 / D17）：可推组的**顺序**——
 /// 标准/完整是"插队件压顶 + 调度序"，无排序是手动序（`manual_order`）。
 /// 可推组的**成员不变**（仍按"锚点落在今天 / 今天到期"准入），
-/// 逾期置顶、固定时点按时刻、例行按发生时刻、被挑散件在最后——三档全部一致。
+/// 挂起组置顶、逾期置顶、固定时点按时刻、例行按发生时刻、被挑散件在最后——
+/// 三档全部一致（挂起组是持久意图，决议 47）。
 TodayView buildTodayView({
   required List<Task> tasks,
   required ScheduleResult? schedule,
@@ -137,9 +147,16 @@ TodayView buildTodayView({
   final fixed = <Task>[];
   final flexCandidates = <Task>[];
   final routines = <Task>[];
+  final inProgress = <Task>[];
 
   for (final t in tasks) {
     if (t.isCompleted || identical(t, pickedTask)) continue;
+    // ⓿ 挂起组（决议 47）：持久意图顶置最顶——不进其余任何组（逾期/固定/可推/例行
+    // 都不收它），任务池也不重复出现（buildPoolView 同规则隐藏）。与调度模式无关。
+    if (t.inProgressAt != null) {
+      inProgress.add(t);
+      continue;
+    }
     final deadline = t.deadline;
     switch (t.type) {
       case TaskType.routine:
@@ -176,6 +193,9 @@ TodayView buildTodayView({
 
   fixed.sort((a, b) => a.deadline!.compareTo(b.deadline!));
 
+  // 挂起组：挂起时刻降序（后挂在上，决议 47——与插队栈同一形状）。
+  inProgress.sort((a, b) => b.inProgressAt!.compareTo(a.inProgressAt!));
+
   // 插队件栈式压顶：pinned 时刻降序（后插在上，决议 9）。
   final pinned = flexCandidates
       .where((t) => t.pinnedAt != null)
@@ -205,9 +225,11 @@ TodayView buildTodayView({
   // 无排序：整组改用手动序（人拖出来的顺序），没有"插队压顶"这一层——
   // 插队是为算法排序打的补丁，顺序本身就由人定的时候不需要它。
   // 插队标记（pinned）仍然留在任务上——切回标准/完整时它照旧生效。
+  // **挂起组与排序模式无关**（决议 47）：三档下它都在最顶、都按挂起时刻降序。
   if (scheduleMode.isManual) {
     return TodayView(
       day: now,
+      inProgress: List.unmodifiable(inProgress),
       overdue: List.unmodifiable(overdue),
       fixed: List.unmodifiable(fixed),
       flex: List.unmodifiable(flexCandidates..sort(compareManualOrder)),
@@ -218,6 +240,7 @@ TodayView buildTodayView({
 
   return TodayView(
     day: now,
+    inProgress: List.unmodifiable(inProgress),
     overdue: List.unmodifiable(overdue),
     fixed: List.unmodifiable(fixed),
     pinned: List.unmodifiable(pinned),
@@ -241,6 +264,8 @@ PoolView buildPoolView({
 
   for (final t in tasks) {
     if (t.isCompleted) continue;
+    // 挂起中的任务只在今日页顶置组出现（决议 47）：池子两段都不重复显示。
+    if (t.inProgressAt != null) continue;
     // 周期实例：当天实例归今日清单（决议 12）；更早的实例（昨日未完成）
     // 不重复出现在计划段——规则的下一次发生由 routineOccurrences 表达。
     if (t.type == TaskType.routine) continue;
