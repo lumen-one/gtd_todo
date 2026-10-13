@@ -79,13 +79,17 @@ class SlackScheduler implements Scheduler {
       // fixed 不进调度（走 AlarmPort 时点闹钟）；周期实例不占工时、默认不响
       // （决议 5/12）；无截止 flex（散件）不参与 overdue/infeasible 派生、永不提醒。
       if (task.type != TaskType.flex) continue;
+      // '长期'不进这套公式（v1.17，D18）：与默认算法同一口径（见
+      // [SlackPriorityScheduler]）——估不出来就不算，不逼假装精确的 risk。
+      if (task.isLongTerm) continue;
       final deadline = task.deadline;
       if (deadline == null) continue;
 
-      final isOverdue = deadline.isBefore(now) && task.remainingWork > 0;
+      // '长期'已在上面跳过（D18）：走到这里的必有数字剩余工作量。
+      final remaining = task.remainingWork!;
+      final isOverdue = deadline.isBefore(now) && remaining > 0;
       final available =
           isOverdue ? 0 : workRule.workMinutesBetween(now, deadline);
-      final remaining = task.remainingWork;
       final slack = available - remaining;
 
       final snoozedIntoFuture = task.status == TaskStatus.snoozed &&
@@ -131,7 +135,8 @@ class SlackScheduler implements Scheduler {
         // 风险/调度优先级与默认算法同一套公式（TaskMetric 是统一方言），
         // 只是本算法的**排序**仍按 urgency——这才是两个算法的差别所在。
         risk: slackRisk(slack),
-        priority: slackRisk(slack) * task.importance,
+        // '长期'任务已在上面跳过（D18），?? 3 只是 A3 缺省值的兜底。
+        priority: slackRisk(slack) * (task.importance ?? 3),
         urgency: urgency,
         nextReminderAt: nextReminderAt,
         reminds: schedulable && reminderAllowed(task, reminderMode),
@@ -151,7 +156,8 @@ class SlackScheduler implements Scheduler {
       if (byStatus != 0) return byStatus;
       final byUrgency = b.metric.urgency.compareTo(a.metric.urgency);
       if (byUrgency != 0) return byUrgency;
-      final byImportance = b.task.importance.compareTo(a.task.importance);
+      final byImportance =
+          (b.task.importance ?? 3).compareTo(a.task.importance ?? 3);
       if (byImportance != 0) return byImportance;
       return a.task.deadline!.compareTo(b.task.deadline!);
     });

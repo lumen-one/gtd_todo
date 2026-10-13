@@ -98,13 +98,19 @@ class SlackPriorityScheduler implements Scheduler {
       // fixed 不进调度（走 AlarmPort 时点闹钟）；周期实例不占工时、默认不响
       // （决议 5/12）；无截止 flex（散件）不参与 overdue/infeasible 派生、永不提醒。
       if (task.type != TaskType.flex) continue;
+      // '长期'不进这套公式（v1.17，D18）：它本来就没有截止（三无缺省），
+      // 把它塞进公式只会逼出一个假装精确的 risk——那正是'长期'要避免的。
+      // 这里同时是防线：编辑 API 允许"补截止但不换工时"，那一瞬的
+      // flex + 截止 + '长期' 也不该参与派生（转正会连截止带工时一起补）。
+      if (task.isLongTerm) continue;
       final deadline = task.deadline;
       if (deadline == null) continue;
 
-      final isOverdue = deadline.isBefore(now) && task.remainingWork > 0;
+      // '长期'已在上面跳过（D18）：走到这里的必有数字剩余工作量。
+      final remaining = task.remainingWork!;
+      final isOverdue = deadline.isBefore(now) && remaining > 0;
       final available =
           isOverdue ? 0 : workRule.workMinutesBetween(now, deadline);
-      final remaining = task.remainingWork;
       final slack = available - remaining;
 
       final snoozedIntoFuture = task.status == TaskStatus.snoozed &&
@@ -136,7 +142,9 @@ class SlackPriorityScheduler implements Scheduler {
         scaleMinutes: config.riskScaleMinutes,
         gamma: config.riskGamma,
       );
-      final priority = risk * task.importance;
+      // importance 对'长期'为 null，但长期任务已在上面跳过（D18）——走到这里的
+      // 必有数字工时，?? 3 只是 A3 缺省值的兜底（不改变任何非长期任务的行为）。
+      final priority = risk * (task.importance ?? 3);
 
       DateTime? nextReminderAt;
       int? interval;

@@ -31,8 +31,8 @@ class Task {
     Map<String, String>? metadata,
     DateTime? created,
     this.completedAt,
-  })  : estimatedWork = estimatedWork ?? 0,
-        remainingWork = remainingWork ?? estimatedWork ?? 0,
+  })  : estimatedWork = estimatedWork,
+        remainingWork = remainingWork ?? estimatedWork,
         tags = List.unmodifiable(tags ?? const <String>[]),
         metadata = metadata ?? const {},
         created = created ?? DateTime.now();
@@ -48,14 +48,20 @@ class Task {
   /// fixed = 时点；flex = 截止；null = 散件（无截止、永不提醒）。
   final DateTime? deadline;
 
-  /// 预计需要的工作时间（工作分钟）。fixed 豁免 A2，允许 0（§3.5 规划表）。
-  final int estimatedWork;
+  /// 预计需要的工作时间（工作分钟）。**null = '长期'**（v1.17，D18 / ui 决议 46）：
+  /// 三无任务（可推 + 无截止 + 不提醒）的创建缺省——'长期'是标记而非分钟数，
+  /// 标长期 = 不估工时、不设优先级、没有时间裕度与剩余工作量，内核属性文档
+  /// 只剩 id 一行（'长期'不单独落一行：没有 work_intensity 行就是长期）。
+  /// fixed 豁免 A2，允许 0；有截止的 flex 必须 ≥ 1（缺省 30 分钟）。
+  final int? estimatedWork;
 
   /// 当前剩余工作时间（工作分钟）。动态调度最重要的数据。
-  final int remainingWork;
+  /// '长期'任务同样没有（null）——没有预估可对账，A1 的 clamp 也不适用。
+  final int? remainingWork;
 
-  /// 重要程度 1-5，与 deadline 分开对待。
-  final int importance;
+  /// 人的优先级 1–5（缺省 3，A3），与 deadline 分开对待。
+  /// '长期'任务**不设优先级**（null）——没有"缺省 3"可言（A3 对长期豁免）。
+  final int? importance;
 
   final TaskStatus status;
 
@@ -67,7 +73,7 @@ class Task {
   /// ui-interaction.md §4.3：更多的标签 = 更多的属性；内核不解释标签语义。
   final List<String> tags;
 
-  /// 未知 frontmatter 字段 + 应用自有 metadata 键（附录 B 登记表：
+  /// 未知 frontmatter 字段 + 应用自有 metadata 键（附录 A.2 登记表：
   /// type / pinned / picked_for_today / pool_order / remind），§3.4 字段级保真的载体。
   final Map<String, String> metadata;
 
@@ -141,16 +147,30 @@ class Task {
   /// 用于「只到点响一次」的幂等判定（改期/推迟后值不再匹配 → 会重新响）。
   String? get pointFiredMark => metadata['point_fired'];
 
+  /// 工作强度 = **'长期'**（v1.17，D18 / ui 决议 46）：三无任务的创建缺省。
+  /// '长期'不是分钟数、也不是新任务类型（类型仍是 fixed/flex）——标长期的任务
+  /// 不估工时、不设优先级、没有时间裕度与剩余工作量，内核属性文档只有 id 一行，
+  /// 完成态只认人类文档的 `[x]` / `完成 <时刻>`（D14）。A1/A2/A3 对它全部豁免。
+  bool get isLongTerm => estimatedWork == null;
+
   /// 完成判定（§3.5 规划表）：fixed / routine 仅按 status 判定（0 工时也不允许
-  /// 出生即完成）；flex 保留 remainingWork ≤ 0 的语义（logWork 干完即完成）。
+  /// 出生即完成）；flex 保留 remainingWork ≤ 0 的语义（logWork 干完即完成）；
+  /// **'长期'任务没有 remainingWork**，只认 status 与 [completedAt]
+  /// （人类文档复选框是最终真相，D14）。
   /// [completedAt] 是人类文档复选框 `[x]` 的落地形态，同样算完成。
-  bool get isCompleted =>
-      status == TaskStatus.completed ||
-      completedAt != null ||
-      (type == TaskType.flex && remainingWork <= 0);
+  bool get isCompleted {
+    final remaining = remainingWork; // 局部别名：公有字段不能被空提升
+    return status == TaskStatus.completed ||
+        completedAt != null ||
+        (type == TaskType.flex && remaining != null && remaining <= 0);
+  }
 
   /// [clearSnooze] / [clearDeadline] / [clearCompletedAt] 用于把可空字段置回
   /// null（copyWith 的普通 null 参数表示"保持原值"，无法表达清除）。
+  /// [clearWork] 是'长期'的形态：estimatedWork / remainingWork / importance
+  /// 三项一起置 null（估不出来 → 没有工时、没有剩余、没有优先级；D18）。
+  /// 反过来说：给'长期'任务设数字工时时，三项要一起给（remainingWork 取新预估、
+  /// importance 缺省 3）——这个转换在 TaskService.updateTask 里显式做。
   Task copyWith({
     String? title,
     String? description,
@@ -167,15 +187,16 @@ class Task {
     DateTime? created,
     DateTime? completedAt,
     bool clearCompletedAt = false,
+    bool clearWork = false,
   }) {
     return Task(
       id: id,
       title: title ?? this.title,
       description: description ?? this.description,
       deadline: clearDeadline ? null : (deadline ?? this.deadline),
-      estimatedWork: estimatedWork ?? this.estimatedWork,
-      remainingWork: remainingWork ?? this.remainingWork,
-      importance: importance ?? this.importance,
+      estimatedWork: clearWork ? null : (estimatedWork ?? this.estimatedWork),
+      remainingWork: clearWork ? null : (remainingWork ?? this.remainingWork),
+      importance: clearWork ? null : (importance ?? this.importance),
       status: status ?? this.status,
       snoozedUntil: clearSnooze ? null : (snoozedUntil ?? this.snoozedUntil),
       tags: tags ?? this.tags,
