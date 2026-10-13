@@ -721,7 +721,7 @@ class SystemSnapshot {
 1. `domain/**`、`scheduler/**`、`application/**` 不得 import `package:flutter` 与 `dart:io`；
 2. `ui/**` 不得 import 任何 repository/scheduler **实现**；
 3. `repository/**` 不得 import `scheduler/**`，反之亦然；
-   `application/**` 不得 import 任何**具体实现**（含默认实现的选择，见 §2 已知违规）。
+   `application/**` 不得 import 任何**具体实现**（含默认实现的选择，见 §2 第二段）。
 
 行为守卫：
 
@@ -772,8 +772,8 @@ class SystemSnapshot {
 
 ## 10. 现状与差距（v0 基线 → 目标，按优先级）
 
-已成立【现状】：domain/scheduler/application 零平台依赖；接口与实现分离（一处已知违规，
-见 §2）；通知已是接口；时间可注入；ScheduleResult 不落盘；snoozed_until 持久化；
+已成立【现状】：domain/scheduler/application 零平台依赖；接口与实现分离（曾有一处违规，
+**v1.2 已修复**，见 §2）；通知已是接口；时间可注入；ScheduleResult 不落盘；snoozed_until 持久化；
 测试覆盖跨日历/临界/逾期场景（**v1.9：146 个测试全绿**；后续各版状态见
 `docs/changelog.md`）。
 
