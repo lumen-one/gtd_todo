@@ -240,9 +240,10 @@ overdue、snoozed 沉底；overdue 退出提醒循环。
 - C1.（**写路径唯一——正典表述**）Task 的任何字段变更只能发生在 TaskService 的命令
   方法内部；UI、AI、迁移一律通过命令，不得直接赋值。【现状：Task 不可变 + copyWith，
   由编译器强制（v1.2）】本文件其他位置（§0、§1 铁律 2、§6、D4）均为对此条的引用。
-- C2. **防 Zeno**：`refreshSchedule()`（重锚间隔）只在事件发生时调用（用户命令、提醒
-  到点、文件变更）；周期 tick 只做 `pollReminder()`——否则 nextReminderAt 每次重锚
-  不断后移，提醒永远到不了【现状：已遵守，靠注释约定】。
+- C2. **防 Zeno**：重锚只在事件发生时调用（用户命令、提醒到点、文件变更）；周期 tick
+  只做 `pollReminder()`——否则 nextReminderAt 每次重锚不断后移，提醒永远到不了
+  【现状：已遵守，靠注释约定】。重锚**分两条**（v1.16）：命令走 `recomputeSchedule`
+  （当前内存态，不读盘），外部改动走 `refreshSchedule`（先 `loadAll` 从盘回流再重算）。
 - C3. **AI 无第二条写路径**：AI 的变更与人类点击走同一命令通道（详见 §6）【规划】。
 
 ### 3.3 领域事件（添加而不修改的钩子）【现状】
@@ -291,12 +292,12 @@ TaskService 每个命令完成后广播 `DomainEvent`（含 origin）。通知�
 | `setTaskReminder(taskId, enabled)` | **逐任务提醒开关**（v1.9，D15）：写 metadata `remind`；标准模式下这是让单个任务出声的**唯一**手段，完整模式下无意义（本来就全响） |
 | `pickForToday` / `returnToPool` | 挑散件到今日尾部（`picked_for_today` 标记，当日手动挑优先、尾部最多一件）/ 放回池子 |
 | `setPoolOrder(taskId, order)` | 池子显示序（`pool_order`，仅整理无调度含义，重启保留）；**单条改序**——一次手势要改整段时走下一条 |
-| `setPoolOrders(taskIds)` | 池子显示序的**整段重编号**（0 连续）：一次拖动手势 = 一次写盘 + 一个事件 + 一次重锚 |
-| `setPinnedStack(taskIds)` | 插队栈的**整段重写**：按给定顺序决定谁压最上面（越靠上 `pinned` 时刻越新）；同样一次写盘 + 一次重锚 |
+| `setPoolOrders(taskIds)` | 池子显示序的**整段重编号**（0 连续）：一次拖动手势 = 一次落盘 + 一个事件 + 一次重算 |
+| `setPinnedStack(taskIds)` | 插队栈的**整段重写**：按给定顺序决定谁压最上面（越靠上 `pinned` 时刻越新）；同样一次落盘 + 一次重算 |
 | `setManualOrder(taskIds)` | **手动序**（v1.12，D17）：按给定顺序整段重编 `manual_order`（从 0 连续编号）；只在无排序档参与今日清单的顺序，其余两档下原样保留 |
 | `updateScheduleMode(mode)` | **调度模式**三档切换（**full** / **standard** 默认 / **manual**）：同时决定给内核的门槛与业务层的顺序口径；只重算，不动任何任务数据、无迁移 |
 | `deleteTask` / `restoreTask` / `purgeTrash` | 软删除三件套：移入 `.gtd/.trash/` / 从回收站恢复 / 清空回收（D11） |
-| `refreshSchedule` | 重锚（C2：只在事件发生时调用） |
+| `recomputeSchedule` / `refreshSchedule` | 重锚（C2）两条：前者用**当前内存态**重算（**命令走这条，不读盘**）；后者先 `loadAll` 从盘回流再重算（文件监听 / 回前台 / 启动 / `restoreTask` / 提醒到点走这条） |
 | **周期任务（v1.5）** | |
 | `createRoutine` / `updateRoutine` / `deleteRoutine` / `setRoutineEnabled` | 规则增删改与启用开关（RoutineService，写 `routines.md`）；每次改动同步当天实例（决议 23：没有"编辑实例"） |
 | `generateTodayInstances` | 每天生成当天实例（origin=system，幂等；启动/跨日/回前台触发，决议 5） |
@@ -307,10 +308,21 @@ TaskService 每个命令完成后广播 `DomainEvent`（含 origin）。通知�
 **routineCreated / routineUpdated / routineDeleted / routineInstanceGenerated /
 routineSkipped（v1.5，taskId = 规则 id 或实例 id）**、**taskReminderSet（v1.9，逐任务提醒开关）**、**manualOrderChanged / scheduleModeChanged（v1.12：手动序改写与调度模式切换，订阅者只需重算视图）**、**poolOrderChanged（v1.13：池子整理序整段改写）**。
 
-> **一次用户手势 = 一次写盘 + 一个事件 + 一次重锚**（v1.13）。拖动定序这类"整段
-> 重编号"的命令如果拆成 N 次单条写，每写一条都会重锚并广播一次：第 k 条写完时
-> 只有前 k 个序号是新的，那个半成品顺序会被立刻渲染出来，清单就在几个位置之间
-> 来回跳。**批量落盘 + 内存态先整体换成终态再发事件**，第一次重建就是最终顺序。
+> **一次用户手势 = 一个事件 + 一次重算；落盘排在事件之后**（v1.13 立，v1.16 修正）。
+>
+> ① **整段重编号不能拆成 N 次单条写**：第 k 条写完时只有前 k 个序号是新的，那个半
+> 成品顺序会被立刻渲染出来，清单就在几个位置之间来回跳。所以批量落盘、内存态先
+> 整体换成终态再发事件，第一次重建就是最终顺序。
+>
+> ② **光批量还不够**：事件是 UI 刷新的唯一触发器（UI 侧就一句
+> `events.listen((_) => notifyListeners())`），把落盘排在事件之前，等于让"界面看到
+> 新顺序"去等 N×2 次文件写 + 一次全量回读；那几帧里列表仍是旧顺序，条目先弹回
+> 原位再跳过去——闪动的另一半。**顺序是持久数据（该落盘），但"算出显示顺序"不该
+> 依赖盘**：v1.16 起命令一律"换内存态 → 发事件 → 落盘 → 用内存态重算"，只有外部
+> 改动才真的回读。
+>
+> 落盘失败**只记不抛**（`TaskService.persistFailures`）：内存态已是界面看到的终态，
+> 抛出只会让命令半途而废、UI 停在更不一致的地方。
 
 ---
 
