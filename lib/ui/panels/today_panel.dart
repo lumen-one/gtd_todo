@@ -11,9 +11,10 @@ import '../widgets/task_actions.dart';
 import '../widgets/task_tile.dart';
 
 /// 第 1 页：今日清单（ui-interaction.md §6.1）。
-/// 分组连续编号：① 逾期（无编号）→ ② 固定时点 → ③ 可推（插队件栈式压顶 +
-/// 调度序）→ ④ 例行（未落地恒空）→ ⑤ 被挑散件（无编号、弱化）。
-/// 编号跨 ②③④ 连续；插队拖拽仅对可推组生效。
+/// 分组连续编号：⓿ 挂起进行（无编号、最顶，决议 47）→ ① 逾期（无编号）→
+/// ② 固定时点 → ③ 可推（插队件栈式压顶 + 调度序）→ ④ 例行（未落地恒空）→
+/// ⑤ 被挑散件（无编号、弱化）。
+/// 编号跨 ②③④ 连续；插队拖拽仅对可推组生效，挂起组拖拽仅组内调序（决议 47）。
 class TodayPanel extends StatelessWidget {
   final AppController controller;
 
@@ -53,6 +54,41 @@ class TodayPanel extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(18, 8, 18, 6),
           child: Text(_dateLabel(view.day), style: theme.textTheme.titleMedium),
         ),
+        // ⓿ 挂起组：长期任务"正在做"（v0.17，决议 47）：无编号、置于本页最顶
+        // （逾期组之上），组内可上下拖动调序；三档调度模式下都在。
+        if (view.inProgress.isNotEmpty) ...[
+          _GroupHeader('挂起进行', color: AppColors.accent),
+          ReorderableListView(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            buildDefaultDragHandles: false,
+            // 新代码用 onReorderItem（newIndex 已按"移除旧位"调整好，直接插）；
+            // 本文件另两处还是旧 onReorder（deprecation info 是既有基线，不混改）。
+            onReorderItem: (o, n) => _onInProgressReorder(view.inProgress, o, n),
+            children: [
+              for (var i = 0; i < view.inProgress.length; i++)
+                TaskTile(
+                  key: ValueKey('inprogress-${view.inProgress[i].id}'),
+                  controller: controller,
+                  task: view.inProgress[i],
+                  highlight: view.inProgress[i].id == controller.focusedTaskId,
+                  onTap: () => showTaskDetailSheet(context, controller,
+                      view.inProgress[i],
+                      kind: TaskMenuKind.inProgress),
+                  onLongPress: () => showTaskMenu(context, controller,
+                      view.inProgress[i],
+                      kind: TaskMenuKind.inProgress),
+                  trailing: ReorderableDragStartListener(
+                    index: i,
+                    child: Icon(Icons.drag_handle,
+                        size: 18,
+                        color: theme.colorScheme.onSurfaceVariant
+                            .withValues(alpha: 0.6)),
+                  ),
+                ),
+            ],
+          ),
+        ],
         // ① 逾期组：无编号、橙红置顶，完成/改期前不消失（决议 2）
         if (view.overdue.isNotEmpty) ...[
           const _GroupHeader('逾期', color: AppColors.overdue),
@@ -145,6 +181,18 @@ class TodayPanel extends StatelessWidget {
         ],
       ],
     );
+  }
+
+  /// 挂起组拖拽落位（决议 47）：整段重写挂起时刻（越靠上时刻越新 = 后挂在上），
+  /// 一次落盘 + 一个事件 + 一次重算（arch §3.5 通用约束，同插队栈）。
+  ///
+  /// 走 `onReorderItem`：[newIndex] 已按"移除旧位"调整过，直接就是落点。
+  Future<void> _onInProgressReorder(
+      List<Task> inProgress, int oldIndex, int newIndex) async {
+    final order = [...inProgress]
+      ..removeAt(oldIndex)
+      ..insert(newIndex, inProgress[oldIndex]);
+    await controller.setInProgressStack([for (final t in order) t.id]);
   }
 
   /// 拖拽落位，两种排序模式两套语义（决议 43）：

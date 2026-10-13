@@ -26,6 +26,7 @@ Future<void> showTaskMenu(
       TaskMenuKind.picked => '被挑散件',
       TaskMenuKind.fixed => '固定时点',
       TaskMenuKind.overdue => '逾期',
+      TaskMenuKind.inProgress => '挂起中',
       _ => null,
     },
     entries: taskMenuEntries(context, controller, task, kind),
@@ -48,14 +49,15 @@ List<TaskMenuEntry> taskMenuEntries(
       _ => _todayEntries(context, controller, task, kind),
     };
 
-/// 今日清单条目（①②③⑤ 组）。
+/// 今日清单条目（①②③⓿⑤ 组）。
 List<TaskMenuEntry> _todayEntries(BuildContext context,
     AppController controller, Task task, TaskMenuKind kind) {
   return [
     ('完成', Icons.check_circle, () => controller.complete(task.id)),
     // ② 的『推迟』= snooze 本次提醒，事件时刻不变（决议 23）；
-    // 被挑散件无『推迟』（决议 25）；固定时点照常给档位。
-    if (kind != TaskMenuKind.picked)
+    // 被挑散件无『推迟』（决议 25）；挂起组也无——长期任务没有截止，无可推
+    // （决议 47）；固定时点照常给档位。
+    if (kind != TaskMenuKind.picked && kind != TaskMenuKind.inProgress)
       (
         '推迟…',
         Icons.schedule,
@@ -64,6 +66,21 @@ List<TaskMenuEntry> _todayEntries(BuildContext context,
               builder: (_) => SnoozeSheet(controller: controller, task: task),
             )
       ),
+    // 『挂起进行 ↔ 取消挂起』（v0.17，决议 47）：只对长期任务开这个口（有截止的
+    // 归调度管）；已在挂起中的（含'转正'后仍占挂位的）给取消。挂起组条目必然
+    // 已挂起，走取消那一支。
+    if (task.isLongTerm || task.inProgressAt != null)
+      task.inProgressAt == null
+          ? (
+              '挂起进行',
+              Icons.play_circle_outline,
+              () => controller.setInProgress(task.id, enabled: true)
+            )
+          : (
+              '取消挂起',
+              Icons.pause_circle_outline,
+              () => controller.setInProgress(task.id, enabled: false)
+            ),
     if (kind == TaskMenuKind.flex)
       (
         '插队到最前',
@@ -199,7 +216,8 @@ Future<void> _showMenuSheet(
 
 /// 条目所在的位置：决定长按菜单与详情卡给哪些动作（决议 23/25/44）。
 /// [pool] = 任务池（计划段与散件段同款，决议 13）。
-enum TaskMenuKind { overdue, fixed, flex, picked, routine, pool }
+/// [inProgress] = 今日页最顶的挂起组（决议 47：长期任务"正在做"）。
+enum TaskMenuKind { overdue, fixed, flex, picked, routine, pool, inProgress }
 
 class _MenuTag extends StatelessWidget {
   final String label;
@@ -220,10 +238,18 @@ class _MenuTag extends StatelessWidget {
 typedef TaskMenuEntry = (String, IconData, Future<void> Function());
 
 /// 任务池条目（决议 13：散件段与计划段同款）：
-/// 挑到今日（不转正，附今日尾部）/ 完成 / 编辑（补属性即转正）/ 删除。
+/// 长期任务的『挂起进行』（v0.17，决议 47）/ 挑到今日（不转正，附今日尾部）/
+/// 完成 / 编辑（补属性即转正）/ 删除。
 List<TaskMenuEntry> _poolEntries(
     BuildContext context, AppController controller, Task task) {
   return [
+    // 挂起中的件在池子里隐藏（决议 47），所以这里只会给"未挂起"的长期任务。
+    if (task.isLongTerm && task.inProgressAt == null)
+      (
+        '挂起进行',
+        Icons.play_circle_outline,
+        () => controller.setInProgress(task.id, enabled: true)
+      ),
     ('挑到今日', Icons.today, () => controller.pickForToday(task.id)),
     ('完成', Icons.check_circle, () => controller.complete(task.id)),
     (

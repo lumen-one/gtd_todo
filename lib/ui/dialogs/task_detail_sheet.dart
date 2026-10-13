@@ -63,6 +63,7 @@ Widget _head(BuildContext context, Task task, TaskMenuKind kind) {
     TaskMenuKind.overdue => '逾期',
     TaskMenuKind.fixed => '固定时点',
     TaskMenuKind.picked => '被挑散件',
+    TaskMenuKind.inProgress => '挂起中',
     TaskMenuKind.routine => '例行',
     TaskMenuKind.pool => task.type == TaskType.fixed
         ? '固定时点'
@@ -170,6 +171,9 @@ List<Widget> _facts(
 
   // 人的持久意图与标记（都是存在任务上的事实，算不出来的那一类）。
   if (task.pinnedAt != null) rows.add(('插队', '已插队，压在可推组最前'));
+  if (task.inProgressAt != null) {
+    rows.add(('挂起', '挂起进行中（今日页最顶，保持到完成或取消）'));
+  }
   if (task.pickedForDate != null) {
     rows.add(('今日', '被挑到今天（不响、仅可见）'));
   }

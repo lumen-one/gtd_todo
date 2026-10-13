@@ -510,6 +510,15 @@ class AppController extends ChangeNotifier {
   Future<void> setPinnedStack(List<String> orderedIds) =>
       service.setPinnedStack(orderedIds);
 
+  /// 挂起进行开关（v1.18 决议 47）：长期任务顶置今日页最顶的挂起组；
+  /// 保持到完成或主动取消，不按天过期（完成命令顺手清标记）。
+  Future<void> setInProgress(String id, {required bool enabled}) =>
+      service.setInProgress(id, enabled: enabled);
+
+  /// 挂起组拖拽后的整段重排（决议 47）：整段重写挂起时刻，一次落盘。
+  Future<void> setInProgressStack(List<String> orderedIds) =>
+      service.setInProgressStack(orderedIds);
+
   /// 无排序模式下的拖动定序（决议 43）：整段重编 manual_order，重启保留；
   /// 自动模式下这些序号原样保留、只是不生效。
   Future<void> setManualOrder(List<String> orderedIds) =>
@@ -604,6 +613,7 @@ class AppController extends ChangeNotifier {
     } else {
       final inToday = todayView;
       final inTodayList = [
+        ...inToday.inProgress,
         ...inToday.overdue,
         ...inToday.fixed,
         ...inToday.pinned,
