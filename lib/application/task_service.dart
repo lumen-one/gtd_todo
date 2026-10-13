@@ -58,6 +58,12 @@ class TaskService {
   /// 解析与合并告警（附录 B 流向）。
   List<String> get warnings => repo.warnings;
 
+  /// 落盘失败记录（v1.16：命令先发事件、后落盘）。空 = 正常；非空 = "界面上这个
+  /// 状态重启后会丢"，条目形如 `<taskId>: <错误>`。供设置页/日志查，不参与逻辑。
+  List<String> get persistFailures => List.unmodifiable(_persistFailures);
+
+  final List<String> _persistFailures = [];
+
   List<Task> get tasks => List.unmodifiable(_tasks);
 
   Task? byId(String id) {
@@ -67,12 +73,26 @@ class TaskService {
     return null;
   }
 
-  /// 重新读取仓库并重新调度（重锚提醒间隔）。
+  /// 重新读取仓库并重新调度（重锚提醒间隔）。**从盘回流**用这一条。
   ///
   /// C2 防 Zeno：只应在事件发生时调用（命令 / 提醒到点 / 文件变更），
   /// 不要在周期 tick 里无条件调用，否则提醒永远到不了点。
+  ///
+  /// 内部命令**不走这里**（改走 [recomputeSchedule]）：顺序刚在内存里落定，
+  /// 再全量回读一遍目录只会把"让 UI 看到新顺序"推迟到 I/O 之后。
   Future<void> refreshSchedule({EventOrigin origin = EventOrigin.system}) async {
     await _reload();
+    await recomputeSchedule(origin: origin);
+  }
+
+  /// 用**当前内存态**重算调度并发事件（不读盘）。
+  ///
+  /// 命令的最后一环走这里（v1.16）：`_tasks` 已经是终态，重算一遍调度即可，
+  /// 没有理由再 `loadAll` 一遍——那会让界面看到的顺序变成"写进盘再读回来"的
+  /// 那一份，而这份要等 N 次文件写 + 一次全量读才到得了手（拖动闪动的真因）。
+  /// 只有外部改动（Obsidian 手改 / 文件监听 / 回到前台 / 启动）才需要真的回读。
+  Future<void> recomputeSchedule(
+      {EventOrigin origin = EventOrigin.system}) async {
     lastSchedule = scheduler.schedule(
       tasks: _tasks,
       now: now(),
@@ -92,7 +112,7 @@ class TaskService {
     if (mode == scheduleMode) return;
     scheduleMode = mode;
     _emit(DomainEventType.scheduleModeChanged, '', EventOrigin.user);
-    await refreshSchedule();
+    await recomputeSchedule();
   }
 
   Future<void> _reload() async {
@@ -160,10 +180,10 @@ class TaskService {
           ? const {'type': 'fixed'}
           : const {},
     );
-    await repo.save(task);
     _tasks = [..._tasks, task];
     _emit(DomainEventType.taskCreated, task.id, origin);
-    await refreshSchedule(origin: origin);
+    await _saveAll([task]);
+    await recomputeSchedule(origin: origin);
     return task;
   }
 
@@ -319,13 +339,15 @@ class TaskService {
     await repo.moveToTrash(id);
     _tasks = _tasks.where((t) => t.id != id).toList();
     _emit(DomainEventType.taskDeleted, id, origin);
-    await refreshSchedule(origin: origin);
+    await recomputeSchedule(origin: origin);
   }
 
   /// 从回收站恢复（撤销窗口 / 设置页回收列表）。
   Future<void> restoreTask(String id,
       {EventOrigin origin = EventOrigin.user}) async {
     await repo.restore(id);
+    // 这里必须读盘：回收站里的任务不在内存 `_tasks` 中（v1.16 起命令默认
+    // 不再回读，只有这种"盘上有、内存里没有"的情况才需要）。
     await refreshSchedule(origin: origin);
     _emit(DomainEventType.taskRestored, id, origin);
   }
@@ -491,10 +513,10 @@ class TaskService {
         if (routine.remind) 'routine_remind': 'true',
       }),
     );
-    await repo.save(task);
     _tasks = [..._tasks, task];
     _emit(DomainEventType.routineInstanceGenerated, task.id, origin);
-    await refreshSchedule(origin: origin);
+    await _saveAll([task]);
+    await recomputeSchedule(origin: origin);
     return task;
   }
 
@@ -628,6 +650,8 @@ class TaskService {
     if (current.isBefore(s.nextReminderAt!)) return null;
     final taskId = s.nextReminderTaskId ?? s.nextTaskId;
     if (taskId == null) return null;
+    // 提醒到点仍走读盘那条路：它是时间驱动的，`_reload` 顺带把到期的 snooze
+    // 拉回 active（A4），内存态自己不知道时间过去了。
     await refreshSchedule(origin: EventOrigin.system);
     return ReminderEvent(
       firedAt: current,
@@ -656,27 +680,40 @@ class TaskService {
       '${d.year}-${d.month.toString().padLeft(2, '0')}'
       '-${d.day.toString().padLeft(2, '0')}';
 
-  /// **批量落盘**：一次用户手势（拖动定序/整理池子/插队）只许写一次盘、发一个
-  /// 事件、重锚一次。逐条写会让"只写了一半的顺序"被渲染出来——清单闪动就是这么
-  /// 来的；内存 `_tasks` 先整体换成终态再发事件，所以第一次重建就是最终顺序。
+  /// **批量落盘**：一次用户手势（拖动定序/整理池子/插队）只许发一个事件、重算一次。
+  ///
+  /// 顺序很关键（v1.16）：**先把内存 `_tasks` 换成终态并发事件，再去落盘**。
+  /// 事件是 UI 刷新的唯一触发器，放在落盘之后就等于让"界面看到新顺序"等
+  /// N 次文件写——那几帧里列表还是旧顺序，条目先弹回原位再跳到新位置（闪动）。
   Future<List<Task>> _persistBatch(List<Task> updated, DomainEventType type,
       EventOrigin origin) async {
     if (updated.isEmpty) return const [];
     final byIdMap = {for (final t in updated) t.id: t};
-    for (final t in updated) {
-      await repo.save(t);
-    }
     _tasks = [for (final x in _tasks) byIdMap[x.id] ?? x];
     _emit(type, updated.first.id, origin);
-    await refreshSchedule(origin: origin);
+    await _saveAll(updated);
+    await recomputeSchedule(origin: origin);
     return List.unmodifiable(updated);
   }
 
   Future<void> _persist(Task t, EventOrigin origin, DomainEventType type) async {
-    await repo.save(t);
     _tasks = [for (final x in _tasks) x.id == t.id ? t : x];
     _emit(type, t.id, origin);
-    await refreshSchedule(origin: origin);
+    await _saveAll([t]);
+    await recomputeSchedule(origin: origin);
+  }
+
+  /// 落盘：失败**只记不抛**——内存态已经是界面看到的终态，抛出去只会让命令
+  /// 半途而废、UI 停在更不一致的地方。写不进去的任务留在 [persistFailures]
+  /// 里，供设置页/日志查（下次任意一次从盘回流会把它冲掉）。
+  Future<void> _saveAll(List<Task> tasks) async {
+    for (final t in tasks) {
+      try {
+        await repo.save(t);
+      } catch (e) {
+        _persistFailures.add('${t.id}: $e');
+      }
+    }
   }
 
   void _emit(DomainEventType type, String taskId, EventOrigin origin) {
