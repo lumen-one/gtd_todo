@@ -11,7 +11,8 @@
 >
 > 分工：产品定位、调度数学与阶段规划见原《动态任务调度 Todo 设计文档》。**客户端层的
 > 需求与决议见 docs/ui-interaction.md（v0.12，决议 1–43）**——本文件为它提供结构与插座，
-> 对接点 = §3.5 命令清单 + §4.3 送达策略 + §4.1 Scheduler 的 `reminderMode`；
+> 对接点 = §3.5 命令清单 + §4.3 送达策略 + §4.1 Scheduler 的 `reminderMode` +
+> `buildTodayView` 的 `scheduleMode`（业务层排序口径，v1.12）；
 > 结构冲突以本文件为准，产品行为以 UI 文档为准；与 `docs/changelog.md` 冲突时，
 > 以正文与 §11 决策记录为准。改动任何口径前，先查 `docs/crosswalk.md` 的联动表。
 > 本文件接管原设计文档
@@ -286,7 +287,7 @@ TaskService 每个命令完成后广播 `DomainEvent`（含 origin）。通知�
 | `createTask` | 创建：deadline / estimatedWorkMinutes 可选；fixed 必须有截止且豁免 A2（工时可为 0），flex 缺省 30 分钟且必须 ≥ 1（A2）；类型走 metadata `type`（附录 B 登记表） |
 | `completeTask` / `snoozeTask` / `snoozeUntil` / `snoozeToNextWindow` / `logWork` | 完成 / 推迟（D8 两档）/ 绝对档位推迟（明早 9 点、自选，决议 26）/ 记工时 |
 | `updateTask` | 更新（含类型转换 fixed↔flex、清截止；fixed 必须有截止的合并后校验） |
-| `pinToTop(taskId)` | 插队 = 持久意图记在任务（metadata `pinned`），保持到完成、栈式压顶；仅对可推组生效 |
+| `pinToTop(taskId)` | 插队 = 持久意图记在任务（metadata `pinned`），保持到完成、栈式压顶；仅对可推组生效，**且无排序档下不生效**（那一档顺序整体由 `manual_order` 定，见 B5 / D17） |
 | `setTaskReminder(taskId, enabled)` | **逐任务提醒开关**（v1.9，D15）：写 metadata `remind`；标准模式下这是让单个任务出声的**唯一**手段，完整模式下无意义（本来就全响） |
 | `pickForToday` / `returnToPool` | 挑散件到今日尾部（`picked_for_today` 标记，当日手动挑优先、尾部最多一件）/ 放回池子 |
 | `setPoolOrder(taskId, order)` | 池子显示序（`pool_order`，仅整理无调度含义，重启保留） |
@@ -442,7 +443,7 @@ class MarkdownTaskRepository implements TaskRepository { /* … */ }
 - **NotesReaderPort**：疑问笔记**只读**（frontmatter 闭合后到下一个 `---` 的正文段、
   含 `[[` 的行屏蔽、对该文件零写入）【现状（v1.4）：application/notes_reader.dart
   定义接口与提取规则，platform/app_adapters.dart 落盘适配器】；
-- **今日视图查询 `todayView()` / 任务池查询 `poolView()`**（application 层）：
+- **今日视图查询 `buildTodayView()` / 任务池查询 `buildPoolView()`**（application 层）：
   聚合 ScheduleResult（可推/逾期）+ 固定时点组 + 例行实例 + 被挑散件四种来源，
   UI 只消费查询结果（D12）【现状（v1.4）；v1.5 补：例行组落地，
   计划段以 `PoolRow`（任务行 / 周期条目）按日期混排，决议 27/14】；
@@ -808,7 +809,7 @@ class SystemSnapshot {
 | D9 | 写冲突策略：保存前重读文件 + **按字段归属合并**（应用拥有的字段 vs 人类/未知内容各写各的）+ 外部修改提示（检测方式 = 与应用最后见到的内容精确比对，比 mtime 粒度可靠；正文归属以 baselineRaw 为基准） | 单写者 last-writer-wins 会丢 Obsidian 端对机读字段的修改；分级保真（§3.4）与 D9 是同一机制的两面 |
 | D10 | 通知时间段是 application 层的**送达策略**（§4.3），与 WorkTimeRule（domain，工时产能）解耦；落在静默段只**顺延到下一时段开头（不吞掉）**；绝对档位原样响 | 两日历概念混进 slack 数学会污染产能计算；"何时打扰用户"是送达礼貌，不是产能 |
 | D11 | 删除 = 软删除：内核属性文件移入任务目录 `.gtd/.trash/` + 人类文档那一行用 `%%…%%` 注释掉（Obsidian 可见可捞）+ 撤销 toast + 设置『清空回收』 | Obsidian 共存场景下真删文件不可逆；"文件即备份"原则下回收站是自然延伸 |
-| D12 | 今日清单聚合查询放 application（`todayView()`），UI 只消费查询结果 | 四种来源的聚合是查询不是渲染；守住"UI 不含逻辑"（原则 3） |
+| D12 | 今日清单聚合查询放 application（`buildTodayView()`），UI 只消费查询结果 | 四种来源的聚合是查询不是渲染；守住"UI 不含逻辑"（原则 3） |
 | D13 | **双文档存储**：人写 `tasks.md`（一行一条任务，`# 标题` 分类），内核写 `.gtd/<id>.md`；两文档靠**行指纹**配对 | 人机混写一个文件必然互相糟蹋。分开之后"谁写谁负责"落到文件层面：应用改自己那半边时物理上碰不到人的内容，Obsidian 共享的那一个文档也保持纯净（无 id、无裕度、无优先级噪声） |
 | D14 | 人类文档的**复选框只认显式完成**（status/completed_at），不认 `isCompleted` 里"flex 剩余工时归零"的派生判断 | 派生语义写进文档会让"读→写"往返自己篡改人的意图（`- [ ]` 变 `- [x]`），行指纹随之失效。派生是调度语义，不该落盘成人的决定 |
 | D15 | **两种提醒模式，默认标准**：标准 = 只排列不提醒（逐任务可手动开，metadata `remind`）；完整 = 原方案（该响的都响）。门槛做在**算法产出这一层**（`reminderAllowed` → `nextReminderAt` / `nextPointReminder` 为 null），不是做在通知实现里 | 提醒是打扰，默认应该安静；要推着走的事再逐个开。**放算法层的理由**：这样"不出声"在调度结果里就是事实，单闹钟、前台轮询、通知实现、今日徽标都不用各写一遍 if，也不会出现"算出一站、通知层再吞掉"的两处口径。门槛与送达策略（D10）**串联**：先过门槛（要不要出声）再过时间段（什么时候出声）。**v1.12 起这两档并入 `ScheduleMode` 三档**（D17）：多加的那一档只改业务层的顺序口径，门槛那一套逻辑一行没动 |
@@ -968,7 +969,7 @@ snoozed_until: 2026-10-11T17:10   # 与 status: snoozed 配套（D8：用户意�
 | 键 | 语义 | 来源 |
 |---|---|---|
 | `type` | 任务类型：`fixed`（不可推）/ `flex`（可推，缺省不写）/ `routine`（周期实例，v1.5） | ui 文档 §4.1 / §10#1 |
-| `pinned` | 插队标记：持久意图，保持到完成，栈式压顶（仅可推组），值 = 插队时刻 | ui 文档 §6.1 / 决议 9 |
+| `pinned` | 插队标记：持久意图，保持到完成，栈式压顶（仅可推组；**无排序档下不生效**，顺序由 `manual_order` 整体定，决议 43），值 = 插队时刻 | ui 文档 §6.1 / 决议 9 / 43 |
 | `picked_for_today` | 被挑散件标记（当日有效，值 = yyyy-MM-dd；手动挑过则当日自动挑让位） | ui 文档 §6.3 / 决议 8 |
 | `pool_order` | 任务池显示序（仅整理，无调度含义，重启保留） | ui 文档决议 14 |
 | `routine` | 周期实例所属规则 id | ui 文档决议 12 |
@@ -976,7 +977,7 @@ snoozed_until: 2026-10-11T17:10   # 与 status: snoozed 配套（D8：用户意�
 | `routine_remind` | 该实例的规则设了响（时点性提醒，只写 `true`） | ui 文档决议 18 |
 | `routine_skipped` | 被"跳过今天"的那一天（yyyy-MM-dd；不完成、当天不再显示） | ui 文档决议 23 |
 | `point_fired` | 已响过的那一次时点提醒（值 = 当时的到点时刻 ISO；改期/推迟后清除） | v1.5 实现（只到点响一次） |
-| `remind` | **逐任务提醒开关**（标准模式下让这一件出声；只写 `true`，关掉即删键）。完整模式下无意义 | ui 文档 §7.0 / 决议 38（v1.9） |
+| `remind` | **逐任务提醒开关**（标准/无排序两档下让这一件出声；只写 `true`，关掉即删键）。完整模式下无意义（本来就全响） | ui 文档 §7.0 / 决议 38（v1.9） |
 | `manual_order` | **手动序**（**无排序档**下今日可推组的显示序，非负整数；拖动一次整段重编号）。标准/完整两档下**保留但不生效**，切档不迁移 | ui 文档 §6.1 / 决议 43（v1.12） |
 
 - **解析宽容**：坏文件降级进 `warnings`，不崩溃。**warnings 流向**：现暂存于

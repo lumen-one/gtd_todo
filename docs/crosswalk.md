@@ -62,6 +62,9 @@
 | 整文件逐字节保真 | 分级保真（人类文档行级 / 内核字段级） | 双文档后保真分两层 |
 | 中文路径迁移（ASCII 副本） | 已作废，只在本工作目录构建 | v1.8 起附录 A 不再提 |
 | "今日清单会变长"（无排序局限） | 已作废：成员三档一致，条目变多是 bug | v1.12 第二版修订时撤 |
+| 顺序不受模式影响 / 构成与顺序不受模式影响 | 构成不受影响；顺序仅无排序档不同 | v0.9 双档口径；已修 ui §10#15 与决议 38 两处 |
+| updateReminderMode | updateScheduleMode（v0.12 起） | 模式切换命令改名，旧名只存 changelog |
+| todayView() / poolView() | buildTodayView() / buildPoolView() | v1.12 起 UI 侧统一 build*；arch §4.1 与 D12 已跟改 |
 
 ## 四、维护本表自身
 
