@@ -148,7 +148,7 @@
 | `TaskMetric` | 单任务派生指标：available、slack、**risk（v1.9，裕度的非线性函数）**、**priority（v1.9 = risk × importance，排序键）**、urgency、displayStatus、interval、nextReminderAt（**提醒锚点**）、**reminds（v1.9：当前模式下会不会出声）**；计算结果，不持久化【现状】 | 现状 |
 | `ScheduleResult` | 一次调度的输出：items（**已排序**：永远按调度优先级排，不知道有"无排序"这一回事）、nextTaskId、nextReminderAt（**下一站"会响"的提醒**，v1.9 起已过模式门槛）、infeasible/overdue 名单；所有算法的统一方言【现状】 | 现状 |
 | `ReminderMode` | 提醒**门槛**（内核方言）：**standard**（标准：只排列不提醒，逐任务可手动开）/ **full**（完整：算法判定该响的都响）。v1.9 起进 `Scheduler.schedule` 的入参 | 现状 |
-| `ScheduleMode` | **调度模式**（用户可见的三档，domain）：**full** / **standard**（默认）/ **manual**，逐级弱化算法替人做主的程度；由 [ReminderMode] 派生出内核门槛 + `isManual` 决定业务层是否用手动序（D17）。**定义在 domain（`domain/schedule.dart`），但只被 application 与 UI 消费，`Scheduler` 不认得它** | 现状（v1.12） |
+| `ScheduleMode` | **调度模式**（用户可见的三档，domain）：**full** / **standard**（默认）/ **manual**，逐级弱化算法替人做主的程度；由它派生**内核门槛**（`ScheduleMode.reminderMode`，给 `Scheduler.schedule`）与**业务层排序口径**（`isManual`：今日可推组是否改用手动序）（D17）。**定义在 domain（`domain/schedule.dart`），但只被 application 与 UI 消费，`Scheduler` 不认得它** | 现状（v1.12） |
 | `ReminderEvent` | 到点提醒事件：firedAt + **taskId + kind（soft 软提醒 / point 时点提醒）** + 当时的调度快照 | 现状 |
 | `PointReminder` | 时点性提醒候选（不可推到点 + 设了响的周期实例）：到点时刻 + 目标任务；到点后 30 分钟内仍可补响（`pointReminderGrace`） | 现状 |
 | `DomainEvent` | 领域事件：type、taskId、at、**origin(user/ai/migration/system)** | 现状 |
@@ -776,14 +776,20 @@ class SystemSnapshot {
 测试覆盖跨日历/临界/逾期场景（**v1.9：146 个测试全绿**；后续各版状态见
 `docs/changelog.md`）。
 
-**进度（2026-10-12）：第 1–14 条全部完成**（各条的落地版本、理由与踩坑记录见
-`docs/changelog.md`）。分期小结：1–4 是一次纯内部小迭代；5–7 是存储改造；8 与 13 是
-算法层升级；9 起进入多平台；12 是人机数据归属的再切分（不改调度数学）；13 是
-"**默认安静**"这条产品决定在算法层的落地（顺序不变，只把"出声"变成可选）；14 是
-"**默认由算法排**"的对应档位——把"今天这几件的先后"交回给人，**只改顺序**：
-今天该看哪几件、多久催一次、要不要升级、出不出声，三档全部一致。
+**进度（2026-10-12）：第 1–14 条全部完成**。编号速查：**1** Task 不可变 + copyWith ·
+**2** 领域事件流 · **3** UI 只读门面 · **4** 架构守卫测试 · **5** repository 异步化 ·
+**6** TaskCodec 拆出 · **7** 写冲突策略 + watch · **8** Scheduler ParamSpec / 注册表 / 影子运行 ·
+**9** 交付类插座补齐 · **10** UI 文档 v0.4 落地 · **11** UI 文档剩余项（v1.5）·
+**12** 双文档存储（v1.7）· **13** 算法层 + 提醒模式（v1.9）· **14** 调度模式三档（v1.12）。
+各条的落地版本、理由与踩坑记录见 `docs/changelog.md`（本表只保留编号索引，
+不再逐条展开；全文对"§10 第 N 条"的引用以本速查为准）。
+分期小结：1–4 是一次纯内部小迭代；5–7 是存储改造；8 与 13 是算法层升级；9 起进入多平台；
+12 是人机数据归属的再切分（不改调度数学）；13 是"**默认安静**"这条产品决定在算法层的
+落地（顺序不变，只把"出声"变成可选）；14 是"**默认由算法排**"的对应档位——把"今天
+这几件的先后"交回给人，**只改顺序**：今天该看哪几件、多久催一次、要不要升级、
+出不出声，三档全部一致。
 
-**剩余差距：AI L2**（§6，`TaskProposalPort` 已定义；设置页只做"展示 + 拒绝"，决议 28）。
+**剩余差距：AI L2**（§6，`AiProvider` 已定义；设置页只做"展示 + 拒绝"，决议 28）。
 
 ---
 
