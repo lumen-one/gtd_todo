@@ -61,8 +61,9 @@ class TaskSidecarCodec {
   /// 其余未知键仍原样往返（§3.4 字段级保真）。
   ///
   /// 漏掉这一条，"插队（决议 9）/ 池子显示序（决议 14）/ 挑到今日（决议 8）/
-  /// 跳过今天（决议 23）/ 只到点响一次（决议 32）/ 类型转换（§3.5 updateTask）"
-  /// 这些持久意图就会在命令自己的重锚里蒸发——TaskService 每个命令后都重读磁盘。
+  /// 跳过今天（决议 23）/ 只到点响一次（决议 32）/ 类型转换（§3.5 updateTask）/
+  /// 挂起进行（决议 47）"这些持久意图就会在命令自己的重锚里蒸发——
+  /// TaskService 每个命令后都重读磁盘。
   static const List<String> registeredMetaKeys = [
     'type',
     'pinned',
@@ -75,6 +76,7 @@ class TaskSidecarCodec {
     'point_fired',
     'remind', // v1.9：逐任务提醒开关（标准模式下让这一件出声，决议 38）
     'manual_order', // v1.12：手动序（无排序模式下的显示序，决议 43 / D17）
+    'in_progress', // v1.18：挂起进行标记（长期任务顶置今日页，决议 47 / D19）
   ];
 
   /// 应用拥有的键 = 内核字段 + 登记的 metadata 键（这两类都要改写，不是"未知"）。

@@ -133,6 +133,11 @@ class Task {
   /// 插队标记（值 = 插队时刻 ISO 串，栈式排序用）；null = 未插队。
   String? get pinnedAt => metadata['pinned'];
 
+  /// **挂起进行标记**（v1.18，ui 决议 47；值 = 挂起时刻 ISO 串，组内降序 = 后挂在上）；
+  /// null = 未挂起。持久意图：保持到完成（`completeTask` 清除）或主动取消，
+  /// **不按天过期**；仅'长期'任务可挂（命令层校验，见 TaskService.setInProgress）。
+  String? get inProgressAt => metadata['in_progress'];
+
   /// 被挑散件标记（当日有效，值 = yyyy-MM-dd）；null = 未被挑。
   String? get pickedForDate => metadata['picked_for_today'];
 

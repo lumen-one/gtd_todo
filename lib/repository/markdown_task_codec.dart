@@ -42,6 +42,7 @@ class MarkdownTaskCodec implements TaskCodec {
     'time_slack',        // 时间裕度（决议 36；旧格式里也认这个键）
     'remind',            // 逐任务提醒开关（v1.9 决议 38：标准模式下让这一件出声）
     'manual_order',      // 手动序（v1.12 决议 43 / D17：无排序模式下的显示序）
+    'in_progress',       // 挂起进行标记（v1.18 决议 47：长期任务顶置今日页，值 = 挂起时刻）
   ];
 
   const MarkdownTaskCodec();
