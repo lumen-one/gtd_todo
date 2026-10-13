@@ -15,14 +15,12 @@ import 'today_panel.dart';
 /// - **系统级悬浮窗**（`overlay_main.dart`，跑在原生前台服务的第二个引擎里）：
 ///   在其他 App 上方就地展开同一个面板，日常操作不必离开当前 App。
 ///
-/// 三页竖翻（今日清单 → 疑问笔记 → 任务池）、重手势翻页、右下角添加区都在这里；
-/// 宿主只负责"摆哪儿、怎么进出"（滑入动画 / 悬浮窗口 / 抽屉）。
+/// 三页左右横翻（今日清单 → 疑问笔记 → 任务池）、右下角添加区都在这里；
+/// 翻页走 PageView 自己的横滑物理（v0.15），宿主只负责"摆哪儿、怎么进出"（滑入动画 / 悬浮窗口 / 抽屉）。
 class SidePanel extends StatefulWidget {
   final AppController controller;
   final PageController pageCtrl;
 
-  /// 上下重手势翻页回调（宿主提供高度/累积量判定）。
-  final void Function(DragEndDetails d, double accum) onPageDragEnd;
   final VoidCallback onClose;
   final VoidCallback onPrivacy;
   final VoidCallback onOpenCalendar;
@@ -37,7 +35,6 @@ class SidePanel extends StatefulWidget {
     super.key,
     required this.controller,
     required this.pageCtrl,
-    required this.onPageDragEnd,
     required this.onClose,
     required this.onPrivacy,
     required this.onOpenCalendar,
@@ -51,7 +48,6 @@ class SidePanel extends StatefulWidget {
 
 class _SidePanelState extends State<SidePanel> {
   static const _pageNames = ['今日清单', '疑问笔记', '任务池'];
-  double _pageDragAccum = 0;
 
   @override
   Widget build(BuildContext context) {
@@ -67,96 +63,76 @@ class _SidePanelState extends State<SidePanel> {
         bottom: false,
         child: Column(
           children: [
-            // 面板头：页名 + 翻页点（重手势区）+ 日历 / 隐私 / 设置? / 关闭。
-            // 翻页手势绑在**整条头部**：列表区只滚动、不翻页（§6.0 的重手势防误
-            // 翻仍然成立，只是不必再让用户去戳那条 34dp 的圆点条）。横滑一律不
-            // 接管——那是 §6.5 隐私过头用的手势。
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTapUp: (d) {
-                final w = context.size?.width ?? 1;
-                _pageFlip(context, d.localPosition.dx < w / 2 ? -1 : 1);
-              },
-              onVerticalDragStart: (_) => _pageDragAccum = 0,
-              onVerticalDragUpdate: (d) => _pageDragAccum += d.delta.dy,
-              onVerticalDragEnd: (d) =>
-                  widget.onPageDragEnd(d, _pageDragAccum),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
+            // 面板头：页名 + 翻页点 + 日历 / 隐私 / 设置? / 关闭。
+            // 翻页 = **左右横滑**（PageView 自己的物理，v0.15）：横方向与列表的
+            // 纵向滚动正交，两边互不抢手，所以不再需要任何"重手势"。
+            // 圆点是页序指示，同时是可点的跳转靶。
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 6, 8, 0),
+              child: Row(
                 children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(8, 6, 8, 0),
-                    child: Row(
-                      children: [
-                        AnimatedBuilder(
-                          animation: widget.pageCtrl,
-                          builder: (context, _) => Text(
-                            _pageNames[_currentPage],
-                            style: theme.textTheme.titleMedium,
-                          ),
-                        ),
-                        const Spacer(),
-                        IconButton(
-                          tooltip: '日历',
-                          icon: const Icon(Icons.calendar_month_outlined,
-                              size: 20),
-                          onPressed: widget.onOpenCalendar,
-                        ),
-                        IconButton(
-                          tooltip: '隐私过头（只留输入）',
-                          icon: const Icon(Icons.visibility_off_outlined,
-                              size: 20),
-                          onPressed: widget.onPrivacy,
-                        ),
-                        if (widget.onOpenSettings != null)
-                          IconButton(
-                            tooltip: '打开应用设置（周期任务 / 主题 / 权限）',
-                            icon: const Icon(Icons.settings_outlined,
-                                size: 20),
-                            onPressed: widget.onOpenSettings,
-                          ),
-                        IconButton(
-                          icon: const Icon(Icons.close, size: 20),
-                          onPressed: widget.onClose,
-                        ),
-                      ],
-                    ),
-                  ),
-                  // 翻页点：整条头部都能上下重手势翻页，圆点本身另外可直接点。
                   AnimatedBuilder(
                     animation: widget.pageCtrl,
-                    builder: (context, _) => SizedBox(
-                      height: 36,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          for (var i = 0; i < 3; i++)
-                            GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onTap: () => _pageTo(i),
-                              child: SizedBox(
-                                width: 40,
-                                height: 36,
-                                child: Center(
-                                  child: Container(
-                                    width: 7,
-                                    height: 7,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: i == _currentPage
-                                          ? AppColors.accent
-                                          : theme.colorScheme.outlineVariant,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
+                    builder: (context, _) => Text(
+                      _pageNames[_currentPage],
+                      style: theme.textTheme.titleMedium,
                     ),
                   ),
+                  const Spacer(),
+                  IconButton(
+                    tooltip: '日历',
+                    icon: const Icon(Icons.calendar_month_outlined, size: 20),
+                    onPressed: widget.onOpenCalendar,
+                  ),
+                  IconButton(
+                    tooltip: '隐私过头（只留输入）',
+                    icon: const Icon(Icons.visibility_off_outlined, size: 20),
+                    onPressed: widget.onPrivacy,
+                  ),
+                  if (widget.onOpenSettings != null)
+                    IconButton(
+                      tooltip: '打开应用设置（周期任务 / 主题 / 权限）',
+                      icon: const Icon(Icons.settings_outlined, size: 20),
+                      onPressed: widget.onOpenSettings,
+                    ),
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 20),
+                    onPressed: widget.onClose,
+                  ),
                 ],
+              ),
+            ),
+            AnimatedBuilder(
+              animation: widget.pageCtrl,
+              builder: (context, _) => SizedBox(
+                height: 30,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (var i = 0; i < 3; i++)
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => _pageTo(i),
+                        child: SizedBox(
+                          width: 36,
+                          height: 30,
+                          child: Center(
+                            child: Container(
+                              width: 7,
+                              height: 7,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: i == _currentPage
+                                    ? AppColors.accent
+                                    : theme.colorScheme.outlineVariant,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
             const Divider(height: 8),
@@ -165,7 +141,6 @@ class _SidePanelState extends State<SidePanel> {
                 children: [
                   PageView(
                     controller: widget.pageCtrl,
-                    physics: const NeverScrollableScrollPhysics(),
                     children: [
                       TodayPanel(controller: controller),
                       NotesPanel(controller: controller),
@@ -190,17 +165,7 @@ class _SidePanelState extends State<SidePanel> {
   int get _currentPage =>
       (widget.pageCtrl.hasClients ? (widget.pageCtrl.page ?? 0) : 0).round();
 
-  void _pageFlip(BuildContext context, int delta) {
-    if (!widget.pageCtrl.hasClients) return;
-    final page = _currentPage.clamp(0, 2);
-    final target = page + delta;
-    if (target < 0 || target > 2) return;
-    widget.pageCtrl.animateToPage(target,
-        duration: const Duration(milliseconds: 260),
-        curve: Curves.easeOutCubic);
-  }
-
-  /// 点圆点直接跳页（比"点左右半区 ±1"直白，靶也够大）。
+  /// 点圆点直接跳页（页序指示本身就是跳转靶）。
   void _pageTo(int page) {
     if (!widget.pageCtrl.hasClients) return;
     widget.pageCtrl.animateToPage(page.clamp(0, 2),
@@ -325,9 +290,9 @@ class PanelOnboardDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     const steps = [
       (Icons.swipe_left_alt, '拖出展开', '点一下屏幕边缘那道白色细条，或从它上面朝屏幕里横拖，展开侧边栏；长按细条可换边停靠。'),
-      (Icons.swap_vert, '重手势翻页',
-          '三页竖翻：今日 → 疑问 → 池子。在顶部那条（页名 + 三个圆点）上下拖一下就翻页，'
-          '也可以直接点圆点跳到那一页；翻页手势不进列表区，浏览清单时不会误翻。'),
+      (Icons.swap_horiz, '左右横滑翻页',
+          '三页：今日 → 疑问 → 池子。在页面区左右横拖就翻页（上下拖是滚动清单，两回事）；'
+          '也可以直接点顶部那三个圆点跳到某一页。'),
       (Icons.add_circle_outline, '右下角添加',
           '「+」进完整创建（类型与日期都是按钮，默认三无、点确认直接入池），「～」两秒堆三无。'),
     ];
@@ -366,7 +331,6 @@ class PanelOnboardDialog extends StatelessWidget {
 class FloatingPanel extends StatelessWidget {
   final AppController controller;
   final PageController pageCtrl;
-  final void Function(DragEndDetails d, double accum) onPageDragEnd;
   final VoidCallback onCollapse;
   final VoidCallback onPrivacy;
   final bool privacy;
@@ -381,7 +345,6 @@ class FloatingPanel extends StatelessWidget {
     super.key,
     required this.controller,
     required this.pageCtrl,
-    required this.onPageDragEnd,
     required this.onCollapse,
     required this.onPrivacy,
     required this.privacy,
@@ -427,7 +390,6 @@ class FloatingPanel extends StatelessWidget {
           child: SidePanel(
             controller: controller,
             pageCtrl: pageCtrl,
-            onPageDragEnd: onPageDragEnd,
             onClose: onCollapse,
             onPrivacy: onPrivacy,
             onOpenCalendar: onOpenCalendar,

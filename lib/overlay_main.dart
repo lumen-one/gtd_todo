@@ -277,9 +277,6 @@ class _OverlayPanelShellState extends State<OverlayPanelShell> {
   bool _dockedRight = true;
   bool _privacy = false;
 
-  static const double _pageFlingVelocity = 800;
-  static const double _pageDragDistance = 90;
-
   AppController get _c => widget.controller;
 
   @override
@@ -339,25 +336,6 @@ class _OverlayPanelShellState extends State<OverlayPanelShell> {
     }
   }
 
-  void _onPageDragEnd(DragEndDetails d, double accum) {
-    final v = d.velocity.pixelsPerSecond.dy;
-    if (v < -_pageFlingVelocity || accum < -_pageDragDistance) {
-      _pageBy(1);
-    } else if (v > _pageFlingVelocity || accum > _pageDragDistance) {
-      _pageBy(-1);
-    }
-  }
-
-  void _pageBy(int delta) {
-    if (!_pageCtrl.hasClients) return;
-    final page = (_pageCtrl.page ?? 0).round().clamp(0, 2);
-    final target = page + delta;
-    if (target < 0 || target > 2) return;
-    _pageCtrl.animateToPage(target,
-        duration: const Duration(milliseconds: 260),
-        curve: Curves.easeOutCubic);
-  }
-
   @override
   Widget build(BuildContext context) {
     if (!_expanded) return const SizedBox.shrink();
@@ -373,7 +351,6 @@ class _OverlayPanelShellState extends State<OverlayPanelShell> {
         body: FloatingPanel(
           controller: _c,
           pageCtrl: _pageCtrl,
-          onPageDragEnd: (d, accum) => _onPageDragEnd(d, accum),
           onCollapse: _collapse,
           onPrivacy: () => setState(() => _privacy = true),
           privacy: _privacy,

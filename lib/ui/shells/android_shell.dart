@@ -14,9 +14,10 @@ import '../widgets/reminder_listener.dart';
 /// - App 主体 = 设置页（"App 主体几乎不开"）；
 /// - 悬浮侧边栏 = 应用内实现的贴屏把手 + 拖出展开（系统级悬浮窗的
 ///   PermissionPort/原生服务在设备阶段接入，交互协议与本文档一致）；
-/// - 三页竖翻：今日清单 → 疑问笔记 → 任务池；翻页用"重手势"（更大行程/
-///   速度阈值），列表区域滚动手势优先，面板头部/空白区提供翻页；
-/// - 隐私过头：拖拽过头/点眼睛 → 隐藏全部清单内容，只留一条极简输入框；
+/// - 三页**左右横滑**：今日清单 → 疑问笔记 → 任务池；横方向与列表的纵向滚动
+///   正交，互不抢手（v0.15；原先的"竖翻 + 面板头重手势"已删）；
+/// - 隐私过头：点面板头的『隐私』按钮 → 隐藏全部清单内容，只留一条极简输入框
+///   （v0.15：原先"面板拖拽过头"那道横滑手势已删，它和翻页抢横方向）；
 /// - 抽屉兜底（§11）：同一套 panels，App 内左侧滑呼出。
 class AndroidShell extends StatefulWidget {
   final AppController controller;
@@ -40,8 +41,6 @@ class _AndroidShellState extends State<AndroidShell> {
   int _seenPanelRequest = 0;
   int _seenCloseRequest = 0;
 
-  static const double _pageFlingVelocity = 800; // 重手势：速度阈值（dp/s）
-  static const double _pageDragDistance = 90; // 重手势：行程阈值（dp）
 
   @override
   void initState() {
@@ -116,29 +115,9 @@ class _AndroidShellState extends State<AndroidShell> {
     });
   }
 
-  // ---- 翻页（重手势：更大行程/速度阈值，避免浏览清单时误翻）----
+  // ---- 翻页（左右横滑由 PageView 自己接管，v0.15；这里只管点通知后的定位）----
 
-  void _pageBy(int delta) {
-    if (!_pageCtrl.hasClients) return;
-    final page = (_pageCtrl.page ?? 0).round().clamp(0, 2);
-    final target = page + delta;
-    if (target < 0 || target > 2) return;
-    _pageCtrl.animateToPage(target,
-        duration: const Duration(milliseconds: 260), curve: Curves.easeOutCubic);
-  }
-
-  /// [accum] = 本次竖拖的累计位移（dp，向下为正）。翻页手势只绑在面板头部，
-  /// 所以阈值不必按屏高放大——按屏高的 38% 算时，等于要拖将近三分之一屏才翻得动。
-  void _onPageDragEnd(DragEndDetails d, double accum) {
-    final v = d.velocity.pixelsPerSecond.dy;
-    if (v < -_pageFlingVelocity || accum < -_pageDragDistance) {
-      _pageBy(1);
-    } else if (v > _pageFlingVelocity || accum > _pageDragDistance) {
-      _pageBy(-1);
-    }
-  }
-
-  // ---- 隐私输入（等价堆三无，决议 22）----
+  // ---- 隐私输入（等价堆三无，决议 22；入口是面板头的『隐私』按钮，v0.15）----
 
   Future<void> _privacySubmit(String text) async {
     final title = text.trim();
@@ -248,21 +227,13 @@ class _AndroidShellState extends State<AndroidShell> {
       width: panelWidth,
       child: IgnorePointer(
         ignoring: !_panelOpen,
-        child: GestureDetector(
-          onHorizontalDragEnd: (d) {
-            final v = d.velocity.pixelsPerSecond.dx;
-            final towardCenter = _panelOnLeft ? v > 900 : v < -900;
-            if (towardCenter) _enterPrivacy(); // §6.5 隐私过头
-          },
-          child: SidePanel(
-            controller: widget.controller,
-            pageCtrl: _pageCtrl,
-            onPageDragEnd: (d, accum) => _onPageDragEnd(d, accum),
-            onClose: _closePanel,
-            onPrivacy: _enterPrivacy,
-            onOpenCalendar: () =>
-                showCalendarDialog(context, widget.controller),
-          ),
+        child: SidePanel(
+          controller: widget.controller,
+          pageCtrl: _pageCtrl,
+          onClose: _closePanel,
+          onPrivacy: _enterPrivacy,
+          onOpenCalendar: () =>
+              showCalendarDialog(context, widget.controller),
         ),
       ),
     ));
