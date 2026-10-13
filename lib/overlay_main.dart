@@ -277,8 +277,8 @@ class _OverlayPanelShellState extends State<OverlayPanelShell> {
   bool _dockedRight = true;
   bool _privacy = false;
 
-  static const double _pageFlingVelocity = 1200;
-  static const double _pageDragRatio = 0.38;
+  static const double _pageFlingVelocity = 800;
+  static const double _pageDragDistance = 90;
 
   AppController get _c => widget.controller;
 
@@ -339,11 +339,11 @@ class _OverlayPanelShellState extends State<OverlayPanelShell> {
     }
   }
 
-  void _onPageDragEnd(DragEndDetails d, double accum, double height) {
+  void _onPageDragEnd(DragEndDetails d, double accum) {
     final v = d.velocity.pixelsPerSecond.dy;
-    if (v < -_pageFlingVelocity || accum < -height * _pageDragRatio) {
+    if (v < -_pageFlingVelocity || accum < -_pageDragDistance) {
       _pageBy(1);
-    } else if (v > _pageFlingVelocity || accum > height * _pageDragRatio) {
+    } else if (v > _pageFlingVelocity || accum > _pageDragDistance) {
       _pageBy(-1);
     }
   }
@@ -361,7 +361,6 @@ class _OverlayPanelShellState extends State<OverlayPanelShell> {
   @override
   Widget build(BuildContext context) {
     if (!_expanded) return const SizedBox.shrink();
-    final height = MediaQuery.of(context).size.height - 40;
     // 透明 Scaffold：SnackBar / 对话框有宿主，背景仍是"下面的 App"。
     // PopScope：面板是全屏窗口，系统返回键应该"收起面板"而不是穿透到下面的 App。
     return PopScope(
@@ -374,7 +373,7 @@ class _OverlayPanelShellState extends State<OverlayPanelShell> {
         body: FloatingPanel(
           controller: _c,
           pageCtrl: _pageCtrl,
-          onPageDragEnd: (d, accum) => _onPageDragEnd(d, accum, height),
+          onPageDragEnd: (d, accum) => _onPageDragEnd(d, accum),
           onCollapse: _collapse,
           onPrivacy: () => setState(() => _privacy = true),
           privacy: _privacy,

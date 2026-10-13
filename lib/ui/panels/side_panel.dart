@@ -67,46 +67,10 @@ class _SidePanelState extends State<SidePanel> {
         bottom: false,
         child: Column(
           children: [
-            // 面板头：页名 + 翻页点（重手势区）+ 日历 / 隐私 / 设置? / 关闭
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 6, 8, 0),
-              child: Row(
-                children: [
-                  AnimatedBuilder(
-                    animation: widget.pageCtrl,
-                    builder: (context, _) => Text(
-                      _pageNames[(widget.pageCtrl.hasClients
-                              ? (widget.pageCtrl.page ?? 0)
-                              : 0)
-                          .round()],
-                      style: theme.textTheme.titleMedium,
-                    ),
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    tooltip: '日历',
-                    icon: const Icon(Icons.calendar_month_outlined, size: 20),
-                    onPressed: widget.onOpenCalendar,
-                  ),
-                  IconButton(
-                    tooltip: '隐私过头（只留输入）',
-                    icon: const Icon(Icons.visibility_off_outlined, size: 20),
-                    onPressed: widget.onPrivacy,
-                  ),
-                  if (widget.onOpenSettings != null)
-                    IconButton(
-                      tooltip: '打开应用设置（周期任务 / 主题 / 权限）',
-                      icon: const Icon(Icons.settings_outlined, size: 20),
-                      onPressed: widget.onOpenSettings,
-                    ),
-                  IconButton(
-                    icon: const Icon(Icons.close, size: 20),
-                    onPressed: widget.onClose,
-                  ),
-                ],
-              ),
-            ),
-            // 翻页区：点击左右半区翻页 + 上下重手势（行程/速度阈值放大）
+            // 面板头：页名 + 翻页点（重手势区）+ 日历 / 隐私 / 设置? / 关闭。
+            // 翻页手势绑在**整条头部**：列表区只滚动、不翻页（§6.0 的重手势防误
+            // 翻仍然成立，只是不必再让用户去戳那条 34dp 的圆点条）。横滑一律不
+            // 接管——那是 §6.5 隐私过头用的手势。
             GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTapUp: (d) {
@@ -117,36 +81,82 @@ class _SidePanelState extends State<SidePanel> {
               onVerticalDragUpdate: (d) => _pageDragAccum += d.delta.dy,
               onVerticalDragEnd: (d) =>
                   widget.onPageDragEnd(d, _pageDragAccum),
-              child: AnimatedBuilder(
-                animation: widget.pageCtrl,
-                builder: (context, _) => SizedBox(
-                  height: 34,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      for (var i = 0; i < 3; i++)
-                        Container(
-                          width: 22,
-                          height: 22,
-                          alignment: Alignment.center,
-                          child: Container(
-                            width: 7,
-                            height: 7,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: i ==
-                                      ((widget.pageCtrl.hasClients
-                                              ? widget.pageCtrl.page ?? 0
-                                              : 0)
-                                          .round())
-                                  ? AppColors.accent
-                                  : theme.colorScheme.outlineVariant,
-                            ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(8, 6, 8, 0),
+                    child: Row(
+                      children: [
+                        AnimatedBuilder(
+                          animation: widget.pageCtrl,
+                          builder: (context, _) => Text(
+                            _pageNames[_currentPage],
+                            style: theme.textTheme.titleMedium,
                           ),
                         ),
-                    ],
+                        const Spacer(),
+                        IconButton(
+                          tooltip: '日历',
+                          icon: const Icon(Icons.calendar_month_outlined,
+                              size: 20),
+                          onPressed: widget.onOpenCalendar,
+                        ),
+                        IconButton(
+                          tooltip: '隐私过头（只留输入）',
+                          icon: const Icon(Icons.visibility_off_outlined,
+                              size: 20),
+                          onPressed: widget.onPrivacy,
+                        ),
+                        if (widget.onOpenSettings != null)
+                          IconButton(
+                            tooltip: '打开应用设置（周期任务 / 主题 / 权限）',
+                            icon: const Icon(Icons.settings_outlined,
+                                size: 20),
+                            onPressed: widget.onOpenSettings,
+                          ),
+                        IconButton(
+                          icon: const Icon(Icons.close, size: 20),
+                          onPressed: widget.onClose,
+                        ),
+                      ],
+                    ),
                   ),
-                ),
+                  // 翻页点：整条头部都能上下重手势翻页，圆点本身另外可直接点。
+                  AnimatedBuilder(
+                    animation: widget.pageCtrl,
+                    builder: (context, _) => SizedBox(
+                      height: 36,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          for (var i = 0; i < 3; i++)
+                            GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () => _pageTo(i),
+                              child: SizedBox(
+                                width: 40,
+                                height: 36,
+                                child: Center(
+                                  child: Container(
+                                    width: 7,
+                                    height: 7,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: i == _currentPage
+                                          ? AppColors.accent
+                                          : theme.colorScheme.outlineVariant,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
             const Divider(height: 8),
@@ -176,12 +186,24 @@ class _SidePanelState extends State<SidePanel> {
     );
   }
 
+  /// 当前页序号（PageView 还没挂上时按第 1 页算）。
+  int get _currentPage =>
+      (widget.pageCtrl.hasClients ? (widget.pageCtrl.page ?? 0) : 0).round();
+
   void _pageFlip(BuildContext context, int delta) {
     if (!widget.pageCtrl.hasClients) return;
-    final page = (widget.pageCtrl.page ?? 0).round().clamp(0, 2);
+    final page = _currentPage.clamp(0, 2);
     final target = page + delta;
     if (target < 0 || target > 2) return;
     widget.pageCtrl.animateToPage(target,
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic);
+  }
+
+  /// 点圆点直接跳页（比"点左右半区 ±1"直白，靶也够大）。
+  void _pageTo(int page) {
+    if (!widget.pageCtrl.hasClients) return;
+    widget.pageCtrl.animateToPage(page.clamp(0, 2),
         duration: const Duration(milliseconds: 260),
         curve: Curves.easeOutCubic);
   }
@@ -303,7 +325,9 @@ class PanelOnboardDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     const steps = [
       (Icons.swipe_left_alt, '拖出展开', '点一下屏幕边缘那道白色细条，或从它上面朝屏幕里横拖，展开侧边栏；长按细条可换边停靠。'),
-      (Icons.swap_vert, '重手势翻页', '三页竖翻：今日 → 疑问 → 池子。翻页故意做了"重"手势，浏览清单时不会误翻。'),
+      (Icons.swap_vert, '重手势翻页',
+          '三页竖翻：今日 → 疑问 → 池子。在顶部那条（页名 + 三个圆点）上下拖一下就翻页，'
+          '也可以直接点圆点跳到那一页；翻页手势不进列表区，浏览清单时不会误翻。'),
       (Icons.add_circle_outline, '右下角添加',
           '「+」进完整创建（类型与日期都是按钮，默认三无、点确认直接入池），「～」两秒堆三无。'),
     ];

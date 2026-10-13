@@ -40,8 +40,8 @@ class _AndroidShellState extends State<AndroidShell> {
   int _seenPanelRequest = 0;
   int _seenCloseRequest = 0;
 
-  static const double _pageFlingVelocity = 1200; // 重手势：速度阈值
-  static const double _pageDragRatio = 0.38; // 重手势：行程阈值
+  static const double _pageFlingVelocity = 800; // 重手势：速度阈值（dp/s）
+  static const double _pageDragDistance = 90; // 重手势：行程阈值（dp）
 
   @override
   void initState() {
@@ -127,11 +127,13 @@ class _AndroidShellState extends State<AndroidShell> {
         duration: const Duration(milliseconds: 260), curve: Curves.easeOutCubic);
   }
 
-  void _onPageDragEnd(DragEndDetails d, double height, double accum) {
+  /// [accum] = 本次竖拖的累计位移（dp，向下为正）。翻页手势只绑在面板头部，
+  /// 所以阈值不必按屏高放大——按屏高的 38% 算时，等于要拖将近三分之一屏才翻得动。
+  void _onPageDragEnd(DragEndDetails d, double accum) {
     final v = d.velocity.pixelsPerSecond.dy;
-    if (v < -_pageFlingVelocity || accum < -height * _pageDragRatio) {
+    if (v < -_pageFlingVelocity || accum < -_pageDragDistance) {
       _pageBy(1);
-    } else if (v > _pageFlingVelocity || accum > height * _pageDragRatio) {
+    } else if (v > _pageFlingVelocity || accum > _pageDragDistance) {
       _pageBy(-1);
     }
   }
@@ -255,8 +257,7 @@ class _AndroidShellState extends State<AndroidShell> {
           child: SidePanel(
             controller: widget.controller,
             pageCtrl: _pageCtrl,
-            onPageDragEnd: (d, accum) =>
-                _onPageDragEnd(d, size.height - 40, accum),
+            onPageDragEnd: (d, accum) => _onPageDragEnd(d, accum),
             onClose: _closePanel,
             onPrivacy: _enterPrivacy,
             onOpenCalendar: () =>
