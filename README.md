@@ -123,4 +123,6 @@ lib/
 Scheduler 不依赖 UI、Markdown、Notification，时间由外部注入，因此可以无 UI 重放测试。
 
 注意：不要在周期 tick 里无条件调用 `refreshSchedule()`（会不断重锚导致提醒永远到不了）；
-只有"事件发生"（操作、提醒到点、文件变更）才重锚。
+只有"事件发生"（操作、提醒到点、文件变更）才重锚。重锚分两条（v1.16）：命令重算走
+`recomputeSchedule()`（当前内存态，不读盘），`refreshSchedule()` 只留给文件监听 /
+回前台 / 启动 / 提醒到点。
