@@ -241,7 +241,7 @@ Future<void> showPoolMenu(
 }
 
 /// 删除 = 软删除（D11）：内核属性文件进 `.gtd/.trash/`、人类文档那一行注释掉
-/// + 撤销 toast（约 10 秒），无二次确认。
+/// + 撤销 toast（约 4 秒），无二次确认。
 Future<void> deleteTaskWithUndo(
     BuildContext context, AppController controller, Task task) async {
   await controller.deleteTask(task.id);
@@ -250,9 +250,9 @@ Future<void> deleteTaskWithUndo(
     SnackBar(
       content: Text('已删除「${task.title}」（可在设置回收找回）'),
       // 新版 Flutter 里带 action 的 SnackBar 默认 persist（到点不消失，等用户点
-      // action）——与决议 15 的"撤销 toast 约 10 秒"冲突，显式关掉。
+      // action）——与决议 15 的"撤销 toast"口径冲突，显式关掉。
       persist: false,
-      duration: const Duration(seconds: 10),
+      duration: const Duration(seconds: 4),
       action: SnackBarAction(
         label: '撤销',
         onPressed: () => controller.restoreTask(task.id),
