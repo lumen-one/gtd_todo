@@ -139,8 +139,9 @@ class TaskService {
   /// 创建任务（§3.5 规划表：签名改造落地）。
   ///
   /// - [type] = fixed：必须有 [deadline]；估工时不需要，豁免 A2（可为 0）；
-  /// - [type] = flex（默认）：[deadline] 可选（null = 三无散件）；
-  ///   估工时缺省 30 分钟，且必须 ≥ 1（A2）。
+  /// - [type] = flex（默认）：[deadline] 可选（null = 三无散件）——
+  ///   **无截止（三无）缺省工作强度 = '长期'**（v1.17，D18：豁免 A2/A3，
+  ///   内核属性文档只有 id 一行），**有截止缺省 30 分钟且必须 ≥ 1**（A2）。
   Future<Task> createTask({
     required String title,
     TaskType type = TaskType.flex,
@@ -160,12 +161,25 @@ class TaskService {
     if (type == TaskType.fixed && deadline == null) {
       throw ArgumentError.value(deadline, 'deadline', '固定时点任务必须有截止时刻');
     }
-    final est = estimatedWorkMinutes ?? (type == TaskType.fixed ? 0 : 30);
-    // A2（fixed 豁免允许 0，flex 必须 ≥ 1）
-    if (est < (type == TaskType.fixed ? 0 : 1)) {
+    // flex 分支按截止拆开（v1.17，D18）：无截止（三无）→ 缺省'长期'（null）；
+    // 有截止 → 缺省 30 分钟。fixed → 0（豁免 A2）。显式传值优先。
+    int? est;
+    if (estimatedWorkMinutes != null) {
+      est = estimatedWorkMinutes;
+    } else if (type == TaskType.fixed) {
+      est = 0;
+    } else if (deadline != null) {
+      est = 30;
+    } else {
+      est = null; // '长期'：估不出来就不写（D18）
+    }
+    // A2：fixed 豁免（0 合法）、flex 必须 ≥ 1；'长期'没有分钟数可校验（豁免）。
+    if (est != null && est < (type == TaskType.fixed ? 0 : 1)) {
       throw ArgumentError.value(
           estimatedWorkMinutes, 'estimatedWorkMinutes', 'estimatedWork 非法');
     }
+    // A3：'长期'不设优先级（豁免，D18）；其余缺省 3、clamp 1–5。
+    final imp = est == null ? null : importance.clamp(1, 5);
     final task = Task(
       // 时间戳 + 随机尾巴：同一毫秒内连续创建也不会撞 id。
       id: 'task-${DateTime.now().millisecondsSinceEpoch.toRadixString(36)}'
@@ -173,7 +187,7 @@ class TaskService {
       title: title,
       deadline: deadline,
       estimatedWork: est,
-      importance: importance.clamp(1, 5),
+      importance: imp,
       description: description,
       created: now(),
       metadata: type == TaskType.fixed
@@ -199,7 +213,9 @@ class TaskService {
     final cur = _require(id);
     final updated = cur.copyWith(
       status: TaskStatus.completed,
-      remainingWork: 0,
+      // '长期'任务没有剩余工作量（D18）：completedAt/status 照落，
+      // 但 remainingWork 保持缺位——内核属性文档只有 id，完成态只认人类文档。
+      remainingWork: cur.isLongTerm ? null : 0,
       completedAt: cur.completedAt ?? now(),
       clearSnooze: true,
     );
@@ -242,10 +258,16 @@ class TaskService {
   }
 
   /// 记录实际投入的工时：remainingWork 减小 → slack 增大 → 提醒自动变疏。
+  /// **'长期'任务不记工时**（v1.17，D18）：没有预估可对账——要跟踪投入，
+  /// 先在编辑里把它换成具体工时（转正）。
   Future<Task> logWork(String id, {required int minutes,
       EventOrigin origin = EventOrigin.user}) async {
     final cur = _require(id);
-    final remaining = (cur.remainingWork - minutes).clamp(0, cur.estimatedWork);
+    if (cur.isLongTerm) {
+      throw ArgumentError('长期任务不记工时（没有预估可对账）；'
+          '要跟踪投入，请先在编辑里换成具体工时');
+    }
+    final remaining = (cur.remainingWork! - minutes).clamp(0, cur.estimatedWork!);
     // 干完即完成（flex 的剩余工时归零）：同样要落完成时刻，否则人类文档里
     // 只打勾、没有「完成 <时刻>」，与 completeTask 走出来的是两种形状。
     final done = remaining <= 0;
@@ -268,6 +290,7 @@ class TaskService {
     int? importance,
     String? description,
     TaskType? type,
+    bool clearWork = false,
     EventOrigin origin = EventOrigin.user,
   }) async {
     final cur = _require(id);
@@ -282,27 +305,48 @@ class TaskService {
     if (title != null) updated = updated.copyWith(title: title);
     if (clearDeadline) {
       // 散件没有截止；fixed 清截止是非法操作（在类型合并后校验）。
+      // **清截止不自动改写工作强度**（v1.17，D18）：'长期' ↔ 数字工时都在
+      // 编辑里显式设，不悄悄改语义（§3.4 防线三）。
       updated = updated.copyWith(clearDeadline: true);
       updated = _clearPointFired(updated);
     } else if (deadline != null) {
       updated = updated.copyWith(deadline: deadline);
       updated = _clearPointFired(updated); // 改期 → 时点提醒重新生效
     }
-    if (estimatedWorkMinutes != null) {
-      // A2：fixed 允许 0，flex 必须 ≥ 1（按更新后的类型裁决）。
+    if (clearWork) {
+      // 显式设为'长期'（v1.17，D18）：三项一起清空——估不出来 → 没有工时、
+      // 没有剩余、没有优先级（A1/A2/A3 全部豁免）。与 estimatedWorkMinutes
+      // 互斥（同时传以 clearWork 为准）。
+      updated = updated.copyWith(clearWork: true);
+    } else if (estimatedWorkMinutes != null) {
+      // A2：fixed 允许 0，flex 必须 ≥ 1（按更新后的类型裁决）；
+      // **'长期'豁免**（v1.17，D18）——它本来就没有分钟数。
       final newType = type ?? cur.type;
       if (estimatedWorkMinutes < (newType == TaskType.fixed ? 0 : 1)) {
         throw ArgumentError.value(estimatedWorkMinutes, 'estimatedWorkMinutes',
             'estimatedWork 非法');
       }
-      // A1：预估缩减时，剩余工时同步收敛到新预估内。
-      updated = updated.copyWith(
-        estimatedWork: estimatedWorkMinutes,
-        remainingWork:
-            cur.remainingWork.clamp(0, estimatedWorkMinutes).toInt(),
-      );
+      if (cur.isLongTerm) {
+        // '长期' → 数字工时（'转正'的另一半，ui §6.3）：补剩余工作量与
+        // 优先级缺省 3（A3）——否则带截止的 flex 会拖着空值进调度公式。
+        updated = updated.copyWith(
+          estimatedWork: estimatedWorkMinutes,
+          remainingWork: estimatedWorkMinutes,
+          importance: importance?.clamp(1, 5) ?? 3,
+        );
+      } else {
+        // A1：预估缩减时，剩余工时同步收敛到新预估内。
+        updated = updated.copyWith(
+          estimatedWork: estimatedWorkMinutes,
+          remainingWork: (cur.remainingWork ?? estimatedWorkMinutes)
+              .clamp(0, estimatedWorkMinutes)
+              .toInt(),
+        );
+      }
     }
-    if (importance != null) {
+    if (importance != null && !updated.isLongTerm) {
+      // A3：1–5、缺省 3；'长期'任务不设优先级（豁免，D18）——此时忽略
+      // importance 参数（要设优先级先给数字工时）。
       updated = updated.copyWith(importance: importance.clamp(1, 5));
     }
     if (description != null) {
@@ -316,10 +360,13 @@ class TaskService {
       });
       if (type == TaskType.flex && cur.type == TaskType.fixed) {
         // fixed→flex：flex 必须 ≥1 工时（A2），且不能带着 0 剩余出生即完成。
-        final est = updated.estimatedWork < 1 ? 30 : updated.estimatedWork;
+        // （'长期'豁免 A2，但"从 fixed 带着 0 工时转来"仍按老规矩补 30——
+        //  那一转通常还带着截止，空值进公式正是'长期'要避免的。）
+        final curEst = updated.estimatedWork;
+        final est = (curEst == null || curEst < 1) ? 30 : curEst;
         updated = updated.copyWith(
           estimatedWork: est,
-          remainingWork: max(updated.remainingWork, est),
+          remainingWork: max(updated.remainingWork ?? est, est),
         );
       }
     }
