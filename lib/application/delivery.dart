@@ -93,6 +93,13 @@ abstract class AlarmPort {
 /// 目录/文件选择（安卓 SAF / 桌面系统选择器）。
 abstract class FolderPickerPort {
   Future<String?> pickDirectory();
+
+  /// 挑一个文件（疑问笔记路径，ui §6.2 / §9 第 5 条）；取消或平台不支持 → null。
+  /// [allowedExtensions] 为空 = 不限制类型。
+  Future<String?> pickFile({
+    required String dialogTitle,
+    required List<String> allowedExtensions,
+  });
 }
 
 /// 权限申请与查询。

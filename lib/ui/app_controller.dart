@@ -377,6 +377,17 @@ class AppController extends ChangeNotifier {
     await bootstrapPort?.save(BootstrapConfig(taskDir: dir));
   }
 
+  /// 疑问笔记文件（§6.2）：系统选择器挑一个 Markdown；取消/平台不支持 → null，
+  /// 此时设置页保留手输兜底。
+  Future<String?> pickNotesFile() async {
+    final port = folderPicker;
+    if (port == null) return null;
+    return port.pickFile(
+      dialogTitle: '选择疑问笔记（Markdown）',
+      allowedExtensions: const ['md', 'markdown'],
+    );
+  }
+
   /// 贴屏把手（系统级悬浮窗）；返回是否成功（无权限 = false → 抽屉兜底）。
   Future<bool> setOverlayHandle(bool enabled) async {
     final ok = await overlayHandleControl?.call(enabled) ?? false;
@@ -490,12 +501,14 @@ class AppController extends ChangeNotifier {
 
   Future<void> returnToPool(String id) => service.returnToPool(id);
 
-  /// 池子拖拽后的整段重排（决议 14：顺序持久化）。
-  Future<void> setPoolOrders(List<String> orderedIds) async {
-    for (var i = 0; i < orderedIds.length; i++) {
-      await service.setPoolOrder(orderedIds[i], order: i);
-    }
-  }
+  /// 池子拖拽后的整段重排（决议 14：顺序持久化）。批量落盘 + 一次重锚——
+  /// 逐条写会让中间态被渲染出来，表现为清单闪动。
+  Future<void> setPoolOrders(List<String> orderedIds) =>
+      service.setPoolOrders(orderedIds);
+
+  /// 今日可推组拖拽落位（标准/完整档，决议 9）：整段重写插队时刻，一次落盘。
+  Future<void> setPinnedStack(List<String> orderedIds) =>
+      service.setPinnedStack(orderedIds);
 
   /// 无排序模式下的拖动定序（决议 43）：整段重编 manual_order，重启保留；
   /// 自动模式下这些序号原样保留、只是不生效。

@@ -614,32 +614,57 @@ class _SettingsPanelState extends State<SettingsPanel>
 
   Future<void> _editNotesPath(BuildContext context) async {
     final ctrl = TextEditingController(text: _c.settings.notesPath ?? '');
-    final path = await showDialog<String>(
+    await showModalBottomSheet<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('疑问笔记路径'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          decoration: const InputDecoration(hintText: '/storage/…/疑问笔记.md'),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('疑问笔记路径', style: Theme.of(ctx).textTheme.titleSmall),
+              const SizedBox(height: 4),
+              Text('Obsidian 里那篇笔记（Markdown）；App 只读，编辑仍回 Obsidian。',
+                  style: Theme.of(ctx).textTheme.bodySmall),
+              const SizedBox(height: 10),
+              TextField(
+                controller: ctrl,
+                decoration: const InputDecoration(
+                    labelText: '文件路径', hintText: '/storage/…/疑问笔记.md'),
+              ),
+              const SizedBox(height: 10),
+              FilledButton.icon(
+                icon: const Icon(Icons.file_open),
+                label: const Text('用系统选择器挑一个文件'),
+                onPressed: () async {
+                  final picked = await _c.pickNotesFile();
+                  if (!ctx.mounted) return;
+                  if (picked == null) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(
+                        content: Text('未选择文件（或缺少"所有文件访问"权限）')));
+                    return;
+                  }
+                  ctrl.text = picked;
+                },
+              ),
+              const SizedBox(height: 8),
+              FilledButton(
+                onPressed: () async {
+                  final path = ctrl.text.trim();
+                  Navigator.of(ctx).pop();
+                  await _c.updateSettings(path.isEmpty
+                      ? _c.settings.copyWith(clearNotesPath: true)
+                      : _c.settings.copyWith(notesPath: path));
+                  await _c.refreshNotes();
+                },
+                child: const Text('保存'),
+              ),
+            ],
+          ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(ctrl.text.trim()),
-            child: const Text('保存'),
-          ),
-        ],
       ),
     );
-    if (path == null) return;
-    await _c.updateSettings(path.isEmpty
-        ? _c.settings.copyWith(clearNotesPath: true)
-        : _c.settings.copyWith(notesPath: path));
-    await _c.refreshNotes();
   }
 
   Future<void> _purgeTrash(BuildContext context) async {

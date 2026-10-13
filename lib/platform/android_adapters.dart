@@ -265,4 +265,31 @@ class AndroidFolderPickerPort implements FolderPickerPort {
       return null;
     }
   }
+
+  /// 疑问笔记文件（ui §6.2）：同样是"所有文件访问"打底——没它 SAF 只给一个
+  /// 缓存副本的路径，改天 Obsidian 里更新了笔记，App 读的还是那份旧快照。
+  @override
+  Future<String?> pickFile({
+    required String dialogTitle,
+    required List<String> allowedExtensions,
+  }) async {
+    if (!await permissions.granted(PermissionKind.folderAccess)) {
+      final ok = await permissions.ensure(PermissionKind.folderAccess);
+      if (!ok) return null;
+    }
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        dialogTitle: dialogTitle,
+        type: allowedExtensions.isEmpty ? FileType.any : FileType.custom,
+        allowedExtensions: allowedExtensions.isEmpty ? null : allowedExtensions,
+        allowMultiple: false,
+        withData: false,
+      );
+      final files = result?.files;
+      if (files == null || files.isEmpty) return null;
+      return files.first.path;
+    } catch (_) {
+      return null;
+    }
+  }
 }
