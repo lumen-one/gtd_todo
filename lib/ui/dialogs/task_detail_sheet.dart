@@ -121,9 +121,13 @@ List<Widget> _facts(
       '工时',
       task.type == TaskType.fixed
           ? '不估工时（固定时点）'
-          : '预计 ${task.estimatedWork} 分 · 剩 ${task.remainingWork} 分'
+          : (task.isLongTerm
+              ? '长期（不估工时）'
+              : '预计 ${task.estimatedWork} 分 · 剩 ${task.remainingWork} 分')
     ),
-    ('重要度', '${'★' * task.importance}${'☆' * (5 - task.importance)}'),
+    // '长期'任务没有优先级（A3 豁免，D18）——这一行整个不显示。
+    if (!task.isLongTerm)
+      ('重要度', '${'★' * task.importance!}${'☆' * (5 - task.importance!)}'),
     ('创建', fmtDateTime(task.created)),
     if (task.completedAt != null) ('完成', fmtDateTime(task.completedAt!)),
     if (task.tags.isNotEmpty) ('标签', task.tags.map((t) => '#$t').join(' ')),

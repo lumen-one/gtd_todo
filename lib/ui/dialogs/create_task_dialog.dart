@@ -142,7 +142,8 @@ class _CreateTaskDialogState extends State<_CreateTaskDialog> {
   String get _hint {
     switch (_kind) {
       case CreateKind.plain:
-        return '点确认 = 稍后整理（入池散件段）';
+        // v1.17（D18）：三无的创建缺省工作强度 = '长期'（不估工时、不设优先级）。
+        return '点确认 = 稍后整理（入池散件段 · 工作强度默认「长期」）';
       case CreateKind.withDeadline:
         return _date == null ? '点确认会先问截止到哪天' : '截止 ${_format(_date!)}';
       case CreateKind.fixedAtTime:

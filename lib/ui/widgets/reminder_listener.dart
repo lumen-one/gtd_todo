@@ -67,7 +67,9 @@ class _ReminderListenerState extends State<ReminderListener> {
             const SizedBox(height: 6),
             if (task.deadline != null)
               Text('截止 ${fmtDateTime(task.deadline!)}'),
-            if (task.remainingWork > 0) Text('剩余约 ${task.remainingWork} 分钟'),
+            // '长期'任务没有剩余工时（D18）；?? 0 只是空值安全。
+            if ((task.remainingWork ?? 0) > 0)
+              Text('剩余约 ${task.remainingWork} 分钟'),
           ],
         ),
         actions: [

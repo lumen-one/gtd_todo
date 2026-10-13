@@ -8,17 +8,20 @@ import 'create_task_dialog.dart' show pickDateTime;
 
 /// 编辑态 = 属性展开表单（决议 17）：显式控件直改类型/日期/工时/备注，
 /// 改完调度自动重锚。长按滑档位手势只属于『新建』。
-/// 散件『转正』复用本表单（补类型/截止/工时，进调度）。
+/// 散件『转正』复用本表单（补截止 + 把'长期'换成具体工时，进调度；§6.3）。
 Future<void> showEditSheet(BuildContext context, AppController controller,
     {required Task task, String title = '编辑任务'}) {
   final titleCtrl = TextEditingController(text: task.title);
   final noteCtrl = TextEditingController(text: task.description);
+  // '长期' ↔ 按时长（v1.17，D18）：编辑表单里显式二选一——'长期'是创建缺省
+  // 不是不变量，两个方向都走这里显式设，不悄悄改语义（§3.4 防线三）。
+  var longTerm = task.isLongTerm;
   final workCtrl = TextEditingController(
-      text: task.type == TaskType.fixed ? '' : '${task.estimatedWork}');
+      text: task.isLongTerm ? '' : '${task.estimatedWork}');
   var type = task.type;
   DateTime? deadline = task.deadline;
   var deadlineCleared = false;
-  var importance = task.importance;
+  var importance = task.importance ?? 3;
   // 逐任务提醒开关（v0.9 决议 38）：标准模式下让这一件出声；不改顺序。
   var remind = task.remindEnabled;
 
@@ -100,35 +103,55 @@ Future<void> showEditSheet(BuildContext context, AppController controller,
               ],
             ),
             if (type == TaskType.flex) ...[
+              // 工作强度二选一（v1.17，D18）：'长期' = 不估工时、不设优先级
+              // （内核属性文档只有 id）；'按时长' = 数字工时进 slack 数学。
               Row(
                 children: [
-                  const Text('预计工时（分钟）'),
+                  const Text('工作强度'),
                   const SizedBox(width: 12),
-                  Expanded(
-                    child: TextFormField(
-                      controller: workCtrl,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(hintText: '30'),
-                    ),
+                  SegmentedButton<bool>(
+                    segments: const [
+                      ButtonSegment(value: true, label: Text('长期')),
+                      ButtonSegment(value: false, label: Text('按时长')),
+                    ],
+                    selected: {longTerm},
+                    onSelectionChanged: (s) =>
+                        setSheet(() => longTerm = s.first),
                   ),
                 ],
               ),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  const Text('重要度'),
-                  Expanded(
-                    child: Slider(
-                      value: importance.toDouble(),
-                      min: 1,
-                      max: 5,
-                      divisions: 4,
-                      label: '$importance',
-                      onChanged: (v) => setSheet(() => importance = v.round()),
+              if (!longTerm) ...[
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    const Text('预计工时（分钟）'),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: TextFormField(
+                        controller: workCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(hintText: '30'),
+                      ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    const Text('重要度'),
+                    Expanded(
+                      child: Slider(
+                        value: importance.toDouble(),
+                        min: 1,
+                        max: 5,
+                        divisions: 4,
+                        label: '$importance',
+                        onChanged: (v) => setSheet(() => importance = v.round()),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ],
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
@@ -146,7 +169,10 @@ Future<void> showEditSheet(BuildContext context, AppController controller,
             const SizedBox(height: 8),
             FilledButton(
               onPressed: () async {
-                final work = int.tryParse(workCtrl.text.trim());
+                // '长期' → '按时长'且没填工时：按 A2 缺省 30 分钟（转正的另一半）；
+                // 已经是'按时长'却空着 → 传 null 保持原值，不偷偷改。
+                final work = int.tryParse(workCtrl.text.trim()) ??
+                    (task.isLongTerm && !longTerm ? 30 : null);
                 try {
                   await controller.updateTask(
                     task.id,
@@ -156,8 +182,11 @@ Future<void> showEditSheet(BuildContext context, AppController controller,
                     deadline: deadline,
                     clearDeadline:
                         deadline == null && deadlineCleared,
-                    estimatedWorkMinutes: work,
-                    importance: importance,
+                    estimatedWorkMinutes: longTerm ? null : work,
+                    // 显式设'长期'（三项一起清）；'长期' → '按时长'时走上面的
+                    // estimatedWorkMinutes（服务会补剩余量与优先级缺省 3）。
+                    clearWork: longTerm && !task.isLongTerm,
+                    importance: longTerm ? null : importance,
                   );
                 } catch (e) {
                   if (ctx.mounted) {

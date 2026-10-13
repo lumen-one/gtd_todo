@@ -419,8 +419,7 @@ class _TaskCard extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               '${task.deadline == null ? '无截止' : '截止 ${fmt(task.deadline!)}'}'
-              ' · 剩余 ${task.remainingWork}/${task.estimatedWork} 分钟'
-              ' · 重要度 ${task.importance}'
+              '${task.isLongTerm ? ' · 工作强度：长期（不估工时）' : ' · 剩余 ${task.remainingWork}/${task.estimatedWork} 分钟 · 重要度 ${task.importance}'}'
               '${metric == null ? '' : ' · 裕度 ${metric.slackMinutes} 分钟'
                   '${metric.reminderAt == null ? '' : ' · 下次提醒 ${fmt(metric.reminderAt!)}'}'}',
               style: theme.textTheme.bodySmall,

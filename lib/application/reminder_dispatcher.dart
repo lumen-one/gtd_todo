@@ -146,10 +146,13 @@ class ReminderDispatcher {
   String? _bodyOf(Task? task) {
     if (task == null) return null;
     final d = task.deadline;
-    if (task.type == TaskType.flex && task.remainingWork > 0) {
+    // '长期'任务没有剩余工时（D18），也不会走到提醒链路（无截止 → 无锚点）；
+    // ?? 0 只是让展示文案对空值安全。
+    final remaining = task.remainingWork ?? 0;
+    if (task.type == TaskType.flex && remaining > 0) {
       return d == null
-          ? '剩余约 ${task.remainingWork} 分钟'
-          : '截止 ${_fmt(d)} · 剩余约 ${task.remainingWork} 分钟';
+          ? '剩余约 $remaining 分钟'
+          : '截止 ${_fmt(d)} · 剩余约 $remaining 分钟';
     }
     if (d != null) {
       return task.type == TaskType.fixed ? '固定时点 ${_fmt(d)}' : '到点 ${_fmt(d)}';

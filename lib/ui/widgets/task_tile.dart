@@ -143,9 +143,11 @@ class TaskTile extends StatelessWidget {
     } else if (task.pinnedAt != null) {
       badges.add(_Badge(label: '插队', color: AppColors.accent));
     }
-    if (task.type == TaskType.flex && task.remainingWork > 0) {
+    // '长期'任务没有剩余工时可标（D18）：徽标不显示，详情卡里说明。
+    final remaining = task.remainingWork;
+    if (task.type == TaskType.flex && remaining != null && remaining > 0) {
       badges.add(_Badge(
-        label: '${task.remainingWork}分',
+        label: '$remaining分',
         color: Colors.blueGrey,
         soft: true,
       ));

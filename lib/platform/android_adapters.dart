@@ -188,8 +188,10 @@ class AndroidNotificationPort implements NotificationPort {
   static String? _bodyOf(Task? task) {
     if (task == null) return null;
     final d = task.deadline;
-    if (task.type == TaskType.flex && task.remainingWork > 0) {
-      return '剩余约 ${task.remainingWork} 分钟';
+    // '长期'任务没有剩余工时（D18），也不会走到提醒链路；?? 0 只是空值安全。
+    final remaining = task.remainingWork ?? 0;
+    if (task.type == TaskType.flex && remaining > 0) {
+      return '剩余约 $remaining 分钟';
     }
     if (d != null) {
       return '到点 ${d.hour.toString().padLeft(2, '0')}:'

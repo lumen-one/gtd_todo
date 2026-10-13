@@ -554,6 +554,7 @@ class AppController extends ChangeNotifier {
     int? importance,
     String? description,
     TaskType? type,
+    bool clearWork = false,
   }) {
     return service.updateTask(
       id,
@@ -564,6 +565,7 @@ class AppController extends ChangeNotifier {
       importance: importance,
       description: description,
       type: type,
+      clearWork: clearWork,
     );
   }
 
