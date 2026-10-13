@@ -249,6 +249,9 @@ Future<void> deleteTaskWithUndo(
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
       content: Text('已删除「${task.title}」（可在设置回收找回）'),
+      // 新版 Flutter 里带 action 的 SnackBar 默认 persist（到点不消失，等用户点
+      // action）——与决议 15 的"撤销 toast 约 10 秒"冲突，显式关掉。
+      persist: false,
       duration: const Duration(seconds: 10),
       action: SnackBarAction(
         label: '撤销',
