@@ -149,9 +149,9 @@ class TodayPanel extends StatelessWidget {
 
   /// 拖拽落位，两种排序模式两套语义（决议 43）：
   ///
-  /// - **无排序模式** = 定序：整组按拖动结果重编 `manual_order`，重启保留；
-  /// - **自动模式** = 插队（决议 9/11）：拖入插队区（栈顶 k 件之内）即插队，
-  ///   插队件按当前视觉顺序重新栈式落位（后插在上，保持到完成）。
+  /// - **无排序档** = 定序：整组按拖动结果重编 `manual_order`，重启保留；
+  /// - **标准 / 完整档** = 插队（决议 9/11）：拖进插队区即插队，插队件按当前
+  ///   视觉顺序重新栈式落位（后插在上，保持到完成）。
   Future<void> _onReorder(TodayView view, List<Task> combined, int oldIndex,
       int newIndex) async {
     final insert = newIndex > oldIndex ? newIndex - 1 : newIndex;
@@ -166,7 +166,11 @@ class TodayPanel extends StatelessWidget {
 
     final item = combined[oldIndex];
     final oldPinnedCount = view.pinned.length;
-    if (insert >= oldPinnedCount) return;
+    // 插队区 = 已有插队件那一段。**段为空时必须允许拖到最顶**：那时
+    // `insert >= oldPinnedCount` 恒真，第一次插队根本进不来。落到插队区以外
+    // = 这段的先后交给算法，拖动在这里是空操作。
+    final intoPinned = insert < oldPinnedCount || insert == 0;
+    if (!intoPinned) return;
 
     final targetPinnedCount =
         item.pinnedAt == null ? oldPinnedCount + 1 : oldPinnedCount;
@@ -174,10 +178,8 @@ class TodayPanel extends StatelessWidget {
       ..removeAt(oldIndex)
       ..insert(insert, item);
     final stack = newOrder.take(targetPinnedCount).toList();
-    // 自下而上重新落位：越靠上插队时刻越新（栈式，后插在上）
-    for (final t in stack.reversed) {
-      await controller.pinToTop(t.id);
-    }
+    // 整段一次落盘：越靠上插队时刻越新（栈式，后插在上，决议 9）。
+    await controller.setPinnedStack([for (final t in stack) t.id]);
   }
 
   Future<void> _pickRandom(BuildContext context) async {

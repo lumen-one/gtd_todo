@@ -401,6 +401,46 @@ class TaskService {
     return updated;
   }
 
+  /// 池子显示序的**整段重编号**（决议 14）：一次拖动手势会打乱整段，所以按
+  /// [orderedIds] 的顺序一次性写 0..n-1。
+  ///
+  /// **必须批量**：逐条调 [setPoolOrder] 会放大成 N 次读盘，更糟的是每写一条就
+  /// 重锚一次、发一次事件——第 k 条写完时只有前 k 个序号是新的，那个半成品顺序
+  /// 会被立刻渲染出来，清单就在几个位置之间来回跳，最后才停（"闪动"的真因）。
+  /// 这里照 [setManualOrder] 的形状：批量落盘 → 整体换 `_tasks` → 一个事件 →
+  /// 一次重锚。
+  Future<List<Task>> setPoolOrders(List<String> orderedIds,
+      {EventOrigin origin = EventOrigin.user}) async {
+    final updated = <Task>[];
+    for (var i = 0; i < orderedIds.length; i++) {
+      final cur = byId(orderedIds[i]);
+      if (cur == null) continue;
+      updated.add(_withMeta(cur, (m) => {...m, 'pool_order': '$i'}));
+    }
+    return _persistBatch(updated, DomainEventType.poolOrderChanged, origin);
+  }
+
+  /// 插队栈的**整段重写**（决议 9：后插在上，保持到完成）：按 [orderedIds] 的
+  /// 顺序决定谁压在最上面，只针对可推任务（决议 11）。
+  ///
+  /// 时刻按目标顺序**递减 1 毫秒**：一次手势里逐条写会让它们落在同一毫秒上，
+  /// 而插队件按 `pinned` 字符串排序——并列时 `sort` 没有稳定依据，落位变成随机
+  /// （表现为"闪完之后停在别处"）。批量落盘的理由同 [setPoolOrders]。
+  Future<List<Task>> setPinnedStack(List<String> orderedIds,
+      {EventOrigin origin = EventOrigin.user}) async {
+    final base = now();
+    final updated = <Task>[];
+    for (var i = 0; i < orderedIds.length; i++) {
+      final cur = byId(orderedIds[i]);
+      if (cur == null || cur.type != TaskType.flex) continue;
+      updated.add(_withMeta(cur, (m) => {
+            ...m,
+            'pinned': base.subtract(Duration(milliseconds: i)).toIso8601String(),
+          }));
+    }
+    return _persistBatch(updated, DomainEventType.taskPinned, origin);
+  }
+
   /// 手动序（v1.12，决议 43 / D17）：按 [orderedIds] 的顺序整段重编号（从 0 连续），
   /// 只在无排序模式下参与排序；自动模式下这些序号原样保留、只是不生效。
   ///
@@ -414,15 +454,7 @@ class TaskService {
       if (cur == null) continue;
       updated.add(_withMeta(cur, (m) => {...m, 'manual_order': '$i'}));
     }
-    if (updated.isEmpty) return const [];
-    final byIdMap = {for (final t in updated) t.id: t};
-    for (final t in updated) {
-      await repo.save(t);
-    }
-    _tasks = [for (final x in _tasks) byIdMap[x.id] ?? x];
-    _emit(DomainEventType.manualOrderChanged, updated.first.id, origin);
-    await refreshSchedule(origin: origin);
-    return List.unmodifiable(updated);
+    return _persistBatch(updated, DomainEventType.manualOrderChanged, origin);
   }
 
   // ---------- 周期任务的实例（决议 5/12/23）----------
@@ -623,6 +655,22 @@ class TaskService {
   static String _dayMark(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}'
       '-${d.day.toString().padLeft(2, '0')}';
+
+  /// **批量落盘**：一次用户手势（拖动定序/整理池子/插队）只许写一次盘、发一个
+  /// 事件、重锚一次。逐条写会让"只写了一半的顺序"被渲染出来——清单闪动就是这么
+  /// 来的；内存 `_tasks` 先整体换成终态再发事件，所以第一次重建就是最终顺序。
+  Future<List<Task>> _persistBatch(List<Task> updated, DomainEventType type,
+      EventOrigin origin) async {
+    if (updated.isEmpty) return const [];
+    final byIdMap = {for (final t in updated) t.id: t};
+    for (final t in updated) {
+      await repo.save(t);
+    }
+    _tasks = [for (final x in _tasks) byIdMap[x.id] ?? x];
+    _emit(type, updated.first.id, origin);
+    await refreshSchedule(origin: origin);
+    return List.unmodifiable(updated);
+  }
 
   Future<void> _persist(Task t, EventOrigin origin, DomainEventType type) async {
     await repo.save(t);

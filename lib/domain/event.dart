@@ -15,6 +15,7 @@ enum DomainEventType {
   trashPurged,    // 清空回收站（D11）
   taskReminderSet, // 逐任务提醒开关（v1.9 决议 38：标准模式下让这一件出声）
   manualOrderChanged, // 手动序改写（v1.12 决议 43：无排序模式下的拖动定序）
+  poolOrderChanged,   // 池子整理序整段改写（决议 14：一次拖动批量落盘）
   scheduleModeChanged, // 调度模式切换（v1.12 决议 43：只重算视图，不动数据）
   scheduleReanchored,
   // ---- 周期任务（决议 5/10/12/23）----
