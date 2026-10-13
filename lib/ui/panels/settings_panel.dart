@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../application/delivery.dart';
+import '../../application/settings.dart';
 import '../../domain/routine.dart';
 import '../../domain/schedule.dart';
 import '../app_controller.dart';
@@ -13,11 +14,40 @@ String _mm(int minuteOfDay) {
   return '$h:$m';
 }
 
+/// 三档调度模式的说明（决议 43）：完整 → 标准 → 无排序，**逐级弱化**算法替人做主
+/// 的程度，所以它们是一组三选一，不是两个互不相干的开关。
+String _modeHint(ScheduleMode mode) => switch (mode) {
+      ScheduleMode.full => '完整：算法排先后，凡算法判定该响的都响',
+      ScheduleMode.standard =>
+        '标准（默认）：算法排先后，但默认不出声——'
+            '要响的那一件在编辑表单里开『提醒我』',
+      ScheduleMode.manual =>
+        '无排序：标准的再弱化版——今日清单不再按算法排先后，顺序全靠手动拖；'
+            '今天该看哪几件仍由算法挑（锚点落在今天 / 今天到期），清单不会因此变长',
+    };
+
+/// 三选一按钮（选中=实心，其余=描边）：比 SegmentedButton 放得下三个字以上的标签，
+/// 也不会在窄面板里被挤成省略号。
+Widget _modeButton(AppController c, AppSettings s, ScheduleMode mode) {
+  final label = switch (mode) {
+    ScheduleMode.full => '完整',
+    ScheduleMode.standard => '标准',
+    ScheduleMode.manual => '无排序',
+  };
+  final selected = s.scheduleMode == mode;
+  final onPressed = () => c.updateSettings(s.copyWith(scheduleMode: mode));
+  return Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 4),
+    child: selected
+        ? FilledButton(onPressed: onPressed, child: Text(label))
+        : OutlinedButton(onPressed: onPressed, child: Text(label)),
+  );
+}
+
 /// 设置页（ui-interaction.md §9，暂定 App 唯一主体页面）：
 /// 1. 权限引导 + 任务目录 + 悬浮把手；2. 周期任务管理（routines.md）；
-/// 3. 提醒（**模式：标准/完整** / 时间段多段式 / 闹钟模式）；4. 定期挑；5. 疑问笔记路径；
-/// 6. 周期任务在任务池的显示开关；7. 主题预设；8. 回收站；
-/// 9. **排序模式（自动 / 无排序，决议 43）**。
+/// 3. 提醒与排序（**调度模式三档：完整/标准/无排序** + 时间段多段式 + 闹钟模式）；
+/// 4. 定期挑；5. 疑问笔记路径；6. 周期任务在任务池的显示开关；7. 主题预设；8. 回收站。
 class SettingsPanel extends StatefulWidget {
   final AppController controller;
 
@@ -219,24 +249,29 @@ class _SettingsPanelState extends State<SettingsPanel>
           onTap: () => _c.updateSettings(s.copyWith(guideSeen: false)),
         ),
 
-        _Section('提醒'),
+        _Section('提醒与排序'),
         ListTile(
-          leading: const Icon(Icons.notifications_paused_outlined),
-          title: const Text('提醒模式'),
-          subtitle: Text(
-            s.reminderMode == ReminderMode.standard
-                ? '标准（默认）：只排列不提醒——要响的任务在编辑表单里开『提醒我』'
-                : '完整：凡算法判定该响的都响（标准模式与它的清单顺序完全一样）',
-          ),
-          trailing: SegmentedButton<ReminderMode>(
-            segments: const [
-              ButtonSegment(
-                  value: ReminderMode.standard, label: Text('标准')),
-              ButtonSegment(value: ReminderMode.full, label: Text('完整')),
+          leading: const Icon(Icons.tune_outlined),
+          title: const Text('调度模式'),
+          subtitle: Text(_modeHint(s.scheduleMode)),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
+          child: Row(
+            children: [
+              // 三档由强到弱：算法介入程度依次递减，一次只能选一个。
+              for (final mode in ScheduleMode.values)
+                Expanded(child: _modeButton(_c, s, mode)),
             ],
-            selected: {s.reminderMode},
-            onSelectionChanged: (v) =>
-                _c.updateSettings(s.copyWith(reminderMode: v.first)),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          child: Text(
+            '三档只改"谁排前面"与"出不出声"：今天该做哪几件、多久催一次、'
+            '逾期与"做不到"的提示都一样。',
+            style: theme.textTheme.bodySmall
+                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
         ),
         SwitchListTile(
@@ -257,27 +292,6 @@ class _SettingsPanelState extends State<SettingsPanel>
                   .join('、')),
           trailing: const Icon(Icons.edit_outlined),
           onTap: () => _editWindows(context),
-        ),
-
-        _Section('排序'),
-        ListTile(
-          leading: const Icon(Icons.low_priority),
-          title: const Text('排序模式'),
-          subtitle: Text(
-            s.sortMode == SortMode.auto
-                ? '自动（默认）：按调度优先级排先后（裕度薄的在前，重要度作乘数）'
-                : '无排序：不按任何排序键——顺序全靠手动拖，'
-                    '今日清单会包含所有有截止的未完成任务',
-          ),
-          trailing: SegmentedButton<SortMode>(
-            segments: const [
-              ButtonSegment(value: SortMode.auto, label: Text('自动')),
-              ButtonSegment(value: SortMode.manual, label: Text('无排序')),
-            ],
-            selected: {s.sortMode},
-            onSelectionChanged: (v) =>
-                _c.updateSettings(s.copyWith(sortMode: v.first)),
-          ),
         ),
 
         _Section('周期任务（routines.md）'),

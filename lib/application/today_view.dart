@@ -115,16 +115,15 @@ bool _sameDay(DateTime a, DateTime b) =>
 
 /// 聚合今日清单。[schedule] 为当前调度结果（可推组排序 + "提醒锚点"口径来源）。
 ///
-/// [sortMode] 只改两件事（v1.12 决议 43 / D17）：
-/// ① 可推组的**准入**——自动模式用"锚点落在今天 / 今天到期"筛"今天该看哪几件"，
-///    无排序模式**不筛**（全部未完成、有截止的可推任务都进今日）；
-/// ② 可推组的**顺序**——自动模式是插队件 + 调度序，无排序模式是手动序。
-/// 其余（逾期置顶、固定时点按时刻、例行按发生时刻、被挑散件在最后）两种模式一致。
+/// [scheduleMode] 只改**一件**事（v1.12 决议 43 / D17）：可推组的**顺序**——
+/// 标准/完整是"插队件压顶 + 调度序"，无排序是手动序（`manual_order`）。
+/// 可推组的**成员不变**（仍按"锚点落在今天 / 今天到期"准入），
+/// 逾期置顶、固定时点按时刻、例行按发生时刻、被挑散件在最后——三档全部一致。
 TodayView buildTodayView({
   required List<Task> tasks,
   required ScheduleResult? schedule,
   required DateTime now,
-  SortMode sortMode = SortMode.auto,
+  ScheduleMode scheduleMode = ScheduleMode.standard,
 }) {
   final today = DateTime(now.year, now.month, now.day);
   final mark = dayMark(today);
@@ -206,7 +205,7 @@ TodayView buildTodayView({
   // 无排序：整组改用手动序（人拖出来的顺序），没有"插队压顶"这一层——
   // 插队是为算法排序打的补丁，顺序本身就由人定的时候不需要它。
   // 插队标记（pinned）仍然留在任务上——切回标准/完整时它照旧生效。
-  if (sortMode == SortMode.manual) {
+  if (scheduleMode.isManual) {
     return TodayView(
       day: now,
       overdue: List.unmodifiable(overdue),

@@ -137,7 +137,7 @@ void main() {
   });
 
   test('pollReminder：未到点不触发、不重锚；到点触发并重新锚定', () async {
-    await svc.updateReminderMode(ReminderMode.full); // 本用例断言"会响"
+    await svc.updateScheduleMode(ScheduleMode.full); // 本用例断言"会响"
     await createA();
     final first = svc.lastSchedule!;
     final anchor = first.nextReminderAt!; // 16:30
@@ -215,7 +215,7 @@ void main() {
       await svc.setTaskReminder(meeting.id, enabled: true);
       expect(svc.nextPointReminder()!.taskId, meeting.id);
 
-      await svc.updateReminderMode(ReminderMode.full);
+      await svc.updateScheduleMode(ScheduleMode.full);
       expect(svc.nextPointReminder(), isNotNull, reason: '完整模式全开');
     });
 
@@ -223,10 +223,10 @@ void main() {
       final a = await createA();
       final before = await repo.getTask(a.id);
 
-      await svc.updateReminderMode(ReminderMode.full);
+      await svc.updateScheduleMode(ScheduleMode.full);
       expect(svc.lastSchedule!.nextReminderAt, DateTime(2026, 10, 7, 16, 30));
 
-      await svc.updateReminderMode(ReminderMode.standard);
+      await svc.updateScheduleMode(ScheduleMode.standard);
       expect(svc.lastSchedule!.nextReminderAt, isNull);
 
       final after = await repo.getTask(a.id);

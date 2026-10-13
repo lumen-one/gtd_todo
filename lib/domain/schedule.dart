@@ -22,29 +22,40 @@ enum ReminderMode {
       };
 }
 
-/// 排序模式（ui-interaction.md §6.1、architecture.md D17，v1.12）：
+/// **调度模式**（ui-interaction.md §7.0 / 决议 43，v1.12）：用户可见的**三档**，
+/// 一次只能选一个——它们是**一条逐级弱化的谱系**，不是两个正交开关：
 ///
-/// - [auto] **自动（默认）**：算法排先后——可推组按调度优先级
-///   `priority = risk × importance` 排序，今日可推组按"提醒锚点落在今天"准入；
-/// - [manual] **无排序**：排序键**完全不参与**——顺序只按人拖出来的手动序
-///   （metadata `manual_order`），今日可推组**不再按锚点筛选**
-///   （全部未完成、有截止的可推任务都进今日）。
+/// - [full] **完整**：算法排先后，且算法判定该响的都响；
+/// - [standard] **标准（默认）**：算法仍排先后，但默认不出声——
+///   只有显式开了『提醒我』的那一件才响；
+/// - [manual] **无排序**：**标准的再弱化版**——标准那一套全保留（含不出声），
+///   再把"算法排先后"这一层也去掉，今日可推组的顺序由人拖出来。
 ///
-/// 它与 [ReminderMode] **正交**：提醒模式管"出不出声"，排序模式管"谁排前面"。
-/// 关掉的只有**排序**这一层——`slack` / `risk` / `priority`、提醒锚点与间隔、
-/// 逾期与不可行判定照算（它们管"多久响一次""要不要升级"，不是"谁排前面"）。
-enum SortMode {
-  auto,
+/// 无排序**不是**"把所有任务都塞进今天"：今日可推组的**成员与标准模式完全一致**
+/// （仍按"提醒锚点落在今天 / 今天到期"准入），变的只有组内顺序。
+/// 同样不动 `slack` / `risk` / `priority`、提醒锚点与间隔、逾期与不可行判定——
+/// 它们管"多久响一次""要不要升级"，与"谁排前面"是两件事。
+enum ScheduleMode {
+  full,
+  standard,
   manual;
 
-  /// 设置落盘的稳定写法（缺省 [auto]：忘记传参数时得到的是现在这套行为）。
-  static SortMode byName(String? name) => switch (name) {
-        'manual' => SortMode.manual,
-        _ => SortMode.auto,
+  /// 设置落盘的稳定写法（缺省 [standard]：忘记传参数时得到的是现在这套行为）。
+  static ScheduleMode byName(String? name) => switch (name) {
+        'full' => ScheduleMode.full,
+        'manual' => ScheduleMode.manual,
+        _ => ScheduleMode.standard,
       };
+
+  /// 映射成内核的**提醒门槛**：只有完整档放行，标准与无排序都是"只排列不提醒"。
+  ReminderMode get reminderMode =>
+      this == ScheduleMode.full ? ReminderMode.full : ReminderMode.standard;
+
+  /// 是否关掉排序（今日可推组改用手动序）。
+  bool get isManual => this == ScheduleMode.manual;
 }
 
-/// 手动序比较器（D17）：无排序模式下唯一的顺序来源。
+/// 手动序比较器（D17）：无排序模式下今日可推组唯一的顺序来源。
 ///
 /// 有 [manualOrder] 的按序号升序；没有的**沉在末尾**，用 id 升序裁决
 /// （id 前缀定长 ≈ 创建先后，保证新任务从末尾开始、顺序稳定不抖）。

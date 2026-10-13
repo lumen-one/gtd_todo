@@ -54,13 +54,10 @@ class AppController extends ChangeNotifier {
   /// 装配点注入的回调：闹钟模式变化时同步给 ReminderDispatcher（决议 18）。
   final void Function(bool alarmMode)? onAlarmModeChanged;
 
-  /// 装配点注入的回调：提醒模式变化时同步给 TaskService（v1.9 / D15）。
-  /// 它改的是调度入参——重锚之后"下一站会响的提醒"随之变。
-  final void Function(ReminderMode reminderMode)? onReminderModeChanged;
-
-  /// 装配点注入的回调：排序模式变化时同步给 TaskService（v1.12 / 决议 43）。
-  /// 它只改查询口径（顺序 + 今日可推组的准入），不动任何任务数据。
-  final void Function(SortMode sortMode)? onSortModeChanged;
+  /// 装配点注入的回调：调度模式（完整/标准/无排序）变化时同步给 TaskService
+  /// （v1.9 / D15 / 决议 43）。它改的是调度入参与查询口径——重锚之后
+  /// "下一站会响的提醒"与清单顺序随之变，任务数据一行不动。
+  final void Function(ScheduleMode scheduleMode)? onScheduleModeChanged;
 
   ReminderEvent? _lastReminder;
   StreamSubscription<DomainEvent>? _sub;
@@ -125,8 +122,7 @@ class AppController extends ChangeNotifier {
     this.folderPicker,
     this.onWindowsChanged,
     this.onAlarmModeChanged,
-    this.onReminderModeChanged,
-    this.onSortModeChanged,
+    this.onScheduleModeChanged,
     Stream<ShownNotification>? notificationSurface,
   }) {
     _sub = service.events.listen((_) => notifyListeners());
@@ -168,10 +164,8 @@ class AppController extends ChangeNotifier {
       _settings = AppSettings.defaults;
     }
     _settingsLoaded = true;
-    // 提醒模式来自设置：装载完就同步给 TaskService（默认标准 = 只排列不提醒）。
-    onReminderModeChanged?.call(_settings.reminderMode);
-    // 排序模式同理（默认自动 = 算法排先后）。
-    onSortModeChanged?.call(_settings.sortMode);
+    // 调度模式来自设置：装载完就同步给 TaskService（默认标准 = 只排列不提醒）。
+    onScheduleModeChanged?.call(_settings.scheduleMode);
     notifyListeners();
   }
 
@@ -186,18 +180,17 @@ class AppController extends ChangeNotifier {
     }
     onWindowsChanged?.call(notificationWindowRule);
     onAlarmModeChanged?.call(next.alarmMode);
-    onReminderModeChanged?.call(next.reminderMode);
-    onSortModeChanged?.call(next.sortMode);
+    onScheduleModeChanged?.call(next.scheduleMode);
   }
 
-  /// 提醒模式（v0.9 / 决议 38）：标准（默认，只排列不提醒）/ 完整（全提醒）。
-  ReminderMode get reminderMode => _settings.reminderMode;
+  /// 调度模式（决议 43）：完整 / 标准（默认）/ 无排序。
+  ScheduleMode get scheduleMode => _settings.scheduleMode;
 
-  /// 排序模式（v0.12 / 决议 43）：自动（默认，算法排）/ 无排序（手动序）。
-  SortMode get sortMode => _settings.sortMode;
+  /// 派生：给内核的提醒门槛（编辑表单的提示文案、清单头的状态句用它）。
+  ReminderMode get reminderMode => _settings.scheduleMode.reminderMode;
 
-  /// 无排序模式 = 关掉算法排序（顺序全手动拖）。UI 用它决定拖拽是"定序"还是"插队"。
-  bool get isManualSort => _settings.sortMode == SortMode.manual;
+  /// 无排序 = 关掉算法排序（顺序全手动拖）。UI 用它决定拖拽是"定序"还是"插队"。
+  bool get isManualSort => _settings.scheduleMode.isManual;
 
   /// §4.3：当前送达策略（默认 9:00–21:00 一段；空 = 不限制）。
   NotificationWindowRule get notificationWindowRule => NotificationWindowRule(
@@ -236,7 +229,7 @@ class AppController extends ChangeNotifier {
         tasks: service.tasks,
         schedule: service.lastSchedule,
         now: DateTime.now(),
-        sortMode: _settings.sortMode,
+        scheduleMode: _settings.scheduleMode,
       );
 
   PoolView get poolView => buildPoolView(

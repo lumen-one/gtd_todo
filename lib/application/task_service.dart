@@ -22,16 +22,18 @@ class TaskService {
   final Scheduler scheduler;
   final WorkTimeRule workRule;
 
-  /// **提醒门槛**（v1.9，D15）：默认**标准模式**——只排列不提醒，只有被显式
-  /// 要求提醒的任务（metadata `remind`，或规则设了响的周期实例）才会出声。
-  /// 设置页改动经装配点回调调 [updateReminderMode]；它只改调度的入参，不动任何数据。
-  ReminderMode reminderMode;
+  /// **调度模式**（v1.12，决议 43）：**完整 / 标准 / 无排序**三档，默认标准。
+  ///
+  /// 它同时决定两件事：给内核的**提醒门槛**（[ScheduleMode.reminderMode]）与
+  /// 业务层的**清单顺序**（[ScheduleMode.isManual]）。设置页改动经装配点回调调
+  /// [updateScheduleMode]；模式只改查询口径与调度入参，**不动任何任务数据**。
+  ScheduleMode scheduleMode;
 
-  /// **排序口径**（v1.12，决议 43 / D17）：**默认自动**——按调度优先级排先后；
-  /// 无排序 = 排序键不参与，只按手动序（`manual_order`），且今日可推组不再按锚点筛选。
-  /// 设置页改动经装配点回调调 [updateSortMode]；与 [reminderMode] 一样只改查询口径，
-  /// **不动任何任务数据**（切模式不迁移、手动序原样保留）。
-  SortMode sortMode;
+  /// 给内核的提醒门槛（三档 → 标准/完整两档：无排序也是"只排列不提醒"）。
+  ReminderMode get reminderMode => scheduleMode.reminderMode;
+
+  /// 是否关掉排序（今日可推组改用手动序）。
+  bool get isManualSort => scheduleMode.isManual;
 
   /// 可注入时钟：测试与仿真可以自由拨动时间。
   final DateTime Function() now;
@@ -46,8 +48,7 @@ class TaskService {
     required this.repo,
     required this.scheduler,
     this.workRule = WorkTimeRule.standard,
-    this.reminderMode = ReminderMode.standard,
-    this.sortMode = SortMode.auto,
+    this.scheduleMode = ScheduleMode.standard,
     DateTime Function()? clock,
   }) : now = clock ?? DateTime.now;
 
@@ -76,30 +77,21 @@ class TaskService {
       tasks: _tasks,
       now: now(),
       workRule: workRule,
-      reminderMode: reminderMode,
+      reminderMode: scheduleMode.reminderMode,
     );
     _emit(DomainEventType.scheduleReanchored, lastSchedule?.nextTaskId ?? '',
         origin);
   }
 
-  /// 切换提醒模式（设置页 → 装配点回调，D15）。
+  /// 切换调度模式（设置页 → 装配点回调，D15 / D17）。
   ///
-  /// **不改任何数据**：提醒是计算结果（D1），重算即生效；模式没变就什么都不做，
-  /// 避免装配/回前台时的无谓重锚（C2 的精神：只在真的有事发生时重锚）。
-  Future<void> updateReminderMode(ReminderMode mode) async {
-    if (mode == reminderMode) return;
-    reminderMode = mode;
-    await refreshSchedule();
-  }
-
-  /// 切换排序模式（设置页 → 装配点回调，D17）。
-  ///
-  /// **不改任何任务数据**：手动序是持久意图（B5），自动模式下原样躺在 metadata 里，
-  /// 切回来还在；顺序是查询结果，重算即生效。模式没变就什么都不做（C2 的精神）。
-  Future<void> updateSortMode(SortMode mode) async {
-    if (mode == sortMode) return;
-    sortMode = mode;
-    _emit(DomainEventType.sortModeChanged, '', EventOrigin.user);
+  /// **不改任何任务数据**：门槛是计算结果（D1），顺序是查询结果，重算即生效；
+  /// 手动序是持久意图（B5），自动档下原样躺在 metadata 里，切回来还在。
+  /// 模式没变就什么都不做（C2 的精神：只在真的有事发生时重锚）。
+  Future<void> updateScheduleMode(ScheduleMode mode) async {
+    if (mode == scheduleMode) return;
+    scheduleMode = mode;
+    _emit(DomainEventType.scheduleModeChanged, '', EventOrigin.user);
     await refreshSchedule();
   }
 
