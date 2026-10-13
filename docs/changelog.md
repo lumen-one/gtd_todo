@@ -349,6 +349,17 @@ analyze 干净 + 160 测试全绿，本版**改动面覆盖其中绝大部分断
 §0 原则 3、§6.0、§6.5、§6.6 引导三步、§11 误触防护、决议 45（新增），
 architecture.md §5.1 安卓壳描述，crosswalk 第 11 行与旧词表 3 行。
 
+**D. 代码已落地；`dart analyze` 通过，真机未验证**
+
+落点：`side_panel.dart`（去 `NeverScrollableScrollPhysics`、删竖滑回调与面板头手势区、
+圆点保留为跳转靶、引导第二步改文案）、`android_shell.dart`（删包在面板外的
+`onHorizontalDragEnd`、删两个阈值常量与 `_pageBy`）、`overlay_main.dart`（同样删阈值与
+回调）。`dart analyze lib` 通过（4 条既有 info：`onReorder` 已废弃、`_modeButton` 的函数
+声明风格）；`flutter test` 仍因本机命名管道故障（`WebSocketException: Invalid WebSocket
+upgrade request`）跑不起来，与改动无关。真机四项必测：① 页面区左右横拖能翻页、上下拖
+仍是滚清单；② 点圆点能跳页；③ 面板头眼睛按钮进隐私、返回键退出（不再是"再拖一次"）；
+④ 从屏幕最边缘起手横拖仍可能被系统返回吃掉——这是决议 41 的取舍，不是 bug。
+
 ---
 
 ## 二、architecture.md 修订记录（v1.x）
