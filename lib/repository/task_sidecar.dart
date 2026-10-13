@@ -30,10 +30,17 @@ import 'task_codec.dart';
 ///
 /// 内核备注（可选，自由文本：调度解释、AI 理由……应用不改这一段）
 /// ```
+///
+/// **'长期'任务例外（v1.17，D18 / ui 决议 46）**：工作强度 = '长期'（三无任务的
+/// 创建缺省）时，这份文档**只剩 `id` 一行**——上面那些内核算出来的键全部缺行，
+/// `digest` 也没有（两文档配对走附录 A.3 第 2/3 档），`status` / `completed_at`
+/// 同样不落（完成态只认人类文档的 `[x]` / `完成 <时刻>`，D14）。'长期'不单独落
+/// 一行：**没有 `work_intensity` 行就是长期**，因此不新增 metadata 键。
+/// 应用自有的 metadata 键（[registeredMetaKeys]）照常跟随任务对象改写。
 class TaskSidecarCodec {
   const TaskSidecarCodec();
 
-  /// 内核属性文档的格式标识（附录 B 登记）。
+  /// 内核属性文档的格式标识（附录 A.2 登记）。
   static const String formatId = 'md-taskkernel/1';
 
   /// 内核拥有的字段（编码时原地改写；`null` 值 → 整行移除）。
@@ -49,7 +56,7 @@ class TaskSidecarCodec {
     'completed_at',
   ];
 
-  /// 应用自有的 **metadata 键**（附录 B.2 登记表）：不是内核算出来的字段，
+  /// 应用自有的 **metadata 键**（附录 A.2 登记表）：不是内核算出来的字段，
   /// 但同样是应用财产——编码时**跟随任务对象改写**（值变则行变、键消失则行删），
   /// 其余未知键仍原样往返（§3.4 字段级保真）。
   ///
@@ -120,9 +127,13 @@ class TaskSidecarCodec {
 
     final body = lines.skip(close + 1).join('\n').replaceFirst(RegExp(r'^\n+'), '').trimRight();
 
-    final intensity = int.tryParse(meta['work_intensity'] ?? '') ?? 0;
+    final intensityRaw = meta['work_intensity'];
+    // '长期'不单独落一行：没有 work_intensity 行就是长期（v1.17，D18）——
+    // estimatedWork / remainingWork / importance 三项全部缺位。
+    final intensity =
+        intensityRaw == null ? null : (int.tryParse(intensityRaw) ?? 0);
     final load = double.tryParse(meta['remaining_load'] ?? '');
-    final priority = int.tryParse(meta['priority'] ?? '') ?? 3;
+    final priority = int.tryParse(meta['priority'] ?? '');
 
     // digest 是内核与人类文档对号的钥匙，必须回传给调用方（repository 靠它
     // 判断"行被外部改过没有"），所以它要留在 metadata 里——
@@ -136,10 +147,15 @@ class TaskSidecarCodec {
         // 合并进来），这里只装内核属性。
         title: meta['title'] ?? '',
         estimatedWork: intensity,
-        remainingWork: load == null || intensity <= 0
-            ? intensity
-            : (load * intensity).round().clamp(0, intensity),
-        importance: priority < 1 ? 1 : (priority > 5 ? 5 : priority),
+        remainingWork: intensity == null
+            ? null
+            : (load == null || intensity <= 0
+                ? intensity
+                : (load * intensity).round().clamp(0, intensity)),
+        // '长期'不设优先级（A3 豁免，D18）；非长期缺 priority 行按缺省 3。
+        importance: intensity == null
+            ? null
+            : (priority == null ? 3 : (priority < 1 ? 1 : (priority > 5 ? 5 : priority))),
         status: TaskStatus.values.firstWhere(
           (s) => s.name == (meta['status'] ?? 'pending'),
           orElse: () => TaskStatus.pending,
@@ -207,28 +223,35 @@ class TaskSidecarCodec {
   ///
   /// [digest] 由 repository 传（它才知道人类文档里那一行的指纹）；
   /// 缺省时从任务自身渲染，等于"这一行没被外部改过"。
+  ///
+  /// **'长期'任务（v1.17，D18）只写 `id` 一行**：下面这些内核算出来的键
+  /// （含 digest / status / completed_at / snoozed_until）全部返回 null →
+  /// 整行移除；完成态只认人类文档（D14），配对走附录 A.3 第 2/3 档。
   String? fieldValue(Task t, String key, {String? digest}) {
+    final long = t.isLongTerm;
     switch (key) {
       case 'id':
         return t.id;
       case 'digest':
-        return digest;
+        return long ? null : digest;
       case 'work_intensity':
-        return '${t.estimatedWork}';
+        return long ? null : '${t.estimatedWork}';
       case 'remaining_load':
-        return fmtLoad(t);
+        return long ? null : fmtLoad(t);
       case 'priority':
-        return '${t.importance}';
+        return long ? null : '${t.importance ?? 3}';
       case 'time_slack':
         return t.metadata['time_slack'];
       case 'status':
-        return t.status.name;
+        return long ? null : t.status.name;
       case 'snoozed_until':
+        if (long) return null;
         return t.snoozedUntil == null ? null : fmtDateTime(t.snoozedUntil!);
       case 'completed_at':
+        if (long) return null;
         return t.completedAt == null ? null : fmtDateTime(t.completedAt!);
       default:
-        // 登记的应用自有 metadata 键（附录 B.2）：值直接取自任务对象；
+        // 登记的应用自有 metadata 键（附录 A.2）：值直接取自任务对象；
         // 键在 metadata 里消失 → 返回 null → 整行移除（"键消失则行删"）。
         return registeredMetaKeys.contains(key) ? t.metadata[key] : null;
     }
@@ -253,10 +276,12 @@ class TaskSidecarCodec {
   }
 
   /// 剩余工作量（分数）。`remaining_work`（分钟）换算回归一化值：
-  /// 工作强度为 0（不可推任务豁免工时）时保持 0，避免除零。
+  /// 工作强度为 0（不可推任务豁免工时）或 **'长期'（无工时，D18）**时保持 0，
+  /// 避免除零与空值。
   static String fmtLoad(Task t) {
-    if (t.estimatedWork <= 0) return '0';
-    final load = t.remainingWork / t.estimatedWork;
+    final est = t.estimatedWork;
+    if (est == null || est <= 0) return '0';
+    final load = (t.remainingWork ?? est) / est;
     final clamped = load < 0 ? 0.0 : (load > 1 ? 1.0 : load);
     // 三位小数足够（0.001 × 480 分钟 ≈ 半分钟），且好读
     var text = clamped.toStringAsFixed(3);

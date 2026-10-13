@@ -10,14 +10,14 @@ import 'task_document.dart';
 import 'task_repository.dart';
 import 'task_sidecar.dart';
 
-/// **双文档** Markdown 实现（附录 B / 决议 36）。
+/// **双文档** Markdown 实现（附录 A / 决议 36）。
 ///
 /// 任务目录里的布局：
 ///
 /// ```text
 /// tasks/
 /// ├── tasks.md            人类文档：# 标题分类 + 一行一条任务（Obsidian 看/改/共享）
-/// ├── routines.md         周期规则（附录 B-2，独立文件，形态不变）
+/// ├── routines.md         周期规则（附录 A-2，独立文件，形态不变）
 /// ├── .gtd/               内核属性文档目录（一个任务一个，应用自己写）
 /// │   ├── <任务id>.md     任务id / 工作强度 / 优先级 / 时间裕度 / 剩余工作量
 /// │   └── .trash/         软删除的内核属性文件（决议 15：Obsidian 可见可捞）
@@ -154,6 +154,8 @@ class MarkdownTaskRepository implements TaskRepository {
     //        这覆盖"人在 Obsidian 里把任务名也改了"（指纹和名字都变了），
     //        代价是顺序假设：数量相等就默认是一一对应。数量不等时宁可不认领
     //        （新行当新任务处理），因为猜错会悄悄挪动内核属性。
+    // **'长期'任务没有 digest**（v1.17，D18）：它的稳态配对走第 2/3 档
+    // （任务名 / 位置）——改名且数量不等时按新任务接管并提示，不静默。
     final byDigest = <String, Task>{};
     for (final s in sidecars.values) {
       final digest = s.metadata['digest'];
@@ -189,11 +191,14 @@ class MarkdownTaskRepository implements TaskRepository {
     final freeLines = [
       for (var i = 0; i < lines.length; i++)
         if (claimed[i] == null) i,
-    ];
+    ]..sort((a, b) => lines[a].created.compareTo(lines[b].created));
     final freeSidecars = sidecars.values
         .where((s) => !usedIds.contains(s.id))
         .toList()
-      ..sort((a, b) => a.created.compareTo(b.created));
+      // 按 id 排序 ≈ 按创建先后（id 前缀是时间戳，附录 A.2）。sidecar 没有
+      // created 字段，拿读取时间排序等于随机——'长期'任务没有指纹（D18），
+      // 稳态配对全靠这一档，顺序必须确定。
+      ..sort((a, b) => a.id.compareTo(b.id));
     if (freeLines.length == freeSidecars.length && freeLines.isNotEmpty) {
       for (var k = 0; k < freeLines.length; k++) {
         claim(freeLines[k], freeSidecars[k]);
@@ -212,6 +217,10 @@ class MarkdownTaskRepository implements TaskRepository {
           id: _allocateId(usedIds),
           title: line.title,
           created: line.created,
+          // 新接管的行按**创建缺省**给工作强度（v1.17，D18，与 createTask
+          // 同一套口径）：无截止（三无）→ '长期'；有截止 → 30 分钟（A2）。
+          estimatedWork: line.deadline == null ? null : 30,
+          importance: line.deadline == null ? null : 3,
         );
         usedIds.add(sidecar.id);
         claimed[i] = sidecar;
@@ -268,6 +277,9 @@ class MarkdownTaskRepository implements TaskRepository {
 
   /// 合并两半：人类文档给"写的部分"，内核属性给"算的部分"。
   /// `digest`（两条文档之间的接线）不进最终 Task。
+  ///
+  /// '长期'任务（v1.17，D18）：sidecar 缺 `work_intensity` 行 → 三项缺位原样
+  /// 带进合并结果——**不补数字缺省**，那会把"估不出来"伪装成 30 分钟。
   Task _merge({required TaskLine line, required String id, Task? sidecar}) {
     final metadata = <String, String>{
       if (sidecar != null)
@@ -279,9 +291,9 @@ class MarkdownTaskRepository implements TaskRepository {
       title: line.title,
       description: line.description,
       deadline: line.deadline,
-      estimatedWork: sidecar?.estimatedWork ?? 0,
-      remainingWork: sidecar?.remainingWork ?? 0,
-      importance: sidecar?.importance ?? 3,
+      estimatedWork: sidecar?.estimatedWork,
+      remainingWork: sidecar?.remainingWork,
+      importance: sidecar?.importance,
       // 人类文档的复选框是完成态的最终真相
       status: line.completed
           ? TaskStatus.completed
@@ -625,6 +637,8 @@ class MarkdownTaskRepository implements TaskRepository {
   }
 
   /// 写内核属性文档。传 [digest] 则记入行指纹（内核据此与人类文档对号）。
+  /// **'长期'任务例外**（v1.17，D18）：codec 对长期任务不写 digest 与任何
+  /// 内核算出来的字段，文档只剩 id 一行（+ 登记的 metadata 键）。
   Future<void> _writeSidecar(Task task, {String? digest}) async {
     final path = _sidecarPathOf(task.id);
     final file = File(path);
@@ -635,6 +649,13 @@ class MarkdownTaskRepository implements TaskRepository {
     final raw = sidecarCodec.encode(
       EncodedTask(task: marked, originalRaw: originalRaw),
     );
+    // 内容没变就不落盘。'长期'任务的内核文档没有 digest，loadAll 每轮都会
+    // 判定"指纹不等"走进来（v1.17，D18）——无脑重写会触发文件监听 → 重锚 →
+    // 再重写的自激循环；顺带也省掉其它任务的无谓写入。
+    if (originalRaw == raw) {
+      _lastSeenSidecar[task.id] = raw;
+      return;
+    }
     await file.parent.create(recursive: true);
     await file.writeAsString(raw);
     _lastSeenSidecar[task.id] = raw;
