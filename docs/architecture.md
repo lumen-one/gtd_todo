@@ -1,6 +1,6 @@
 # 架构契约：分层与接口设计
 
-> 版本：v1.12（修订记录见 §13）
+> 版本：v1.18（修订记录见 §13）
 > 定位：这是写代码时对照的**合同**。结构或接口变更必须先改本文件，再改代码。
 >
 > **标注约定（全文统一）**：
@@ -11,7 +11,7 @@
 >   未标注的条目默认【规划】。"与代码同步"仅指标注为【现状】的范围。
 >
 > 分工：产品定位、调度数学与阶段规划见原《动态任务调度 Todo 设计文档》。**客户端层的
-> 需求与决议见 docs/ui-interaction.md（v0.16，决议 1–46）**——本文件为它提供结构与插座，
+> 需求与决议见 docs/ui-interaction.md（v0.17，决议 1–47）**——本文件为它提供结构与插座，
 > 对接点 = §3.5 命令清单 + §4.3 送达策略 + §4.1 Scheduler 的 `reminderMode` +
 > `buildTodayView` 的 `scheduleMode`（业务层排序口径，v1.12）；
 > 结构冲突以本文件为准，产品行为以 UI 文档为准；与 `docs/changelog.md` 冲突时，
@@ -302,7 +302,7 @@ TaskService 每个命令完成后广播 `DomainEvent`（含 origin）。通知�
 | 命令                                                                             | 语义                                                                                                                                                                                                                                     |
 | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `createTask`                                                                     | 创建：deadline / estimatedWorkMinutes 可选；fixed 必须有截止且豁免 A2（工时可为 0），**flex 无截止（三无）缺省工作强度 = '长期'（豁免 A2/A3，v1.17）**，flex 有截止缺省 30 分钟且必须 ≥ 1（A2）；类型走 metadata `type`（附录 B 登记表） |
-| `completeTask` / `snoozeTask` / `snoozeUntil` / `snoozeToNextWindow` / `logWork` | 完成 / 推迟（D8 两档）/ 绝对档位推迟（明早 9 点、自选，决议 26）/ 记工时                                                                                                                                                                 |
+| `completeTask` / `snoozeTask` / `snoozeUntil` / `snoozeToNextWindow` / `logWork` | 完成 / 推迟（D8 两档）/ 绝对档位推迟（明早 9 点、自选，决议 26）/ 记工时。**完成命令顺手清掉挂起标记 `in_progress`**（v1.18，D19：挂起保持到完成或主动取消）                                                                                                                                                                 |
 | `updateTask`                                                                     | 更新（含类型转换 fixed↔flex、清截止；fixed 必须有截止的合并后校验）。**清截止不自动改写工作强度**（v1.17，D18）：'长期' ↔ 数字工时都在编辑里显式设，不悄悄改语义（§3.4 防线三）                                                          |
 | `pinToTop(taskId)`                                                               | 插队 = 持久意图记在任务（metadata `pinned`），保持到完成、栈式压顶；仅对可推组生效，**且无排序档下不生效**（那一档顺序整体由 `manual_order` 定，见 B5 / D17）                                                                            |
 | `setTaskReminder(taskId, enabled)`                                               | **逐任务提醒开关**（v1.9，D15）：写 metadata `remind`；标准模式下这是让单个任务出声的**唯一**手段，完整模式下无意义（本来就全响）                                                                                                        |
@@ -311,6 +311,8 @@ TaskService 每个命令完成后广播 `DomainEvent`（含 origin）。通知�
 | `setPoolOrders(taskIds)`                                                         | 池子显示序的**整段重编号**（0 连续）：一次拖动手势 = 一次落盘 + 一个事件 + 一次重算                                                                                                                                                      |
 | `setPinnedStack(taskIds)`                                                        | 插队栈的**整段重写**：按给定顺序决定谁压最上面（越靠上 `pinned` 时刻越新）；同样一次落盘 + 一次重算                                                                                                                                      |
 | `setManualOrder(taskIds)`                                                        | **手动序**（v1.12，D17）：按给定顺序整段重编 `manual_order`（从 0 连续编号）；只在无排序档参与今日清单的顺序，其余两档下原样保留                                                                                                         |
+| `setInProgress(taskId, enabled)`                                                 | **挂起进行开关**（v1.18，D19 / ui 决议 47）：写/删 metadata `in_progress`（值 = 挂起时刻 ISO）。**仅'长期'任务可挂**（有截止的归调度管）；取消不受此限（'转正'后也要能取消）。保持到完成或主动取消，不按天过期                                                                |
+| `setInProgressStack(taskIds)`                                                    | 挂起组的**整段重写**：按给定顺序决定谁排最顶（越靠上 `in_progress` 时刻越新）；同样一次落盘 + 一次重算（§3.5 通用约束）                                                                                                                |
 | `updateScheduleMode(mode)`                                                       | **调度模式**三档切换（**full** / **standard** 默认 / **manual**）：同时决定给内核的门槛与业务层的顺序口径；只重算，不动任何任务数据、无迁移                                                                                              |
 | `deleteTask` / `restoreTask` / `purgeTrash`                                      | 软删除三件套：移入 `.gtd/.trash/` / 从回收站恢复 / 清空回收（D11）                                                                                                                                                                       |
 | `recomputeSchedule` / `refreshSchedule`                                          | 重锚（C2）两条：前者用**当前内存态**重算（**命令走这条，不读盘**）；后者先 `loadAll` 从盘回流再重算（文件监听 / 回前台 / 启动 / `restoreTask` / 提醒到点走这条）                                                                         |
@@ -322,7 +324,7 @@ TaskService 每个命令完成后广播 `DomainEvent`（含 origin）。通知�
 
 领域事件相应扩充：taskPinned / taskPicked / taskRestored / trashPurged（v1.4）、
 **routineCreated / routineUpdated / routineDeleted / routineInstanceGenerated /
-routineSkipped（v1.5，taskId = 规则 id 或实例 id）**、**taskReminderSet（v1.9，逐任务提醒开关）**、**manualOrderChanged / scheduleModeChanged（v1.12：手动序改写与调度模式切换，订阅者只需重算视图）**、**poolOrderChanged（v1.14：池子整理序整段改写）**。
+routineSkipped（v1.5，taskId = 规则 id 或实例 id）**、**taskReminderSet（v1.9，逐任务提醒开关）**、**manualOrderChanged / scheduleModeChanged（v1.12：手动序改写与调度模式切换，订阅者只需重算视图）**、**poolOrderChanged（v1.14：池子整理序整段改写）**、**taskInProgressSet（v1.18：挂起进行开关与挂起组整段重写，订阅者只需重算视图）**。
 
 > **一次用户手势 = 一个事件 + 一次重算；落盘排在事件之后**（v1.14 立，v1.16 修正）。
 >
@@ -444,7 +446,7 @@ class TaskSidecarCodec {
   static const List<String> registeredMetaKeys = [
     'type', 'pinned', 'picked_for_today', 'pool_order',
     'routine', 'routine_date', 'routine_remind', 'routine_skipped',
-    'point_fired', 'remind', 'manual_order',
+    'point_fired', 'remind', 'manual_order', 'in_progress',
   ];
 }
 
@@ -864,6 +866,7 @@ class SystemSnapshot {
 | D16 | 排序键 = **调度优先级** `priority = risk × importance`，`risk` 是裕度的**非线性**（指数族）函数 `exp(−(slack/τ)^γ)`；`importance` 缺省 3。**命名**：人定的 1–5 叫优先级（内核属性文档 `priority` 键 = `Task.importance`），算出来的叫调度优先级（**不落盘**）                                                                                                                                                                                                                                                                                                                                                                                                                                                                | 裕度是唯一压力表，但压力不该随裕度**线性**变化：线性要给 slack 凭空规定"到哪算 0"，还会给出负风险；指数族只要一个尺度 τ、恒在 (0,1]，且"裕度还宽时催得少、一薄就陡然变急"正是想要的非线性。importance 作乘数让重要的事整体前移，却盖不过已经贴住截止的事（risk→1）。同名不同物（输入 vs 输出）在 §3.2 B3 与本表写明，避免两份"优先级"打架                                                                                                                                                                                                                                                                                                                    |
 | D17 | **调度模式三档：完整 / 标准（默认）/ 无排序**（v1.12），取代原先"提醒模式 + 排序模式"两个并列开关。无排序 = **标准的再弱化版**：今日可推组的顺序改按 `manual_order`（无序号者按 id 升序沉末尾）、插队压顶那一层取消；**除此之外与标准一模一样**——可推组仍按"锚点落在今天"准入，任务池仍是 `pool_order` 整理序，`slack`/`risk`/`priority`、提醒锚点与间隔、逾期与不可行判定、提醒门槛全部照算。**内核不知道有三档**：`Scheduler.schedule` 只收 `ReminderMode`，`ScheduleMode` 定义在 domain 但只被 application/UI 消费（由它派生内核门槛 + 排序口径），注册表里不会多出一个没有数学的假算法，§8"换算法 = 注册一个新 Scheduler"不被绕开。`manual_order` 是**用户意图**、持久化（B5），只在无排序档生效，切档不迁移、不改写数据 | 三档是**一条逐级弱化的谱系**而不是三个正交维度：它们回答的是同一个问题——"算法替人做主到什么程度"（排先后、要不要出声）。做成一组三选一，用户不需要理解两个开关的组合含义。**准入不跟着关**的理由：用户要的是"今天这几件的先后由我定"，不是"今天该看哪几件也由我定"——后者会让远期任务全涌进今日清单，那是另一个产品（手工 Todo），不是无排序。**不下沉到内核**的理由：内核那份排序还服务于 nextTask / 提醒锚点等计算，把它关掉等于把下一站也弄丢；而且一旦进 `schedule` 的签名，每个算法实现都得处理一个没有数学的分支。**序号存 metadata 而非独立文件**的理由：行级/字段级保真（§3.4）已经保证它跟着任务走，任务删了序号自然消失，不需要第二份需要同步的真相 |
 | D18 | **三无任务的工作强度缺省为'长期'；长期任务的内核属性文档只有一个任务 id**（v1.17，配套 ui v0.16 决议 46）。'长期'是工作强度的**特殊值**（标记而非分钟数，**不是新任务类型**）：标长期 = 不估工时、不设优先级、没有时间裕度与剩余工作量；此时 A1/A2/A3 全部豁免（同 fixed 豁免 A2 的先例），B1/B2 不收窄（无截止本来就不派生）。内核文档只剩 `id` 一行——`digest`/`status`/`completed_at` 也不落（完成态只认人类文档，D14；配对走 B.3 第 2/3 档）。'长期'**不新增 metadata 键**：它在内核文档里的形态就是"没有 `work_intensity` 行"。**只是创建缺省、不是不变量**：清截止不自动改写工作强度，'长期' ↔ 数字工时都在编辑里显式设（§3.4 防线三：绝不悄悄改语义）                                                                  | 长期存在的事估不出工时，也没有优先级可言——硬造"缺省 30 分钟 + 优先级 3"等于让假装精确的数字进调度，与 D16"算不出来就不落盘"同源。内核文档退化成一行 id 是这条口径的**代价**而不是疏漏：行指纹随之消失，改名且数量不等时会按新任务接管（有提示、不静默，旧 id 文件留在 `.gtd/` 等人工处理）。与 routine 实例的"0 工时豁免"是两回事：routine 到点发生、本来不用估；长期是长期存在、估不出来                                                                                                                                                                                                                                                                    |
+| D19 | **长期任务“挂起进行”：今日页顶置组，多件可拖，保持到完成或主动取消**（v1.18，配套 ui v0.17 决议 47）。形态 = metadata `in_progress`（值 = 挂起时刻 ISO，组内按时刻降序 = 后挂在上；拖动整段重写时刻，与插队栈 `setPinnedStack` 同一机制）。`buildTodayView` 分出**挂起组**（今日页最顶、逾期组之上、无编号、三档调度模式下都在）；`buildPoolView` 把挂起中任务从两段隐藏（与被挑散件同一规则）。命令 `setInProgress(taskId, enabled)`（**仅“长期”可挂**；取消不限——“转正”后也要能取消）/ `setInProgressStack(taskIds)` + 事件 `taskInProgressSet`；`completeTask` 顺手清标记。**内核一行不动**：长期任务没有截止，本来就被 B1/B2 挡在派生之外、两个调度器都跳过，挂起组也不经过 `ScheduleResult` | 与插队（决议 9）/ 手动序（D17）同源：**持久意图记在任务上**，不建第二份需要同步的真相（任务删了标记自然消失；软删除跟着文件进回收站）。**不做成当日语义**（`picked_for_today` 那种）：“挂起”读起来是持续的，按天过期会让你每天重点同一件长期任务；**不做成纯内存**：两个引擎各一个 TaskService，状态必然漂移。**只给长期任务开这个口**：有截止的事归调度管（§7.1 的顺序与裕度），这个按钮解决的是“长期存在、估不出来、但此刻正在做”的那一类。**不下沉到内核**的理由同 D17：内核那份排序还服务于 nextTask / 锚点计算，展示层的选择做在展示层 |
 
 ---
 
@@ -1013,7 +1016,8 @@ id: task-004
 `work_intensity` / `remaining_load` / `priority` / `time_slack` 全部缺行，`digest` 也没有
 （两文档配对走 B.3 第 2/3 档）；`status` / `completed_at` 同样不落——**完成态只认人类文档**的
 `[x]` / `完成 <时刻>`（D14 口径不变）。'长期'不单独落一行：**没有 `work_intensity` 行就是长期**，
-因此也**不新增 metadata 键**（下方登记表不变）。与 routine 实例的"0 工时豁免"是两回事：
+因此也**不为'长期'新增 metadata 键**（下方登记表里的 `in_progress` 是挂起标记、与"怎么表达
+长期"无关，v1.18）。与 routine 实例的"0 工时豁免"是两回事：
 routine 到点发生、本来就不用估；长期是长期存在、估不出来。
 
 **自有 metadata 键登记表**（§3.4 防线二：应用自有键在此登记，编码时**跟随任务对象
@@ -1035,6 +1039,7 @@ routine 到点发生、本来就不用估；长期是长期存在、估不出来
 | `point_fired`      | 已响过的那一次时点提醒（值 = 当时的到点时刻 ISO；改期/推迟后清除）                                                               | v1.5 实现（只到点响一次）       |
 | `remind`           | **逐任务提醒开关**（标准/无排序两档下让这一件出声；只写 `true`，关掉即删键）。完整模式下无意义（本来就全响）                     | ui 文档 §7.0 / 决议 38（v1.9）  |
 | `manual_order`     | **手动序**（**无排序档**下今日可推组的显示序，非负整数；拖动一次整段重编号）。标准/完整两档下**保留但不生效**，切档不迁移        | ui 文档 §6.1 / 决议 43（v1.12） |
+| `in_progress`      | **挂起进行标记**（v1.18，ui 决议 47）：长期任务顶置今日页最顶的挂起组（无编号、组内可拖）。持久意图，**保持到完成或主动取消、不按天过期**（`completeTask` 顺手清除）；值 = 挂起时刻 ISO，组内按时刻降序（后挂在上），拖动整段重写时刻。**仅'长期'任务可挂**（取消不限） | ui 文档 §6.1 / 决议 47（v1.18） |
 
 - **解析宽容**：坏文件降级进 `warnings`，不崩溃。**warnings 流向**：现暂存于
   `repo.warnings` 仅供诊断；目标形态 = 进领域事件流 + UI"待整理"清单【规划】；
