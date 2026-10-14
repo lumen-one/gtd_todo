@@ -56,7 +56,7 @@ Future<void> main() async {
     scheduler: const SlackPriorityScheduler(),
     workRule: WorkTimeRule.standard,
     // 仿真演示的是"动态提醒"这条链路，所以用完整模式（默认是标准模式 = 不提醒）。
-    reminderMode: ReminderMode.full,
+    scheduleMode: ScheduleMode.full,
     clock: () => now,
   );
   final events = <DomainEvent>[];
@@ -106,6 +106,6 @@ Future<void> main() async {
 
   // 默认模式是**标准**（只排列不提醒）：同一批任务，一个"下一站"都没有，
   // 但顺序、锚点（今日清单准入）照旧——差别只在"出不出声"（决议 38）。
-  await svc.updateReminderMode(ReminderMode.standard);
+  await svc.updateScheduleMode(ScheduleMode.standard);
   printSchedule(svc, '切回默认的标准模式（只排列不提醒）');
 }

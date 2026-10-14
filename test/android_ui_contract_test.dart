@@ -285,15 +285,15 @@ void main() {
       expect(back.notesPath, s.notesPath);
     });
 
-    test('提醒模式：默认标准，完整模式往返不丢（v1.9）', () {
-      expect(AppSettings.defaults.reminderMode, ReminderMode.standard,
+    test('调度模式：默认标准，完整模式往返不丢（v1.12 由 reminderMode 改名）', () {
+      expect(AppSettings.defaults.scheduleMode, ScheduleMode.standard,
           reason: '默认标准模式：只排列不提醒');
-      const full = AppSettings(reminderMode: ReminderMode.full);
+      const full = AppSettings(scheduleMode: ScheduleMode.full);
       final back = decodeSettings(encodeSettings(full));
-      expect(back.reminderMode, ReminderMode.full);
+      expect(back.scheduleMode, ScheduleMode.full);
       // 老设置文件没有这个键 → 落到标准模式（不因为缺键而变成"全提醒"）
       final legacy = AppSettings.fromJson(const {'alarm_mode': true});
-      expect(legacy.reminderMode, ReminderMode.standard);
+      expect(legacy.scheduleMode, ScheduleMode.standard);
     });
   });
 }

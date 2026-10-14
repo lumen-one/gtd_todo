@@ -73,7 +73,7 @@ void main() {
       workRule: WorkTimeRule.standard,
       // 本文件测"到点响不响"，所以用**完整模式**；标准模式（默认）的门槛
       // 由 task_service_test 覆盖。
-      reminderMode: ReminderMode.full,
+      scheduleMode: ScheduleMode.full,
       clock: () => now,
     );
     routines = RoutineService(

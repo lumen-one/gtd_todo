@@ -14,7 +14,7 @@ void main() {
   /// 装一次桌面壳。注意 testWidgets 跑在 FakeAsync 区：真实文件 IO 必须包进
   /// `tester.runAsync`，否则挂死。
   Future<void> pumpApp(WidgetTester tester,
-      {required ReminderMode mode}) async {
+      {required ScheduleMode mode}) async {
     final tmp = Directory.systemTemp.createTempSync('gtd_widget_test');
     addTearDown(() {
       // Windows 下偶发 errno=32（索引器/杀毒瞬时占用），清理失败可忽略
@@ -28,7 +28,7 @@ void main() {
       repo: repo,
       scheduler: const SlackScheduler(),
       workRule: WorkTimeRule.standard,
-      reminderMode: mode,
+      scheduleMode: mode,
       clock: () => DateTime(2026, 10, 7, 16, 0),
     );
     await tester.runAsync(() async {
@@ -49,7 +49,7 @@ void main() {
 
   testWidgets('任务列表能显示 Markdown 里的任务；默认标准模式如实说"不提醒"',
       (tester) async {
-    await pumpApp(tester, mode: ReminderMode.standard);
+    await pumpApp(tester, mode: ScheduleMode.standard);
 
     expect(find.text('动态任务调度 Todo'), findsOneWidget);
     expect(find.text('写周报'), findsOneWidget);
@@ -60,7 +60,7 @@ void main() {
   });
 
   testWidgets('完整模式（原方案）显示下次提醒时刻', (tester) async {
-    await pumpApp(tester, mode: ReminderMode.full);
+    await pumpApp(tester, mode: ScheduleMode.full);
     expect(find.textContaining('下次提醒'), findsWidgets);
   });
 }

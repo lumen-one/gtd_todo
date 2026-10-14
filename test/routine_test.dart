@@ -343,7 +343,7 @@ void main() {
         scheduler: const SlackScheduler(),
         workRule: WorkTimeRule.standard,
         // 本用例要断言"时点提醒还在"，所以要出声（默认标准模式不产出提醒）。
-        reminderMode: ReminderMode.full,
+        scheduleMode: ScheduleMode.full,
         clock: clock,
       );
       await reloaded.refreshSchedule();
