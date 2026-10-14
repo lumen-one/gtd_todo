@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import 'application/routine_service.dart';
 import 'application/task_service.dart';
@@ -11,9 +10,14 @@ import 'repository/markdown_routine_repository.dart';
 import 'repository/markdown_task_repository.dart';
 import 'scheduler/slack_priority_scheduler.dart';
 import 'ui/app_controller.dart';
-import 'ui/dialogs/calendar_dialog.dart';
-import 'ui/panels/side_panel.dart';
+import 'ui/overlay/overlay_bridge.dart';
+import 'ui/overlay/overlay_panel_shell.dart';
 import 'ui/theme.dart';
+
+// UI 类已迁入 ui/overlay/；这里 re-export 保持原有 import 面不变
+// （main.dart 的 `export 'overlay_main.dart'` 与 overlay 链路测试都依赖它）。
+export 'ui/overlay/overlay_bridge.dart';
+export 'ui/overlay/overlay_panel_shell.dart';
 
 /// 系统级悬浮面板的入口（§6.0 / ui-interaction.md §0）。
 ///
@@ -36,60 +40,6 @@ import 'ui/theme.dart';
 void overlayMain() {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const _OverlayRoot());
-}
-
-/// 原生 ↔ 悬浮面板的事件/命令通道（窗口显隐、收起、进应用）。
-class OverlayBridge {
-  static const MethodChannel channel = MethodChannel('gtd/overlay');
-
-  final StreamController<OverlayWindowState> _states =
-      StreamController<OverlayWindowState>.broadcast();
-
-  /// 原生侧的面板状态（展开/收起 + 把手停靠侧）。
-  Stream<OverlayWindowState> get states => _states.stream;
-
-  OverlayBridge() {
-    channel.setMethodCallHandler((call) async {
-      if (call.method == 'state' && call.arguments is Map) {
-        final m = Map<String, Object?>.from(call.arguments as Map);
-        _states.add(OverlayWindowState(
-          expanded: m['expanded'] == true,
-          dockedRight: m['dockedRight'] != false,
-        ));
-      }
-      return null;
-    });
-  }
-
-  /// 告知原生"面板侧已就绪"（之后原生才会投递状态）。
-  Future<void> notifyReady() async {
-    await _invoke('notifyReady');
-  }
-
-  /// 收起悬浮面板（窗口隐藏，把手重新出现）。
-  Future<void> collapse() async {
-    await _invoke('collapse');
-  }
-
-  /// **进应用**：打开应用本体（设置页），可选定位到某条周期规则。
-  Future<void> openApp({String target = 'settings', String? routineId}) async {
-    await _invoke('openApp', {'target': target, 'routineId': routineId});
-  }
-
-  Future<void> _invoke(String method, [Map<String, Object?>? args]) async {
-    try {
-      await channel.invokeMethod<Object?>(method, args);
-    } catch (_) {
-      // 原生不可用（桌面/老版本）：面板退化为"进应用"，不崩。
-    }
-  }
-}
-
-class OverlayWindowState {
-  final bool expanded;
-  final bool dockedRight;
-
-  const OverlayWindowState({required this.expanded, required this.dockedRight});
 }
 
 /// 悬浮面板需要的核心（第二个引擎自己的实例）。
@@ -252,124 +202,4 @@ class _OverlayErrorCard extends StatelessWidget {
       ),
     );
   }
-}
-
-/// 悬浮面板的宿主：展开 = 画遮罩 + 面板；收起 = 什么都不画（只剩原生把手）。
-class OverlayPanelShell extends StatefulWidget {
-  final AppController controller;
-  final OverlayBridge bridge;
-
-  const OverlayPanelShell({
-    super.key,
-    required this.controller,
-    required this.bridge,
-  });
-
-  @override
-  State<OverlayPanelShell> createState() => _OverlayPanelShellState();
-}
-
-class _OverlayPanelShellState extends State<OverlayPanelShell> {
-  final PageController _pageCtrl = PageController();
-  StreamSubscription<OverlayWindowState>? _stateSub;
-
-  bool _expanded = true; // 原生 notifyReady 后会立刻纠正
-  bool _dockedRight = true;
-  bool _privacy = false;
-
-  AppController get _c => widget.controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _c.addListener(_onChange);
-    _stateSub = widget.bridge.states.listen((s) {
-      if (!mounted) return;
-      setState(() {
-        _expanded = s.expanded;
-        _dockedRight = s.dockedRight;
-        if (!s.expanded) _privacy = false;
-      });
-      if (s.expanded) _maybeOnboard();
-    });
-  }
-
-  @override
-  void dispose() {
-    _stateSub?.cancel();
-    _c.removeListener(_onChange);
-    _pageCtrl.dispose();
-    super.dispose();
-  }
-
-  void _onChange() {
-    if (mounted) setState(() {});
-  }
-
-  Future<void> _collapse() async {
-    setState(() {
-      _expanded = false;
-      _privacy = false;
-    });
-    await widget.bridge.collapse();
-  }
-
-  void _maybeOnboard() {
-    if (_c.settings.guideSeen) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted || _c.settings.guideSeen) return;
-      await showDialog<void>(
-          context: context, builder: (_) => const PanelOnboardDialog());
-      await _c.updateSettings(_c.settings.copyWith(guideSeen: true));
-    });
-  }
-
-  Future<void> _privacySubmit(String text) async {
-    final title = text.trim();
-    if (title.isEmpty) return;
-    await _c.createTask(title: title);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('已静默入池'),
-        duration: Duration(seconds: 2),
-      ));
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (!_expanded) return const SizedBox.shrink();
-    // 透明 Scaffold：SnackBar / 对话框有宿主，背景仍是"下面的 App"。
-    // PopScope：面板是全屏窗口，系统返回键应该"收起面板"而不是穿透到下面的 App。
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) _collapse();
-      },
-      child: Scaffold(
-        backgroundColor: Colors.transparent,
-        body: FloatingPanel(
-          controller: _c,
-          pageCtrl: _pageCtrl,
-          onCollapse: _collapse,
-          onPrivacy: () => setState(() => _privacy = true),
-          privacy: _privacy,
-          onPrivacySubmit: _privacySubmit,
-          onOpenCalendar: () => showCalendarDialog(context, _c),
-          onOpenSettings: () => widget.bridge.openApp(target: 'settings'),
-          dockLeft: !_dockedRight,
-        ),
-      ),
-    );
-  }
-}
-
-/// 悬浮面板里点『编辑规则』时：把用户带进应用的设置页并定位该规则
-/// （悬浮窗没有设置页，装配点在 [_OverlayRoot] 装配后接上这条线）。
-void wireOverlaySettingsNavigation(
-    AppController controller, OverlayBridge bridge) {
-  controller.onOpenSettingsRequested = (routineId) async {
-    await bridge.openApp(target: 'settings', routineId: routineId);
-    await bridge.collapse();
-  };
 }
