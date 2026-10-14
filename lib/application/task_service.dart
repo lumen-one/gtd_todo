@@ -10,6 +10,10 @@ import '../domain/time_context.dart';
 import '../repository/task_repository.dart';
 import '../scheduler/scheduler.dart';
 
+part 'task_service/task_service_trash.dart';
+part 'task_service/task_service_routine.dart';
+part 'task_service/task_service_ordering.dart';
+
 /// Application 层协调者：用户行为 → 系统行为。
 ///
 /// - 唯一写入口（§3.2 C1）：一切状态变更（用户/AI/迁移）都化作这里的命令，
@@ -381,36 +385,6 @@ class TaskService {
     return updated;
   }
 
-  /// 删除 = 软删除（D11）：内核属性文件移入 `.gtd/.trash/`、人类文档那一行注释掉，
-  /// Obsidian 可见可捞；撤销走 [restoreTask]。
-  Future<void> deleteTask(String id,
-      {EventOrigin origin = EventOrigin.user}) async {
-    _require(id);
-    await repo.moveToTrash(id);
-    _tasks = _tasks.where((t) => t.id != id).toList();
-    _emit(DomainEventType.taskDeleted, id, origin);
-    await recomputeSchedule(origin: origin);
-  }
-
-  /// 从回收站恢复（撤销窗口 / 设置页回收列表）。
-  Future<void> restoreTask(String id,
-      {EventOrigin origin = EventOrigin.user}) async {
-    await repo.restore(id);
-    // 这里必须读盘：回收站里的任务不在内存 `_tasks` 中（v1.16 起命令默认
-    // 不再回读，只有这种"盘上有、内存里没有"的情况才需要）。
-    await refreshSchedule(origin: origin);
-    _emit(DomainEventType.taskRestored, id, origin);
-  }
-
-  /// 清空回收站（真删，仅设置页显式触发）。
-  Future<void> purgeTrash({EventOrigin origin = EventOrigin.user}) async {
-    await repo.purgeTrash();
-    _emit(DomainEventType.trashPurged, '', origin);
-  }
-
-  /// 回收站清单（查询，不经缓存）。
-  Future<List<Task>> loadTrash() => repo.loadTrash();
-
   /// **逐任务提醒开关**（v1.9 决议 38）：在标准模式下让**这一件**出声（metadata
   /// `remind`）。它**不改顺序**、不改其他字段；完整模式下开了也等于没开（本来就全响）。
   /// 不可推（fixed）与周期实例也适用——时点性提醒走同一道门槛（D15）。
@@ -488,209 +462,14 @@ class TaskService {
     return updated;
   }
 
-  /// 池子显示序（决议 14）：仅整理无调度含义，重启保留。
-  Future<Task> setPoolOrder(String id, {required int order,
-      EventOrigin origin = EventOrigin.user}) async {
-    final updated =
-        _withMeta(_require(id), (m) => {...m, 'pool_order': '$order'});
-    await _persist(updated, origin, DomainEventType.taskUpdated);
-    return updated;
-  }
-
-  /// 池子显示序的**整段重编号**（决议 14）：一次拖动手势会打乱整段，所以按
-  /// [orderedIds] 的顺序一次性写 0..n-1。
-  ///
-  /// **必须批量**：逐条调 [setPoolOrder] 会放大成 N 次读盘，更糟的是每写一条就
-  /// 重锚一次、发一次事件——第 k 条写完时只有前 k 个序号是新的，那个半成品顺序
-  /// 会被立刻渲染出来，清单就在几个位置之间来回跳，最后才停（"闪动"的真因）。
-  /// 这里照 [setManualOrder] 的形状：批量落盘 → 整体换 `_tasks` → 一个事件 →
-  /// 一次重锚。
-  Future<List<Task>> setPoolOrders(List<String> orderedIds,
-      {EventOrigin origin = EventOrigin.user}) async {
-    final updated = <Task>[];
-    for (var i = 0; i < orderedIds.length; i++) {
-      final cur = byId(orderedIds[i]);
-      if (cur == null) continue;
-      updated.add(_withMeta(cur, (m) => {...m, 'pool_order': '$i'}));
-    }
-    return _persistBatch(updated, DomainEventType.poolOrderChanged, origin);
-  }
-
-  /// 插队栈的**整段重写**（决议 9：后插在上，保持到完成）：按 [orderedIds] 的
-  /// 顺序决定谁压在最上面，只针对可推任务（决议 11）。
-  ///
-  /// 时刻按目标顺序**递减 1 毫秒**：一次手势里逐条写会让它们落在同一毫秒上，
-  /// 而插队件按 `pinned` 字符串排序——并列时 `sort` 没有稳定依据，落位变成随机
-  /// （表现为"闪完之后停在别处"）。批量落盘的理由同 [setPoolOrders]。
-  Future<List<Task>> setPinnedStack(List<String> orderedIds,
-      {EventOrigin origin = EventOrigin.user}) async {
-    final base = now();
-    final updated = <Task>[];
-    for (var i = 0; i < orderedIds.length; i++) {
-      final cur = byId(orderedIds[i]);
-      if (cur == null || cur.type != TaskType.flex) continue;
-      updated.add(_withMeta(cur, (m) => {
-            ...m,
-            'pinned': base.subtract(Duration(milliseconds: i)).toIso8601String(),
-          }));
-    }
-    return _persistBatch(updated, DomainEventType.taskPinned, origin);
-  }
-
-  /// 挂起组的**整段重写**（v1.18，决议 47）：按 [orderedIds] 的顺序决定谁排最顶
-  /// （越靠上 `in_progress` 时刻越新 = 后挂在上）。只对**已挂起**的任务生效——
-  /// '转正'后仍占挂位的也照常重写（取消前它还在组里）。
-  ///
-  /// 时刻按目标顺序**递减 1 毫秒**（同 [setPinnedStack]）：一次手势里逐条写会让
-  /// 它们落在同一毫秒上，而组内按 ISO 串排序——并列时 `sort` 没有稳定依据，
-  /// 落位变成随机。批量落盘的理由同 [setPoolOrders]。
-  Future<List<Task>> setInProgressStack(List<String> orderedIds,
-      {EventOrigin origin = EventOrigin.user}) async {
-    final base = now();
-    final updated = <Task>[];
-    for (var i = 0; i < orderedIds.length; i++) {
-      final cur = byId(orderedIds[i]);
-      if (cur == null || cur.inProgressAt == null) continue;
-      updated.add(_withMeta(cur, (m) => {
-            ...m,
-            'in_progress':
-                base.subtract(Duration(milliseconds: i)).toIso8601String(),
-          }));
-    }
-    return _persistBatch(updated, DomainEventType.taskInProgressSet, origin);
-  }
-
-  /// 手动序（v1.12，决议 43 / D17）：按 [orderedIds] 的顺序整段重编号（从 0 连续），
-  /// 只在无排序模式下参与排序；自动模式下这些序号原样保留、只是不生效。
-  ///
-  /// 一次拖动手势会重编整段，所以这里**批量落盘后再重锚一次**（不像 [setPoolOrder]
-  /// 那样每写一条就重锚一次——那会放大成 N 次读盘）。
-  Future<List<Task>> setManualOrder(List<String> orderedIds,
-      {EventOrigin origin = EventOrigin.user}) async {
-    final updated = <Task>[];
-    for (var i = 0; i < orderedIds.length; i++) {
-      final cur = byId(orderedIds[i]);
-      if (cur == null) continue;
-      updated.add(_withMeta(cur, (m) => {...m, 'manual_order': '$i'}));
-    }
-    return _persistBatch(updated, DomainEventType.manualOrderChanged, origin);
-  }
-
   // ---------- 周期任务的实例（决议 5/12/23）----------
 
   /// 当天实例的确定性 id（幂等生成的前提）：`<规则id>-<yyyy-MM-dd>`。
+  ///
+  /// static 必须留在类体内（extension 承载不了 static）；实例侧的生成/同步/
+  /// 清理/跳过在 `task_service/task_service_routine.dart` 的 extension 上。
   static String routineInstanceId(String routineId, String dayMark) =>
       '$routineId-$dayMark';
-
-  /// 生成某规则在 [day] 的当天实例（幂等：已存在则原样返回）。
-  /// 实例不占工时（estimatedWork = 0，A2 由 routine 类型豁免），
-  /// 不进 ScheduleResult 排序（SlackScheduler 过滤非 flex）。
-  Future<Task> createRoutineInstance(
-    Routine routine,
-    DateTime day, {
-    EventOrigin origin = EventOrigin.system,
-  }) async {
-    final mark = _dayMark(day);
-    final id = routineInstanceId(routine.id, mark);
-    final existing = byId(id);
-    if (existing != null) return existing;
-
-    final task = Task(
-      id: id,
-      title: routine.title,
-      description: routine.description,
-      deadline: routine.occurrenceAt(day),
-      estimatedWork: 0,
-      remainingWork: 0,
-      created: now(),
-      metadata: Map.unmodifiable({
-        'type': 'routine',
-        'routine': routine.id,
-        'routine_date': mark,
-        if (routine.remind) 'routine_remind': 'true',
-      }),
-    );
-    _tasks = [..._tasks, task];
-    _emit(DomainEventType.routineInstanceGenerated, task.id, origin);
-    await _saveAll([task]);
-    await recomputeSchedule(origin: origin);
-    return task;
-  }
-
-  /// 规则改动后同步今日实例（决议 23：改规则即改实例；不提供"编辑实例"）。
-  /// - 规则停用 / 今天不发生 → 未完成的今日实例移入回收站；
-  /// - 今天发生 → 有则刷新标题/备注/时刻，无则生成。
-  Future<void> syncRoutineForDay(
-    Routine routine,
-    DateTime day, {
-    EventOrigin origin = EventOrigin.system,
-  }) async {
-    final mark = _dayMark(day);
-    final id = routineInstanceId(routine.id, mark);
-    final existing = byId(id);
-    if (!routine.enabled || !routine.occursOn(day)) {
-      if (existing != null && !existing.isCompleted) {
-        await deleteTask(id, origin: origin);
-      }
-      return;
-    }
-    if (existing == null) {
-      await createRoutineInstance(routine, day, origin: origin);
-      return;
-    }
-    if (existing.isCompleted) return; // 完成即消，次日再生（决议 5）
-    final deadline = routine.occurrenceAt(day);
-    final meta = Map<String, String>.from(existing.metadata);
-    if (routine.remind) {
-      meta['routine_remind'] = 'true';
-    } else {
-      meta.remove('routine_remind');
-    }
-    // 内容没变就不落盘：文件 watch（主引擎/悬浮引擎/Obsidian 三方都在看）会
-    // 因为无谓的写入互相触发，形成"写 → 事件 → 同步 → 再写"的回环。
-    final unchanged = existing.title == routine.title &&
-        existing.description == routine.description &&
-        existing.deadline == deadline &&
-        existing.routineRemind == routine.remind;
-    if (unchanged) return;
-    final updated = existing.copyWith(
-      title: routine.title,
-      description: routine.description,
-      deadline: deadline,
-      clearDeadline: deadline == null,
-      metadata: Map.unmodifiable(meta),
-    );
-    await _persist(updated, origin, DomainEventType.routineUpdated);
-  }
-
-  /// 规则删除：连带清掉它未完成的今日实例（已完成的历史保留）。
-  Future<void> removeRoutineInstances(String routineId,
-      {EventOrigin origin = EventOrigin.system}) async {
-    final mine = _tasks
-        .where((t) =>
-            t.type == TaskType.routine &&
-            t.routineId == routineId &&
-            !t.isCompleted)
-        .map((t) => t.id)
-        .toList();
-    for (final id in mine) {
-      await deleteTask(id, origin: origin);
-    }
-  }
-
-  /// "跳过今天"（决议 23）：不完成、今日不再显示，次日再生。
-  Future<Task> skipRoutineToday(String id,
-      {EventOrigin origin = EventOrigin.user}) async {
-    final cur = _require(id);
-    if (cur.type != TaskType.routine) {
-      throw ArgumentError('只有周期实例可以"跳过今天"');
-    }
-    final mark = cur.routineDate ?? _dayMark(now());
-    final updated =
-        _withMeta(cur, (m) => {...m, 'routine_skipped': mark});
-    await _persist(updated, origin, DomainEventType.routineSkipped);
-    return updated;
-  }
 
   // ---------- 提醒轮询 ----------
 
