@@ -52,10 +52,18 @@ void main() {
           reason: 'flex 是缺省类型，不写 type 键');
     });
 
-    test('flex 无工时缺省 30 分钟；0 工时仍拒绝（A2）', () async {
+    test('flex 工时缺省：有截止 30 分钟、三无「长期」；0 工时仍拒绝（A2）', () async {
       final svc = makeService();
-      final t = await svc.createTask(title: '回邮件');
-      expect(t.estimatedWork, 30);
+      // 三无（可推无截止）→ 缺省「长期」：估不出来就不写（D18，v1.17）。
+      final longTerm = await svc.createTask(title: '回邮件');
+      expect(longTerm.estimatedWork, isNull,
+          reason: '三无缺省「长期」，estimatedWork 为 null');
+      expect(longTerm.isLongTerm, isTrue);
+      // 有截止的 flex 仍必须给数字工时：缺省 30 分钟。
+      final withDeadline = await svc.createTask(
+          title: '回邮件', deadline: DateTime(2026, 10, 8, 18, 0));
+      expect(withDeadline.estimatedWork, 30);
+      // 显式 0：flex 必须 ≥ 1（A2），「长期」没有分钟数可校验是另一回事。
       await expectLater(
         svc.createTask(title: '坏数据', estimatedWorkMinutes: 0),
         throwsArgumentError,
