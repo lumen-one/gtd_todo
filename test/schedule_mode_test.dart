@@ -2,7 +2,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gtd_todo/application/settings.dart';
 import 'package:gtd_todo/application/task_service.dart';
 import 'package:gtd_todo/application/today_view.dart';
-import 'package:gtd_todo/domain/routine.dart';
 import 'package:gtd_todo/domain/schedule.dart';
 import 'package:gtd_todo/domain/task.dart';
 import 'package:gtd_todo/domain/time_context.dart';
