@@ -51,12 +51,20 @@ void main() {
 
         // 规则 3b：application 只许 import 插座接口，不许 import 任何具体实现
         if (rel.startsWith('application/')) {
+          // 同目录相对 import（'delivery.dart' 这种无斜杠形式）只能落在
+          // application/ 内部，天然合法；
+          // repository/scheduler 侧按插座接口文件逐个登记（新增插座需同步此处
+          // 并在 architecture.md §4.1 登记）。
+          final isSiblingRelative = !imp.contains('/') &&
+              !imp.startsWith('dart:') &&
+              !imp.startsWith('package:');
           final allowed = (imp.startsWith('dart:') && !imp.startsWith('dart:io')) ||
               imp.contains('/domain/') ||
               imp.contains('/application/') ||
+              isSiblingRelative ||
               imp.endsWith('repository/task_repository.dart') ||
-              imp.endsWith('scheduler/scheduler.dart') ||
-              imp.contains('/notification/');
+              imp.endsWith('repository/routine_repository.dart') ||
+              imp.endsWith('scheduler/scheduler.dart');
           if (!allowed) violations.add(where);
         }
       }
