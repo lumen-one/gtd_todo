@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 
-import '../../application/delivery.dart';
 import '../../application/settings.dart';
-import '../../domain/routine.dart';
 import '../../domain/schedule.dart';
 import '../app_controller.dart';
-import '../dialogs/routine_edit_dialog.dart';
+import '../dialogs/settings_notes_path_dialog.dart';
+import '../dialogs/settings_windows_dialog.dart';
 import '../theme.dart';
+import 'settings_permissions.dart';
+import 'settings_routines.dart';
 
 String _mm(int minuteOfDay) {
   final h = (minuteOfDay ~/ 60).toString().padLeft(2, '0');
@@ -57,115 +58,25 @@ class SettingsPanel extends StatefulWidget {
   State<SettingsPanel> createState() => _SettingsPanelState();
 }
 
-class _SettingsPanelState extends State<SettingsPanel>
-    with WidgetsBindingObserver {
-  static const List<(PermissionKind, IconData, String, String)> _permissions = [
-    (
-      PermissionKind.notifications,
-      Icons.notifications_active_outlined,
-      '通知',
-      '到点提醒要能弹出来；被拒则只在应用内高亮（§11）'
-    ),
-    (
-      PermissionKind.exactAlarm,
-      Icons.alarm,
-      '精确闹钟',
-      '安卓 12+ 准点响铃要单独授权；被拒提醒可能迟到（如实提示）'
-    ),
-    (
-      PermissionKind.batteryExemption,
-      Icons.battery_saver,
-      '电池优化白名单',
-      'Doze/省电模式会推迟甚至吞掉闹钟（附录 A）'
-    ),
-    (
-      PermissionKind.overlayWindow,
-      Icons.picture_in_picture_alt_outlined,
-      '悬浮窗',
-      '贴屏把手与其他 App 上方拖出侧边栏；被拒退化为 App 内抽屉（§11）'
-    ),
-    (
-      PermissionKind.showOnLockScreen,
-      Icons.screen_lock_portrait_outlined,
-      '锁屏/上层显示',
-      '闹钟模式的全屏提醒需要它；被拒退化为普通通知 + 响铃'
-    ),
-    (
-      PermissionKind.folderAccess,
-      Icons.folder_open,
-      '任务目录（所有文件访问）',
-      '让 Obsidian 与 App 共用同一个 vault 目录；SAF 下监听不可用，'
-          '降级为回前台刷新'
-    ),
-  ];
-
-  final Map<PermissionKind, bool> _permState = {};
-  bool _permLoading = false;
-
-  final Map<String, GlobalKey> _routineKeys = {};
-  String? _focusedRoutineId;
-
+class _SettingsPanelState extends State<SettingsPanel> {
   AppController get _c => widget.controller;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
     _c.addListener(_onChange);
     _c.refreshTrash();
-    _loadPermissions();
-    _syncFocus();
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
     _c.removeListener(_onChange);
     super.dispose();
-  }
-
-  /// 系统权限设置页是异步的（用户可能在设置页里改完再回来）：
-  /// 回到前台重新查询一遍状态（原生侧 `request*Permission` 只返回"调用那一刻"）。
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _loadPermissions();
   }
 
   void _onChange() {
     if (!mounted) return;
     setState(() {});
-    _syncFocus();
-  }
-
-  /// 侧边栏『编辑规则』跳进来：滚到该规则并高亮（决议 23）。
-  void _syncFocus() {
-    final id = _c.settingsFocusRoutineId;
-    if (id == null || id == _focusedRoutineId) return;
-    _focusedRoutineId = id;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final ctx = _routineKeys[id]?.currentContext;
-      if (ctx == null) return;
-      Scrollable.ensureVisible(ctx,
-          duration: const Duration(milliseconds: 320),
-          alignment: 0.15,
-          curve: Curves.easeOutCubic);
-    });
-  }
-
-  Future<void> _loadPermissions() async {
-    if (_permLoading) return;
-    setState(() => _permLoading = true);
-    final port = _c.permissions;
-    if (port != null) {
-      for (final entry in _permissions) {
-        try {
-          _permState[entry.$1] = await port.granted(entry.$1);
-        } catch (_) {
-          _permState[entry.$1] = false;
-        }
-      }
-    }
-    if (mounted) setState(() => _permLoading = false);
   }
 
   @override
@@ -177,49 +88,42 @@ class _SettingsPanelState extends State<SettingsPanel>
       padding: const EdgeInsets.fromLTRB(0, 4, 0, 40),
       children: [
         _Section('权限引导'),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Text(
-            '逐项申请并解释用途；被拒时对应功能优雅降级（§11）。'
-            '桌面端全部视为已授予。',
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-          ),
-        ),
-        for (final (kind, icon, title, why) in _permissions)
-          ListTile(
-            leading: Icon(icon),
-            title: Text(title),
-            subtitle: Text(why, style: theme.textTheme.bodySmall),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  _permState[kind] == true
-                      ? Icons.check_circle
-                      : Icons.error_outline,
-                  size: 18,
-                  color: _permState[kind] == true
-                      ? Colors.green
-                      : AppColors.overdue,
-                ),
-                const SizedBox(width: 8),
-                TextButton(
-                  onPressed: () async {
-                    final ok = await _c.ensurePermission(kind);
-                    await _loadPermissions();
-                    if (context.mounted && !ok) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('$title 未授予：功能已降级')));
-                    }
-                  },
-                  child: Text(_permState[kind] == true ? '已授予' : '申请'),
-                ),
-              ],
-            ),
-          ),
+        SettingsPermissionsSection(controller: _c),
 
         _Section('任务目录与入口'),
+        ..._taskDirSection(s),
+
+        _Section('提醒与排序'),
+        ..._reminderSection(theme, s),
+
+        _Section('周期任务（routines.md）'),
+        SettingsRoutinesSection(controller: _c),
+        SwitchListTile(
+          secondary: const Icon(Icons.view_list_outlined),
+          title: const Text('在任务池计划段显示'),
+          subtitle: const Text('决议 27：周期任务按"下一次发生日期"升序插入计划段'),
+          value: s.routineShowInPool,
+          onChanged: (v) => _c.updateSettings(s.copyWith(routineShowInPool: v)),
+        ),
+
+        _Section('定期挑'),
+        ..._pickSection(s),
+
+        _Section('疑问笔记'),
+        _notesSection(s),
+
+        _Section('主题预设'),
+        ..._themeSection(theme, s),
+
+        _Section('回收站'),
+        _trashSection(),
+      ],
+    );
+  }
+
+  // ---------- 分区构建 ----------
+
+  List<Widget> _taskDirSection(AppSettings s) => [
         ListTile(
           leading: const Icon(Icons.folder),
           title: const Text('任务目录'),
@@ -248,8 +152,9 @@ class _SettingsPanelState extends State<SettingsPanel>
           title: const Text('重看首次引导'),
           onTap: () => _c.updateSettings(s.copyWith(guideSeen: false)),
         ),
+      ];
 
-        _Section('提醒与排序'),
+  List<Widget> _reminderSection(ThemeData theme, AppSettings s) => [
         ListTile(
           leading: const Icon(Icons.tune_outlined),
           title: const Text('调度模式'),
@@ -291,51 +196,11 @@ class _SettingsPanelState extends State<SettingsPanel>
                   .map((w) => '${_mm(w[0])}–${_mm(w[1])}')
                   .join('、')),
           trailing: const Icon(Icons.edit_outlined),
-          onTap: () => _editWindows(context),
+          onTap: () => showSettingsWindowsDialog(context, _c),
         ),
+      ];
 
-        _Section('周期任务（routines.md）'),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Text(
-            '规则住在任务目录下的 routines.md（一条一个 frontmatter 条目），'
-            'Obsidian 可直接看改；每天生成当天实例，不占工时、默认不响。',
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-          ),
-        ),
-        if (_c.routines.isEmpty)
-          const ListTile(
-            leading: Icon(Icons.repeat),
-            title: Text('还没有周期任务'),
-            subtitle: Text('点下面的按钮新建：每天 / 每周 X，可选时刻与到点提醒'),
-          ),
-        for (final r in _c.routines)
-          _routineTile(context, r,
-              highlighted: r.id == _c.settingsFocusRoutineId),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          child: Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  icon: const Icon(Icons.add),
-                  label: const Text('新建周期任务'),
-                  onPressed: () => _editRoutine(context, null),
-                ),
-              ),
-            ],
-          ),
-        ),
-        SwitchListTile(
-          secondary: const Icon(Icons.view_list_outlined),
-          title: const Text('在任务池计划段显示'),
-          subtitle: const Text('决议 27：周期任务按"下一次发生日期"升序插入计划段'),
-          value: s.routineShowInPool,
-          onChanged: (v) => _c.updateSettings(s.copyWith(routineShowInPool: v)),
-        ),
-
-        _Section('定期挑'),
+  List<Widget> _pickSection(AppSettings s) => [
         SwitchListTile(
           secondary: const Icon(Icons.shuffle),
           title: const Text('每天从散件段挑一件'),
@@ -358,17 +223,17 @@ class _SettingsPanelState extends State<SettingsPanel>
                   _c.updateSettings(s.copyWith(pickIntervalDays: v.first)),
             ),
           ),
+      ];
 
-        _Section('疑问笔记'),
-        ListTile(
-          leading: const Icon(Icons.menu_book_outlined),
-          title: const Text('笔记文件路径'),
-          subtitle: Text(s.notesPath ?? '未配置'),
-          trailing: const Icon(Icons.edit_outlined),
-          onTap: () => _editNotesPath(context),
-        ),
+  Widget _notesSection(AppSettings s) => ListTile(
+        leading: const Icon(Icons.menu_book_outlined),
+        title: const Text('笔记文件路径'),
+        subtitle: Text(s.notesPath ?? '未配置'),
+        trailing: const Icon(Icons.edit_outlined),
+        onTap: () => showSettingsNotesPathDialog(context, _c),
+      );
 
-        _Section('主题预设'),
+  List<Widget> _themeSection(ThemeData theme, AppSettings s) => [
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Wrap(
@@ -391,84 +256,16 @@ class _SettingsPanelState extends State<SettingsPanel>
               style: theme.textTheme.bodySmall
                   ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
         ),
+      ];
 
-        _Section('回收站'),
-        ListTile(
-          leading: const Icon(Icons.delete_sweep_outlined),
-          title: Text('清空回收（${_c.trashTasks.length} 件）'),
-          subtitle: const Text('删除的任务先进 .gtd/.trash/，tasks.md 那一行会被注释掉（可捞）'),
-          onTap: _c.trashTasks.isEmpty ? null : () => _purgeTrash(context),
-        ),
-      ],
-    );
-  }
+  Widget _trashSection() => ListTile(
+        leading: const Icon(Icons.delete_sweep_outlined),
+        title: Text('清空回收（${_c.trashTasks.length} 件）'),
+        subtitle: const Text('删除的任务先进 .gtd/.trash/，tasks.md 那一行会被注释掉（可捞）'),
+        onTap: _c.trashTasks.isEmpty ? null : () => _purgeTrash(context),
+      );
 
-  Widget _routineTile(BuildContext context, Routine r,
-      {required bool highlighted}) {
-    final key = _routineKeys.putIfAbsent(r.id, () => GlobalKey());
-    return Card(
-      key: key,
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
-      shape: highlighted
-          ? RoundedRectangleBorder(
-              side: BorderSide(color: AppColors.accent, width: 1.6),
-              borderRadius: BorderRadius.circular(14),
-            )
-          : null,
-      child: ListTile(
-        leading: Icon(Icons.repeat,
-            color: r.enabled ? AppColors.accent : Colors.blueGrey),
-        title: Text(r.title,
-            style: TextStyle(
-                color: r.enabled ? null : Theme.of(context).disabledColor)),
-        subtitle: Text(routineSubtitle(r)),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Switch(
-              value: r.enabled,
-              onChanged: (v) => _c.setRoutineEnabled(r.id, v),
-            ),
-            IconButton(
-              tooltip: '删除规则',
-              icon: const Icon(Icons.delete_outline, size: 20),
-              onPressed: () => _deleteRoutine(context, r),
-            ),
-          ],
-        ),
-        onTap: () => _editRoutine(context, r),
-      ),
-    );
-  }
-
-  Future<void> _editRoutine(BuildContext context, Routine? initial) async {
-    final draft = await showRoutineEditDialog(context, initial: initial);
-    if (draft == null) return;
-    if (initial == null) {
-      await _c.addRoutine(draft);
-    } else {
-      await _c.updateRoutine(initial.id, draft);
-    }
-  }
-
-  Future<void> _deleteRoutine(BuildContext context, Routine r) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('删除规则「${r.title}」？'),
-        content: const Text('从 routines.md 移除；今天未完成的实例一并移入回收站。'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('取消')),
-          FilledButton(
-              onPressed: () => Navigator.of(ctx).pop(true),
-              child: const Text('删除')),
-        ],
-      ),
-    );
-    if (ok == true) await _c.deleteRoutine(r.id);
-  }
+  // ---------- 对话框 ----------
 
   Future<void> _editTaskDir(BuildContext context) async {
     final ctrl = TextEditingController(text: _c.taskDir);
@@ -516,147 +313,6 @@ class _SettingsPanelState extends State<SettingsPanel>
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
                         content: Text('已保存，重启应用后生效')));
                   }
-                },
-                child: const Text('保存'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _editWindows(BuildContext context) async {
-    final windows = [
-      for (final w in _c.settings.notificationWindows) [w[0], w[1]]
-    ];
-    Future<void> pick(int index, bool isStart) async {
-      final cur = windows[index][isStart ? 0 : 1];
-      final t = await showTimePicker(
-        context: context,
-        initialTime: TimeOfDay(hour: cur ~/ 60, minute: cur % 60),
-      );
-      if (t == null) return;
-      final v = t.hour * 60 + t.minute;
-      if (isStart ? v >= windows[index][1] : v <= windows[index][0]) return;
-      windows[index][isStart ? 0 : 1] = v;
-    }
-
-    await showModalBottomSheet<void>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSheet) => SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text('通知时间段（多段式）',
-                    style: Theme.of(ctx).textTheme.titleSmall),
-                const SizedBox(height: 4),
-                Text(
-                    '可推任务的提醒只落在时间段内，段外顺延到下一时段开头（不吞掉）；'
-                    '时点性提醒不受限制',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(ctx).textTheme.bodySmall),
-                const SizedBox(height: 8),
-                for (var i = 0; i < windows.length; i++)
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextButton(
-                          onPressed: () async {
-                            await pick(i, true);
-                            setSheet(() {});
-                          },
-                          child: Text(_mm(windows[i][0])),
-                        ),
-                      ),
-                      const Text('–'),
-                      Expanded(
-                        child: TextButton(
-                          onPressed: () async {
-                            await pick(i, false);
-                            setSheet(() {});
-                          },
-                          child: Text(_mm(windows[i][1])),
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.remove_circle_outline),
-                        onPressed: () => setSheet(() => windows.removeAt(i)),
-                      ),
-                    ],
-                  ),
-                TextButton.icon(
-                  onPressed: () {
-                    if (windows.length >= 6) return;
-                    setSheet(() => windows.add([9 * 60, 12 * 60]));
-                  },
-                  icon: const Icon(Icons.add),
-                  label: const Text('加一段'),
-                ),
-                FilledButton(
-                  onPressed: () {
-                    Navigator.of(ctx).pop();
-                    _c.updateSettings(
-                        _c.settings.copyWith(notificationWindows: windows));
-                  },
-                  child: const Text('保存'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _editNotesPath(BuildContext context) async {
-    final ctrl = TextEditingController(text: _c.settings.notesPath ?? '');
-    await showModalBottomSheet<void>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text('疑问笔记路径', style: Theme.of(ctx).textTheme.titleSmall),
-              const SizedBox(height: 4),
-              Text('Obsidian 里那篇笔记（Markdown）；App 只读，编辑仍回 Obsidian。',
-                  style: Theme.of(ctx).textTheme.bodySmall),
-              const SizedBox(height: 10),
-              TextField(
-                controller: ctrl,
-                decoration: const InputDecoration(
-                    labelText: '文件路径', hintText: '/storage/…/疑问笔记.md'),
-              ),
-              const SizedBox(height: 10),
-              FilledButton.icon(
-                icon: const Icon(Icons.file_open),
-                label: const Text('用系统选择器挑一个文件'),
-                onPressed: () async {
-                  final picked = await _c.pickNotesFile();
-                  if (!ctx.mounted) return;
-                  if (picked == null) {
-                    ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(
-                        content: Text('未选择文件（或缺少"所有文件访问"权限）')));
-                    return;
-                  }
-                  ctrl.text = picked;
-                },
-              ),
-              const SizedBox(height: 8),
-              FilledButton(
-                onPressed: () async {
-                  final path = ctrl.text.trim();
-                  Navigator.of(ctx).pop();
-                  await _c.updateSettings(path.isEmpty
-                      ? _c.settings.copyWith(clearNotesPath: true)
-                      : _c.settings.copyWith(notesPath: path));
-                  await _c.refreshNotes();
                 },
                 child: const Text('保存'),
               ),
