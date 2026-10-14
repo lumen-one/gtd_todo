@@ -31,9 +31,6 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # The following adds the Cupertino Icons font to your application.
-  # Use with the CupertinoIcons class for iOS style icons.
-  cupertino_icons: ^1.0.8
   path_provider: ^2.1.5
   # 安卓交付类插座的适配器依赖（§4.2）：
   # - permission_handler：通知/精确闹钟/电池白名单/悬浮窗/所有文件访问的申请与查询；
