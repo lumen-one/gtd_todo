@@ -53,7 +53,9 @@ class _SettingsPermissionsSectionState
     (
       PermissionKind.folderAccess,
       Icons.folder_open,
-      '任务目录',
+      // 叫「文件访问」而不是「任务目录」：设置页另有一条同名项（改目录路径），
+      // 两个都叫"任务目录"会让人以为点错了地方。
+      '文件访问',
       '与 Obsidian 共用同一个 vault'
     ),
   ];
