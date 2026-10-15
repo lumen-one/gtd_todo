@@ -325,11 +325,27 @@ class PanelOnboardDialog extends StatelessWidget {
   }
 }
 
-/// 侧边栏宽度下限（逻辑像素）：三页内容（清单、输入框、右下角双钮）要能看。
-const double _kMinPanelWidth = 280;
+/// 侧边栏尺寸下限（逻辑像素）：三页内容（清单、输入框、右下角双钮）要能看。
+const double _kMinPanelWidth = 240;
+const double _kMinPanelHeight = 320;
 
-/// 拖把手的手势区宽度：骑在面板内侧边缘上，左右各探出 6dp。
+/// 拖把手的手势区厚度：骑在面板边缘上，各探出 6dp。
 const double _kEdgeGrab = 12;
+
+/// 展开时面板与屏缘的贴靠 inset（上下同用；可用高度 = 屏高 − 安全区 − 2×它）。
+const double _kPanelInset = 8;
+
+/// 默认尺寸（没拖过时）：宽 = min(0.80 × 屏宽, 360)，高 = 0.85 × 可用高度。
+/// 都是手感参数，口径见 ui-interaction.md §6.0——改数只动这一处。
+const double _kDefaultWidthFraction = 0.80;
+const double _kDefaultWidthCap = 360;
+const double _kDefaultHeightFraction = 0.85;
+
+/// 面板可用高度（屏高减上下安全区、减上下贴靠 inset）。
+double panelAvailableHeight(BuildContext context) {
+  final mq = MediaQuery.of(context);
+  return mq.size.height - mq.padding.top - mq.padding.bottom - 2 * _kPanelInset;
+}
 
 /// 当前侧边栏宽度：拖宽持久化在 `settings.panelWidth`；没拖过 = 默认公式。
 /// 结果必过 [clampPanelWidth]——换屏（旋转 / 分屏 / 悬浮窗尺寸变化）时
@@ -337,31 +353,47 @@ const double _kEdgeGrab = 12;
 double panelWidthFor(AppSettings settings, double screenWidth) =>
     clampPanelWidth(
         settings.panelWidth ??
-            (screenWidth * 0.88 > 420 ? 420.0 : screenWidth * 0.88),
+            (screenWidth * _kDefaultWidthFraction > _kDefaultWidthCap
+                ? _kDefaultWidthCap
+                : screenWidth * _kDefaultWidthFraction),
         screenWidth);
 
-/// 宽度夹紧：[_kMinPanelWidth, 屏宽 − 48]。屏宽窄于下限时给"能多宽多宽"
+/// 当前侧边栏高度：拖高持久化在 `settings.panelHeight`；没拖过 = 默认公式。
+double panelHeightFor(AppSettings settings, double availableHeight) =>
+    clampPanelHeight(
+        settings.panelHeight ?? availableHeight * _kDefaultHeightFraction,
+        availableHeight);
+
+/// 宽度夹紧：[_kMinPanelWidth, 屏宽 − 24]。屏宽窄于下限时给"能多宽多宽"
 /// （默认公式本身也随屏宽缩，不会把面板顶出屏外）。
 double clampPanelWidth(double width, double screenWidth) {
-  final max = screenWidth - 48;
+  final max = screenWidth - 24;
   if (max <= _kMinPanelWidth) return max;
   if (width < _kMinPanelWidth) return _kMinPanelWidth;
   if (width > max) return max;
   return width;
 }
 
-/// 可拖宽的侧边栏容器（ui-interaction.md §6.0）：面板内侧边缘一条竖条把手，
-/// 横拖**实时**改宽（只 setState），松手把宽度写进 `settings.panelWidth`
-/// 一笔落盘。
+/// 高度夹紧：[_kMinPanelHeight, 可用高度]；可用高度不足时同理让位。
+double clampPanelHeight(double height, double availableHeight) {
+  if (availableHeight <= _kMinPanelHeight) return availableHeight;
+  if (height < _kMinPanelHeight) return _kMinPanelHeight;
+  if (height > availableHeight) return availableHeight;
+  return height;
+}
+
+/// 可拖拽尺寸的侧边栏容器（ui-interaction.md §6.0）：内侧边缘竖条把手横拖
+/// 改宽、底边横条把手竖拖改高，拖动中**实时**改（只 setState），松手把尺寸
+/// 写进 `settings.panelWidth` / `panelHeight` 一笔落盘。
 ///
-/// **宽度只有一个来源**：拖拽中 = 本地 `_dragWidth`，其余时候 = settings
-/// （或默认公式）。两个宿主（应用内壳 / 系统级悬浮窗）共用这一个组件，
-/// 拖拽语义与持久化行为完全一致；宿主只负责"摆哪儿"（Positioned / 滑入
-/// 动画），不再自己算宽度——这也包括收起时滑出屏外所需的宽度。
+/// **尺寸只有一个来源**：拖拽中 = 本地 `_dragWidth` / `_dragHeight`，其余
+/// 时候 = settings（或默认公式）。两个宿主（应用内壳 / 系统级悬浮窗）共用
+/// 这一个组件，拖拽语义与持久化行为完全一致；宿主只负责"摆哪儿"
+/// （Positioned / 滑入动画 + 停靠侧 + 顶部 inset），不再自己算尺寸。
 class ResizablePanel extends StatefulWidget {
   final AppController controller;
 
-  /// true = 面板停左（把手在面板右缘）；false = 停右（把手在左缘）。
+  /// true = 面板停左（宽把手在面板右缘）；false = 停右（宽把手在左缘）。
   final bool dockLeft;
 
   /// 面板本体（[SidePanel]），由宿主装配。
@@ -379,20 +411,31 @@ class ResizablePanel extends StatefulWidget {
 }
 
 class _ResizablePanelState extends State<ResizablePanel> {
-  /// 拖拽中的实时宽度；null = 不在拖，用 settings 里的宽度（或默认公式）。
+  /// 拖拽中的实时宽/高；null = 不在拖，用 settings 里的值（或默认公式）。
   double? _dragWidth;
+  double? _dragHeight;
 
-  double get _width {
-    final screenWidth = MediaQuery.of(context).size.width;
-    return _dragWidth ??
-        panelWidthFor(widget.controller.settings, screenWidth);
-  }
+  double get _width => _dragWidth ??
+      panelWidthFor(
+          widget.controller.settings, MediaQuery.of(context).size.width);
+
+  double get _height => _dragHeight ??
+      panelHeightFor(
+          widget.controller.settings, panelAvailableHeight(context));
 
   /// [delta] 已由把手按停靠侧换算成"变宽为正"（停左向右拖、停右向左拖）。
-  void _onResize(double delta) {
+  void _onResizeWidth(double delta) {
     final screenWidth = MediaQuery.of(context).size.width;
     setState(() {
       _dragWidth = clampPanelWidth(_width + delta, screenWidth);
+    });
+  }
+
+  /// 面板顶边固定：竖拖改的是底边位置，向下为高。
+  void _onResizeHeight(double delta) {
+    setState(() {
+      _dragHeight =
+          clampPanelHeight(_height + delta, panelAvailableHeight(context));
     });
   }
 
@@ -400,31 +443,54 @@ class _ResizablePanelState extends State<ResizablePanel> {
   /// 触发另一个引擎重载（两个引擎 watch 同一任务目录）。
   Future<void> _onResizeEnd() async {
     final width = _dragWidth;
-    if (width == null) return;
+    final height = _dragHeight;
+    if (width == null && height == null) return;
     // updateSettings 先同步改内存并 notify、再异步写盘：拖拽值立即生效，
-    // 文件落地前面板不会闪回旧宽度。
-    await widget.controller.updateSettings(
-        widget.controller.settings.copyWith(panelWidth: width));
-    if (mounted) setState(() => _dragWidth = null);
+    // 文件落地前面板不会闪回旧尺寸。
+    await widget.controller.updateSettings(widget.controller.settings.copyWith(
+      panelWidth: width,
+      panelHeight: height,
+    ));
+    if (mounted) {
+      setState(() {
+        _dragWidth = null;
+        _dragHeight = null;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final width = _width;
+    final height = _height;
     return SizedBox(
       width: width,
-      // 把手骑在边缘上、探出面板 6dp：Stack 默认 hardEdge 会裁掉探出部分。
+      height: height,
+      // 两个把手都骑在边缘上、探出面板 6dp：Stack 默认 hardEdge 会裁掉探出部分。
       child: Stack(
         clipBehavior: Clip.none,
         children: [
           widget.child,
+          // 宽把手：内侧边缘竖条（停左在右缘、停右在左缘）。
           Positioned(
             top: 0,
             bottom: 0,
             left: widget.dockLeft ? width - _kEdgeGrab / 2 : null,
             right: widget.dockLeft ? null : width - _kEdgeGrab / 2,
             child: _PanelResizeEdge(
-              onResize: (dx) => _onResize(widget.dockLeft ? dx : -dx),
+              axis: Axis.horizontal,
+              onResize: (dx) => _onResizeWidth(widget.dockLeft ? dx : -dx),
+              onResizeEnd: _onResizeEnd,
+            ),
+          ),
+          // 高把手：底边横条（顶边固定，底边上下走）。
+          Positioned(
+            left: 0,
+            right: 0,
+            top: height - _kEdgeGrab / 2,
+            child: _PanelResizeEdge(
+              axis: Axis.vertical,
+              onResize: _onResizeHeight,
               onResizeEnd: _onResizeEnd,
             ),
           ),
@@ -434,28 +500,39 @@ class _ResizablePanelState extends State<ResizablePanel> {
   }
 }
 
-/// 面板内侧边缘的宽度把手：[_kEdgeGrab] 宽的通栏手势区 + 居中握持 pill。
-/// 手势区贴在面板内容区外缘，不与 PageView 的翻页横滑抢手势。
+/// 面板边缘的拖拽把手：[Axis.horizontal] = 内侧边缘竖条改宽；
+/// [Axis.vertical] = 底边横条改高。手势区骑在边缘上各探出 6dp，不与面板
+/// 内容区的手势（翻页横滑 / 清单纵滚）抢。
 class _PanelResizeEdge extends StatelessWidget {
+  final Axis axis;
   final ValueChanged<double> onResize;
   final Future<void> Function() onResizeEnd;
 
-  const _PanelResizeEdge({required this.onResize, required this.onResizeEnd});
+  const _PanelResizeEdge({
+    required this.axis,
+    required this.onResize,
+    required this.onResizeEnd,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final horizontal = axis == Axis.horizontal;
     return MouseRegion(
-      cursor: SystemMouseCursors.resizeColumn,
+      cursor:
+          horizontal ? SystemMouseCursors.resizeColumn : SystemMouseCursors.resizeRow,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onHorizontalDragUpdate: (d) => onResize(d.delta.dx),
-        onHorizontalDragEnd: (_) => onResizeEnd(),
+        onHorizontalDragUpdate: horizontal ? (d) => onResize(d.delta.dx) : null,
+        onVerticalDragUpdate: horizontal ? null : (d) => onResize(d.delta.dy),
+        onHorizontalDragEnd: horizontal ? (_) => onResizeEnd() : null,
+        onVerticalDragEnd: horizontal ? null : (_) => onResizeEnd(),
         child: SizedBox(
-          width: _kEdgeGrab,
+          width: horizontal ? _kEdgeGrab : null,
+          height: horizontal ? null : _kEdgeGrab,
           child: Center(
             child: Container(
-              width: 4,
-              height: 36,
+              width: horizontal ? 4 : 36,
+              height: horizontal ? 36 : 4,
               decoration: BoxDecoration(
                 color: AppColors.accent.withValues(alpha: 0.55),
                 borderRadius: BorderRadius.circular(2),
@@ -524,11 +601,10 @@ class FloatingPanel extends StatelessWidget {
         ),
         Positioned(
           top: MediaQuery.of(context).padding.top + 8,
-          bottom: MediaQuery.of(context).padding.bottom + 8,
           left: dockLeft ? 6 : null,
           right: dockLeft ? null : 6,
-          // 宽度由 ResizablePanel 自算（设置值 / 默认公式 / 拖拽实时值），
-          // 这里只给停靠侧与上下 inset，不设 width。
+          // 宽高由 ResizablePanel 自算（设置值 / 默认公式 / 拖拽实时值），
+          // 这里只给停靠侧与顶部 inset，不设 width/height/bottom。
           child: ResizablePanel(
             controller: controller,
             dockLeft: dockLeft,

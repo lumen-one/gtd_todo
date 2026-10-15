@@ -219,13 +219,13 @@ class _AndroidShellState extends State<AndroidShell> {
       ));
     }
 
-    // 侧边栏面板：关 = 滑出屏外；开 = 滑入（宽度与拖拽语义都在
+    // 侧边栏面板：关 = 滑出屏外；开 = 滑入（宽高与拖拽语义都在
     // ResizablePanel 里，两个宿主共用）。
     children.add(AnimatedPositioned(
       duration: const Duration(milliseconds: 240),
       curve: Curves.easeOutCubic,
+      // 只锚顶：高度由 ResizablePanel 自持，底边随拖拽走。
       top: MediaQuery.of(context).padding.top + 8,
-      bottom: MediaQuery.of(context).padding.bottom + 8,
       left: _panelOnLeft ? (_panelOpen ? 6 : -panelWidth - 12) : null,
       right: _panelOnLeft ? null : (_panelOpen ? 6 : -panelWidth - 12),
       child: IgnorePointer(
