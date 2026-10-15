@@ -593,6 +593,10 @@ class FloatingPanel extends StatelessWidget {
   /// true = 贴左侧展开（把手停靠在左边时的自然姿势）。
   final bool dockLeft;
 
+  /// 原生把手的中心 Y（逻辑像素）：面板垂直居中于它；null = 贴顶
+  /// （老版本原生没广播 `handle_center_y`）。
+  final double? anchorCenterY;
+
   const FloatingPanel({
     super.key,
     required this.controller,
@@ -604,6 +608,7 @@ class FloatingPanel extends StatelessWidget {
     required this.onOpenCalendar,
     required this.onOpenSettings,
     this.dockLeft = false,
+    this.anchorCenterY,
   });
 
   @override
@@ -639,6 +644,7 @@ class FloatingPanel extends StatelessWidget {
           child: ResizablePanel(
             controller: controller,
             dockLeft: dockLeft,
+            anchorCenterY: anchorCenterY,
             child: SidePanel(
               controller: controller,
               pageCtrl: pageCtrl,

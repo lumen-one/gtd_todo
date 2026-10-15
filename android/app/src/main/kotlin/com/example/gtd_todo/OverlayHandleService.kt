@@ -304,7 +304,11 @@ class OverlayHandleService : Service() {
         // 旋屏/分屏：面板是全屏窗口，跟随系统即可；把手需要重新贴边并夹紧 y。
         relayout()
         // 面板窗口参数与屏幕尺寸无关（MATCH_PARENT），但保险起见重新贴一次。
-        if (panelExpanded) updatePanelLayout()
+        if (panelExpanded) {
+            updatePanelLayout()
+            // 把手的 y 刚被重新夹紧：重广播状态，Dart 侧的面板锚点跟着更新。
+            notifyOverlayState()
+        }
     }
 
     override fun onDestroy() {
@@ -946,7 +950,23 @@ class OverlayHandleService : Service() {
     private fun currentState(): Map<String, Any?> = mapOf(
         "expanded" to panelExpanded,
         "dockedRight" to dockedRight,
+        // 原生把手的中心 Y（逻辑像素）：Dart 侧面板垂直居中于它
+        // （ui-interaction.md §6.0）。缺失 = Dart 贴顶展开（兼容老版本）。
+        "handle_center_y" to handleCenterY(),
     )
+
+    /**
+     * 原生把手的中心 Y（**逻辑像素**）。
+     *
+     * 面板窗口是全屏透明的，与把手同一坐标系；Dart 的 MediaQuery 用逻辑像素，
+     * 所以发出去之前除掉 density。把手隐藏（展开中 / 宿主前台）时
+     * layoutParams.y 仍是它最后停留的位置——拖动结束与 relayout 都会夹紧并
+     * 落盘，所以展开瞬间取到的就是用户摆放的位置。
+     */
+    private fun handleCenterY(): Double? {
+        val params = layoutParams ?: return null
+        return ((params.y + handleHeightPx() / 2f) / density).toDouble()
+    }
 
     /**
      * `notifyReady` 之后立即发一次状态。

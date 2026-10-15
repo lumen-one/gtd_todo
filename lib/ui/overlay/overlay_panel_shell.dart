@@ -30,6 +30,9 @@ class _OverlayPanelShellState extends State<OverlayPanelShell> {
   bool _dockedRight = true;
   bool _privacy = false;
 
+  /// 原生把手的中心 Y（逻辑像素）：面板垂直居中于它（§6.0）；null = 贴顶。
+  double? _handleCenterY;
+
   AppController get _c => widget.controller;
 
   @override
@@ -41,6 +44,7 @@ class _OverlayPanelShellState extends State<OverlayPanelShell> {
       setState(() {
         _expanded = s.expanded;
         _dockedRight = s.dockedRight;
+        _handleCenterY = s.handleCenterY;
         if (!s.expanded) _privacy = false;
       });
       if (s.expanded) _maybeOnboard();
@@ -111,6 +115,7 @@ class _OverlayPanelShellState extends State<OverlayPanelShell> {
           onOpenCalendar: () => showCalendarDialog(context, _c),
           onOpenSettings: () => widget.bridge.openApp(target: 'settings'),
           dockLeft: !_dockedRight,
+          anchorCenterY: _handleCenterY,
         ),
       ),
     );

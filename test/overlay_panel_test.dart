@@ -89,4 +89,73 @@ void main() {
     expect((open.arguments as Map)['routineId'], 'routine-xyz');
     expect(calls.map((c) => c.method), contains('collapse'));
   });
+
+  test('state 广播：解析 expanded/dockedRight/handleCenterY，缺键向后兼容', () async {
+    final bridge = OverlayBridge();
+    final states = <OverlayWindowState>[];
+    final sub = bridge.states.listen(states.add);
+    await Future<void>.delayed(Duration.zero);
+
+    void sendState(Map<String, Object?> args) {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .handlePlatformMessage(
+        OverlayBridge.channel.name,
+        StandardMethodCodec()
+            .encodeMethodCall(MethodCall('state', args)),
+        (_) {},
+      );
+    }
+
+    sendState(const {
+      'expanded': true,
+      'dockedRight': false,
+      'handle_center_y': 412.5,
+    });
+    await Future<void>.delayed(Duration.zero);
+    final s = states.single;
+    expect(s.expanded, isTrue);
+    expect(s.dockedRight, isFalse);
+    expect(s.handleCenterY, 412.5);
+
+    // 老版本原生不带这个键 → null → 面板贴顶展开（不炸）
+    sendState(const {'expanded': true, 'dockedRight': true});
+    await Future<void>.delayed(Duration.zero);
+    expect(states.last.handleCenterY, isNull);
+
+    await sub.cancel();
+  });
+
+  testWidgets('state 带 handle_center_y：悬浮面板垂直居中于该锚点', (tester) async {
+    final controller = makeController();
+    // 显式 MediaQuery：几何才确定（默认测试环境带 padding，顶位会漂）
+    await tester.pumpWidget(MediaQuery(
+      data: const MediaQueryData(size: Size(800, 600)),
+      child: MaterialApp(
+        home:
+            OverlayPanelShell(controller: controller, bridge: OverlayBridge()),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    // 初始无锚点：贴顶。文本顶 = 面板顶 8 + 面板头 padding 6 + 12
+    // （页名 Text 与 48dp 图标按钮同处 Row，被 crossAxisAlignment.center 居中）
+    expect(tester.getTopLeft(find.text('今日清单')).dy, closeTo(26, 1));
+
+    // 模拟原生广播：展开 + 把手中心 Y = 300（800×600 测试屏）
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .handlePlatformMessage(
+      OverlayBridge.channel.name,
+      const StandardMethodCodec().encodeMethodCall(const MethodCall('state', {
+        'expanded': true,
+        'dockedRight': true,
+        'handle_center_y': 300.0,
+      })),
+      (_) {},
+    );
+    await tester.pumpAndSettle();
+
+    // 默认高 ≈ 0.85×(600−16) = 496.4 → 面板顶 ≈ 300−248.2 = 51.8，
+    // 文本顶 = 51.8 + 18 ≈ 69.8（比贴顶的 26 低出约 43.8 = 锚点−半高−8）
+    expect(tester.getTopLeft(find.text('今日清单')).dy, closeTo(69.8, 4));
+  });
 }

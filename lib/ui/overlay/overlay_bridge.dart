@@ -21,6 +21,8 @@ class OverlayBridge {
         _states.add(OverlayWindowState(
           expanded: m['expanded'] == true,
           dockedRight: m['dockedRight'] != false,
+          // 原生把手中心 Y（逻辑像素）：面板垂直居中于它；缺失 = 贴顶。
+          handleCenterY: (m['handle_center_y'] as num?)?.toDouble(),
         ));
       }
       return null;
@@ -55,7 +57,15 @@ class OverlayWindowState {
   final bool expanded;
   final bool dockedRight;
 
-  const OverlayWindowState({required this.expanded, required this.dockedRight});
+  /// 原生把手的中心 Y（逻辑像素）；null = 原生没广播（老版本 / 桌面），
+  /// 面板贴顶展开（向后兼容）。
+  final double? handleCenterY;
+
+  const OverlayWindowState({
+    required this.expanded,
+    required this.dockedRight,
+    this.handleCenterY,
+  });
 }
 
 /// 悬浮面板里点『编辑规则』时：把用户带进应用的设置页并定位该规则
