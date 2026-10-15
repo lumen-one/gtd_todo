@@ -18,6 +18,7 @@ import android.provider.Settings
 import android.util.Log
 import android.view.Gravity
 import android.view.MotionEvent
+import android.view.VelocityTracker
 import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
@@ -45,7 +46,11 @@ import kotlin.math.min
  * - Dart：面板的全部视觉（含半透明遮罩与"点遮罩收起"）。
  *
  * 交互契约：
- * - 点按 / 朝屏幕中心横甩 → [expandPanel]（不再跳应用）；只有引擎或视图创建失败才回退到
+ * - **朝屏内拖动把手 = 跟手拉开**（ui-interaction.md §6.0）：把手跟着手指横移，
+ *   面板窗口就地挂上、Dart 侧露多少跟多少；松手拖过 [PULL_OPEN_DP]（或快甩过
+ *   [FLING_THRESHOLD_DP]）补满全开，否则滑回屏外。引擎 / Dart 还没就绪时降级为
+ *   "只有把手跟手"，松手仍走 [expandPanel] 老路；
+ * - 点按 → [expandPanel] 直接全开（不再跳应用）；只有引擎或视图创建失败才回退到
  *   原来的 `startActivity(MainActivity, openPanel=true)`，保证永远有可用入口；
  * - 展开时把手隐藏，收起后按宿主前后台状态决定是否重新显示；
  * - 宿主在前台（[notifyHostForeground] true）→ 收起面板 + 隐藏把手（有应用内把手）；
@@ -106,6 +111,21 @@ class OverlayHandleService : Service() {
 
         /** 向屏幕中心划动多少像素算作"打开"。 */
         private const val FLING_THRESHOLD_DP = 24
+
+        /**
+         * 跟手拉开时，松手算"展开"的最小拖动距离（dp）——ui-interaction.md §6.0
+         * 的 72dp。快甩另算（见 [FLING_VELOCITY]），不必拖这么远。
+         */
+        private const val PULL_OPEN_DP = 72
+
+        /** 把手横移上限（占屏宽的比例）：别让它越过屏幕中线。 */
+        private const val PULL_MAX_FRACTION = 0.45f
+
+        /** 快甩判"展开"的横向速度（逻辑像素/秒，与应用内壳把手同口径）。 */
+        private const val FLING_VELOCITY = 500f
+
+        /** 滑回后等 Dart 来摘面板窗口的上限（ms）；超时就自己收，防窗口常驻。 */
+        private const val PULL_CLOSE_FALLBACK_MS = 400L
 
         /** notifyReady 后等待 Dart 来取初始状态的上限。 */
         private const val READY_ACK_TIMEOUT_MS = 3_000L
@@ -233,6 +253,25 @@ class OverlayHandleService : Service() {
 
     /** 面板是否展开（展开时把手隐藏，二次展开不重复挂窗口）。 */
     private var panelExpanded = false
+
+    // ------------------------------------------------------- 跟手拉开（§6.0）
+
+    /** "拉开"手势进行中：朝屏内横拖把手，侧边栏跟手滑出。 */
+    private var pulling = false
+
+    /** 面板窗口已挂上、Dart 在跟手渲染；false = 只有把手跟手（引擎没就绪的首轮）。 */
+    private var pullTracking = false
+
+    /** 当前朝屏内的拖动距离（px，≥0）。 */
+    private var pullDx = 0f
+
+    /** 松手判快甩用的速度跟踪（一次手势一个：DOWN obtain、UP 回收）。 */
+    private var velocityTracker: VelocityTracker? = null
+
+    /** 滑回后 Dart 没来摘窗口的兜底（引擎挂了等）。 */
+    private val pullCloseFallback = Runnable {
+        if (!panelExpanded && panelView != null) collapsePanel(notifyDart = false)
+    }
 
     private var density = 1f
 
@@ -425,6 +464,12 @@ class OverlayHandleService : Service() {
         hostForeground = foreground
         if (foreground && panelExpanded) collapsePanel(notifyDart = true)
         applyVisibility()
+        if (!foreground) {
+            // 退到后台就预热第二个引擎：用户接下来多半要拉把手，而跟手拉开要求
+            // 面板窗口在拖动中就已经挂上、Dart 已在渲染（§6.0）。引擎此后常驻，
+            // 与"首次展开后本就常驻"相比只差在早晚。
+            mainHandler.post { ensureOverlayEngine() }
+        }
         Log.i(TAG, "overlay handle hostForeground=$foreground")
     }
 
@@ -496,7 +541,6 @@ class OverlayHandleService : Service() {
 
     private fun attachTouchHandler(view: View) {
         val slop = TOUCH_SLOP_DP * density
-        val fling = FLING_THRESHOLD_DP * density
 
         view.setOnTouchListener(object : View.OnTouchListener {
             private var startY = 0f
@@ -512,6 +556,7 @@ class OverlayHandleService : Service() {
             override fun onTouch(v: View, event: MotionEvent): Boolean {
                 val params = layoutParams ?: return false
                 val wm = windowManager
+                velocityTracker?.addMovement(event)
                 when (event.actionMasked) {
                     MotionEvent.ACTION_DOWN -> {
                         startY = params.y.toFloat()
@@ -519,6 +564,8 @@ class OverlayHandleService : Service() {
                         downY = event.rawY
                         dragging = false
                         longPressed = false
+                        velocityTracker?.recycle()
+                        velocityTracker = VelocityTracker.obtain()
                         mainHandler.postDelayed(longPressRunnable, 500L)
                         return true
                     }
@@ -530,19 +577,28 @@ class OverlayHandleService : Service() {
                             dragging = true
                             mainHandler.removeCallbacks(longPressRunnable)
                         }
+                        // 朝屏内的横拖 = "拉开"（跟手滑出）；竖拖仍然是移把手。
+                        if (dragging && !pulling && isOpenGesture(dx, dy, slop)) {
+                            startPull()
+                        }
+                        if (pulling) {
+                            // 把手跟着手指横移（y 冻结：拉开是横手势，面板的
+                            // 垂直锚点不跟着晃）。
+                            val inward = if (dockedRight) -dx else dx
+                            pullDx = inward.coerceIn(0f, pullMaxPx(wm).toFloat())
+                            if (wm != null) {
+                                params.x = edgeX(wm) +
+                                    (if (dockedRight) -pullDx else pullDx).toInt()
+                            }
+                            updateView(v, params)
+                            if (pullTracking) sendPullProgress()
+                            return true
+                        }
                         if (dragging) {
                             // 只竖向移动：x 永远贴边，不会被横向拖动带偏。
                             params.y = clampY((startY + dy).toInt())
                             if (wm != null) params.x = edgeX(wm)
                             updateView(v, params)
-                            // 横向甩向屏幕中心即"展开面板"，不必等抬手。
-                            if (isOpenGesture(dx, dy, fling)) {
-                                mainHandler.removeCallbacks(longPressRunnable)
-                                dragging = false
-                                persistPosition(params.y)
-                                expandPanel()
-                                return true
-                            }
                         }
                         return true
                     }
@@ -552,21 +608,105 @@ class OverlayHandleService : Service() {
                         val dx = event.rawX - downX
                         val dy = event.rawY - downY
                         val moved = abs(dx) > slop || abs(dy) > slop
+                        if (pulling) {
+                            // 松手定去留：拖过 72dp / 快甩过 24dp = 展开，否则滑回。
+                            endPull(shouldOpenPull(dx) && !longPressed)
+                            velocityTracker?.recycle()
+                            velocityTracker = null
+                            return true
+                        }
                         // 松手后回到贴边位置并把 y 夹回屏内（落盘，重启保留）。
                         relayout()
                         if (!longPressed && !moved) {
                             // 单次点按：展开面板
                             expandPanel()
-                        } else if (!longPressed && isOpenGesture(dx, dy, slop)) {
-                            expandPanel()
                         }
+                        velocityTracker?.recycle()
+                        velocityTracker = null
                         dragging = false
                         return true
                     }
                 }
                 return false
             }
+
+            /** 松手时算不算展开：拖过 [PULL_OPEN_DP]，或快甩过 [FLING_THRESHOLD_DP]。 */
+            private fun shouldOpenPull(dx: Float): Boolean {
+                val inward = if (dockedRight) -dx else dx
+                if (inward >= PULL_OPEN_DP * density) return true
+                if (inward < FLING_THRESHOLD_DP * density) return false
+                val vx = velocityTracker?.xVelocity ?: 0f
+                val inwardV = if (dockedRight) -vx else vx
+                return inwardV >= FLING_VELOCITY * density
+            }
         })
+    }
+
+    // ------------------------------------------------------- 跟手拉开（§6.0）
+
+    /**
+     * 进入"拉开"态：把手跟着手指横移，面板窗口就地挂上、Dart 侧跟手渲染。
+     *
+     * 引擎 / Dart 还没就绪（服务刚拉起、用户从没展开过）时只做把手跟手——
+     * 松手仍走 [expandPanel] 老路（现场补引擎），不会把用户卡住。
+     */
+    private fun startPull() {
+        pulling = true
+        if (!overlayReady) return
+        if (!ensureOverlayEngine()) return
+        if (!addPanelView()) return
+        pullTracking = true
+        sendPullProgress()
+    }
+
+    /**
+     * 松手：补满全开（[open]）或滑回屏外。
+     *
+     * 滑回时面板窗口还挂着——Dart 播完"滑回屏外"的动画才会调 `collapse` 来摘，
+     * 这里挂一个兜底 Runnable，防 Dart 没回复时窗口常驻盖住下面的 App。
+     */
+    private fun endPull(open: Boolean) {
+        val wasTracking = pullTracking
+        pulling = false
+        pullTracking = false
+        // 把手回贴边缘（展开时反正要隐藏）；y 夹紧并落盘。
+        relayout()
+        if (open) {
+            // 面板窗口已在（wasTracking）或现场补（引擎没就绪的首轮）。
+            expandPanel()
+            if (wasTracking) sendPullEnd(open = true)
+        } else if (wasTracking) {
+            sendPullEnd(open = false)
+            mainHandler.removeCallbacks(pullCloseFallback)
+            mainHandler.postDelayed(pullCloseFallback, PULL_CLOSE_FALLBACK_MS)
+        }
+    }
+
+    /** 拖动进度 → Dart：dx = 手指距贴边位置的逻辑像素（朝屏内为正）。 */
+    private fun sendPullProgress() {
+        if (!pullTracking) return
+        try {
+            overlayChannel?.invokeMethod(
+                "panelDrag", mapOf("dx" to (pullDx / density).toDouble()))
+        } catch (t: Throwable) {
+            Log.w(TAG, "panelDrag delivery failed: ${t.message}")
+        }
+    }
+
+    /** 松手判定 → Dart：open = 补满全开（否则 Dart 滑回屏外后调 collapse）。 */
+    private fun sendPullEnd(open: Boolean) {
+        try {
+            overlayChannel?.invokeMethod("panelDragEnd", mapOf("open" to open))
+        } catch (t: Throwable) {
+            Log.w(TAG, "panelDragEnd delivery failed: ${t.message}")
+        }
+    }
+
+    /** 把手横移上限：别越过屏幕中线（贴右 = 往左、贴左 = 往右）。 */
+    private fun pullMaxPx(wm: WindowManager?): Int {
+        val width = wm?.let { screenWidth(it) }
+            ?: resources.displayMetrics.widthPixels
+        return (width * PULL_MAX_FRACTION).toInt()
     }
 
     /**
@@ -628,6 +768,8 @@ class OverlayHandleService : Service() {
 
     /** 收起面板：移除窗口，引擎保活（下次展开状态还在）。 */
     private fun collapsePanel(notifyDart: Boolean) {
+        // 跟手拉开"滑回"走这条路摘窗口：兜底 Runnable 可以退了。
+        mainHandler.removeCallbacks(pullCloseFallback)
         if (!panelExpanded && panelView == null) {
             if (notifyDart) notifyOverlayState()
             return

@@ -290,7 +290,7 @@ class PanelOnboardDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const steps = [
-      (Icons.swipe_left_alt, '拖出展开', '点一下屏幕边缘那道白色细条，或从它上面朝屏幕里横拖，展开侧边栏；长按细条可换边停靠。'),
+      (Icons.swipe_left_alt, '拖出展开', '点一下屏幕边缘那道白色细条直接展开；或从它上面朝屏幕里拖着走——侧边栏跟着手指滑出，拖够远就开、没够就滑回去；长按细条可换边停靠。'),
       (Icons.swap_horiz, '左右横滑翻页',
           '三页：今日 → 疑问 → 池子。在页面区左右横拖就翻页（上下拖是滚动清单，两回事）；'
           '也可以直接点顶部那三个圆点跳到某一页。'),
@@ -597,6 +597,11 @@ class FloatingPanel extends StatelessWidget {
   /// （老版本原生没广播 `handle_center_y`）。
   final double? anchorCenterY;
 
+  /// 展开进度（ui-interaction.md §6.0 跟手拉开）：1 = 全展开；<1 = 用户正拖着
+  /// 把手走，面板按 (1−progress)×宽 横移出屏、遮罩随进度渐显。松手补满/滑回
+  /// 由宿主（OverlayPanelShell）的动画驱动。
+  final double progress;
+
   const FloatingPanel({
     super.key,
     required this.controller,
@@ -609,6 +614,7 @@ class FloatingPanel extends StatelessWidget {
     required this.onOpenSettings,
     this.dockLeft = false,
     this.anchorCenterY,
+    this.progress = 1,
   });
 
   @override
@@ -626,19 +632,28 @@ class FloatingPanel extends StatelessWidget {
       ]);
     }
 
+    final p = progress.clamp(0.0, 1.0);
+    // 跟手滑出量：与 ResizablePanel 自算宽度同一个公式——拖动中不会有尺寸
+    // 拖拽，两边不会不一致。
+    final slide =
+        (1 - p) * panelWidthFor(controller.settings, MediaQuery.of(context).size.width);
     return Stack(
       children: [
-        // 遮罩：点空白处收起（下面是别的 App，只压一层浅色）
+        // 遮罩：点空白处收起（下面是别的 App，只压一层浅色）。
+        // 跟手拖动中（p<1）不接手势——那一带归原生把手窗口。
         Positioned.fill(
-          child: GestureDetector(
-            onTap: onCollapse,
-            child: Container(color: Colors.black.withValues(alpha: 0.25)),
+          child: IgnorePointer(
+            ignoring: p < 1,
+            child: GestureDetector(
+              onTap: onCollapse,
+              child: Container(color: Colors.black.withValues(alpha: 0.25 * p)),
+            ),
           ),
         ),
         Positioned(
           top: MediaQuery.of(context).padding.top + 8,
-          left: dockLeft ? 6 : null,
-          right: dockLeft ? null : 6,
+          left: dockLeft ? 6 - slide : null,
+          right: dockLeft ? null : 6 - slide,
           // 宽高由 ResizablePanel 自算（设置值 / 默认公式 / 拖拽实时值），
           // 这里只给停靠侧与顶部 inset，不设 width/height/bottom。
           child: ResizablePanel(
