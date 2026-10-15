@@ -207,23 +207,26 @@ class PanelActions extends StatelessWidget {
     return Positioned(
       right: 14,
       bottom: 14,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          FloatingActionButton.small(
-            heroTag: '$heroTagPrefix-quick-dump',
-            tooltip: '堆三无（两秒入池）',
-            onPressed: () => showQuickDump(context, controller),
-            child: const Icon(Icons.waves),
-          ),
-          const SizedBox(width: 8),
-          FloatingActionButton(
-            heroTag: '$heroTagPrefix-create-task',
-            tooltip: '添加待办',
-            onPressed: () => showCreateFlow(context, controller),
-            child: const Icon(Icons.add),
-          ),
-        ],
+      child: FadeIn(
+        offset: 14,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            FloatingActionButton.small(
+              heroTag: '$heroTagPrefix-quick-dump',
+              tooltip: '堆三无（两秒入池）',
+              onPressed: () => showQuickDump(context, controller),
+              child: const Icon(Icons.waves),
+            ),
+            const SizedBox(width: 8),
+            FloatingActionButton(
+              heroTag: '$heroTagPrefix-create-task',
+              tooltip: '添加待办',
+              onPressed: () => showCreateFlow(context, controller),
+              child: const Icon(Icons.add),
+            ),
+          ],
+        ),
       ),
     );
   }

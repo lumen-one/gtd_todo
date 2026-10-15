@@ -48,7 +48,7 @@ Future<void> showCreateFlow(
   BuildContext context,
   AppController controller,
 ) async {
-  final result = await showDialog<_CreateResult>(
+  final result = await showScaledDialog<_CreateResult>(
     context: context,
     builder: (_) => const _CreateTaskDialog(),
   );
@@ -268,23 +268,20 @@ class _CreateTaskDialogState extends State<_CreateTaskDialog> {
               ),
             ],
             const SizedBox(height: 12),
-            GestureDetector(
-              onTap: _confirm,
-              child: Container(
-                height: 52,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: AppColors.accent,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: const Text(
-                  '✱ 确认',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 2,
-                  ),
+            FilledButton(
+              onPressed: _confirm,
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(52),
+                backgroundColor: AppColors.accent,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16)),
+              ),
+              child: const Text(
+                '✱ 确认',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 2,
                 ),
               ),
             ),
@@ -326,7 +323,8 @@ class _Chip extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 120),
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOutCubic,
         height: 44,
         alignment: Alignment.center,
         decoration: BoxDecoration(

@@ -27,19 +27,21 @@ class TodayPanel extends StatelessWidget {
 
     if (view.isEmpty) {
       return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.wb_sunny_outlined,
-                size: 44, color: theme.colorScheme.onSurfaceVariant),
-            const SizedBox(height: 8),
-            const Text('今天没有会响的事'),
-            const SizedBox(height: 12),
-            FilledButton.tonal(
-              onPressed: () => _pickRandom(context),
-              child: const Text('从池子随机挑一件'),
-            ),
-          ],
+        child: FadeIn(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.wb_sunny_outlined,
+                  size: 44, color: theme.colorScheme.onSurfaceVariant),
+              const SizedBox(height: 8),
+              const Text('今天没有会响的事'),
+              const SizedBox(height: 12),
+              FilledButton.tonal(
+                onPressed: () => _pickRandom(context),
+                child: const Text('从池子随机挑一件'),
+              ),
+            ],
+          ),
         ),
       );
     }

@@ -144,3 +144,61 @@ TextStyle numberStyle(TextTheme t) =>
       fontWeight: FontWeight.w800,
       fontSize: 18,
     );
+
+/// 一次性淡入 + 轻微上移：空态、刚浮出来的按钮块用它。
+///
+/// 只是一段 260ms 的出现动画，不需要控制器与状态——TweenAnimationBuilder
+/// 自己把 0→1 跑一遍就结束，页面来回切时重建即重播。
+class FadeIn extends StatelessWidget {
+  final Widget child;
+
+  /// 起始位移（dp）：淡入的同时从下方 [offset] 处归位。
+  final double offset;
+
+  const FadeIn({super.key, required this.child, this.offset = 8});
+
+  @override
+  Widget build(BuildContext context) => TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0, end: 1),
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+        builder: (context, value, child) => Opacity(
+          opacity: value,
+          child: Transform.translate(
+            offset: Offset(0, (1 - value) * offset),
+            child: child,
+          ),
+        ),
+        child: child,
+      );
+}
+
+/// 对话框进出：从 0.94 倍缩放 + 淡入（220ms 缓出）。
+///
+/// 系统默认的 showDialog 只有遮罩渐显，对话框本体是硬切；给一点缩放之后
+/// "它是从页面上长出来的"，而不是"贴在屏幕上"。所有自绘对话框统一走这里，
+/// 免得各写一套过渡。
+Future<T?> showScaledDialog<T>({
+  required BuildContext context,
+  required WidgetBuilder builder,
+  bool barrierDismissible = true,
+}) =>
+    showGeneralDialog<T>(
+      context: context,
+      barrierDismissible: barrierDismissible,
+      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+      barrierColor: Colors.black54,
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (context, _, _) => builder(context),
+      transitionBuilder: (context, animation, _, child) {
+        final curved =
+            CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+        return FadeTransition(
+          opacity: curved,
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.94, end: 1).animate(curved),
+            child: child,
+          ),
+        );
+      },
+    );

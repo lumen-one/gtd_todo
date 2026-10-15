@@ -28,14 +28,16 @@ class PoolPanel extends StatelessWidget {
 
     if (view.isEmpty) {
       return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.water_drop_outlined,
-                size: 44, color: theme.colorScheme.onSurfaceVariant),
-            const SizedBox(height: 8),
-            const Text('池干水清'),
-          ],
+        child: FadeIn(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.water_drop_outlined,
+                  size: 44, color: theme.colorScheme.onSurfaceVariant),
+              const SizedBox(height: 8),
+              const Text('池干水清'),
+            ],
+          ),
         ),
       );
     }

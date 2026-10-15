@@ -105,13 +105,17 @@ class _Empty extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 40, color: Theme.of(context).colorScheme.onSurfaceVariant),
-            const SizedBox(height: 8),
-            Text(text),
-          ],
+        child: FadeIn(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon,
+                  size: 40,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant),
+              const SizedBox(height: 8),
+              Text(text),
+            ],
+          ),
         ),
       );
 }

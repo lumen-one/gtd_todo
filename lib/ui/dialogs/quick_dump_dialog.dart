@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../app_controller.dart';
+import '../theme.dart';
 
 /// 堆三无（§5.2，忙时专用）：跳过整个对话框，一句话即刻成为三无任务
 /// 入池散件段。目标 = 两秒内把脑子里的东西甩出去。
 Future<void> showQuickDump(BuildContext context, AppController controller,
     {String hint = '想到什么甩进来…'}) {
   final ctrl = TextEditingController();
-  return showDialog<void>(
+  return showScaledDialog<void>(
     context: context,
     builder: (ctx) => AlertDialog(
       backgroundColor: Theme.of(ctx).cardTheme.color,

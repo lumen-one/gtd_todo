@@ -202,15 +202,20 @@ class _AndroidShellState extends State<AndroidShell> {
       children.add(PanelPrivacyBar(onSubmit: _privacySubmit));
     }
 
-    // 面板打开时的遮罩
-    if (_panelOpen) {
-      children.add(Positioned.fill(
+    // 遮罩：跟着面板一起渐显渐隐（原来是硬切一层黑）。关着时不吃点击。
+    children.add(Positioned.fill(
+      child: IgnorePointer(
+        ignoring: !_panelOpen,
         child: GestureDetector(
           onTap: _closePanel,
-          child: Container(color: Colors.black26),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 240),
+            curve: Curves.easeOutCubic,
+            color: Colors.black.withValues(alpha: _panelOpen ? 0.26 : 0),
+          ),
         ),
-      ));
-    }
+      ),
+    ));
 
     // 侧边栏面板：关 = 滑出屏外；开 = 滑入（宽高与拖拽语义都在
     // ResizablePanel 里，两个宿主共用）。
