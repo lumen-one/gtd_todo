@@ -61,6 +61,12 @@ class AppSettings {
   /// （屏高 − 上下安全区 − 上下贴靠 inset）。
   final double? panelHeight;
 
+  /// 把手位置是否**上锁**（§6.0）。true = 把手钉在当前高度，竖向拖动不再改变它
+  /// （长按换左右边、横拖拉开、点按展开都照旧）。默认不锁。
+  ///
+  /// 落 settings.json 的 `handle_locked`；系统级把手与应用内把手一起锁。
+  final bool handleLocked;
+
   const AppSettings({
     this.notificationWindows = const [[9 * 60, 21 * 60]],
     this.scheduleMode = ScheduleMode.standard,
@@ -75,6 +81,7 @@ class AppSettings {
     this.themeMode = 'system',
     this.panelWidth,
     this.panelHeight,
+    this.handleLocked = false,
   });
 
   static const AppSettings defaults = AppSettings();
@@ -93,6 +100,7 @@ class AppSettings {
     String? themeMode,
     double? panelWidth,
     double? panelHeight,
+    bool? handleLocked,
     bool clearNotesPath = false,
     bool clearLastPickDate = false,
     bool clearPanelWidth = false,
@@ -113,6 +121,7 @@ class AppSettings {
       themeMode: themeMode ?? this.themeMode,
       panelWidth: clearPanelWidth ? null : (panelWidth ?? this.panelWidth),
       panelHeight: clearPanelHeight ? null : (panelHeight ?? this.panelHeight),
+      handleLocked: handleLocked ?? this.handleLocked,
     );
   }
 
@@ -130,6 +139,7 @@ class AppSettings {
         'theme_mode': themeMode,
         if (panelWidth != null) 'panel_width': panelWidth,
         if (panelHeight != null) 'panel_height': panelHeight,
+        'handle_locked': handleLocked,
       };
 
   factory AppSettings.fromJson(Map<String, Object?> json) {
@@ -155,6 +165,7 @@ class AppSettings {
       themeMode: (json['theme_mode'] as String?) ?? 'system',
       panelWidth: (json['panel_width'] as num?)?.toDouble(),
       panelHeight: (json['panel_height'] as num?)?.toDouble(),
+      handleLocked: json['handle_locked'] == true,
     );
   }
 }

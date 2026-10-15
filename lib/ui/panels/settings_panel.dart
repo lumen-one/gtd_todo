@@ -139,6 +139,13 @@ class _SettingsPanelState extends State<SettingsPanel> {
             }
           },
         ),
+        SwitchListTile(
+          secondary: const Icon(Icons.lock_outline),
+          title: const Text('固定把手位置'),
+          subtitle: const Text('上锁后把手不再跟着拖动上下移动；长按换边仍可用'),
+          value: s.handleLocked,
+          onChanged: (v) => _c.setHandleLocked(v),
+        ),
         ListTile(
           leading: const Icon(Icons.info_outline),
           title: const Text('重看首次引导'),

@@ -304,6 +304,18 @@ void main() {
       expect(legacy.scheduleMode, ScheduleMode.standard);
     });
 
+    test('把手上锁：默认不锁，往返不丢，老文件缺键 = 不锁', () {
+      expect(AppSettings.defaults.handleLocked, isFalse);
+      expect(AppSettings.fromJson(const {}).handleLocked, isFalse);
+
+      final locked = AppSettings.defaults.copyWith(handleLocked: true);
+      expect(locked.handleLocked, isTrue);
+      expect(decodeSettings(encodeSettings(locked)).handleLocked, isTrue);
+      // 上锁不动别的字段（与侧边栏宽高、主题各管一段）。
+      expect(locked.panelWidth, isNull);
+      expect(locked.themeMode, 'system');
+    });
+
     test('侧边栏宽高：拖拽持久化往返，老文件缺键回退默认 null', () {
       const s = AppSettings(panelWidth: 512, panelHeight: 640);
       final back = decodeSettings(encodeSettings(s));

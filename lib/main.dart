@@ -100,6 +100,9 @@ Future<void> main() async {
       bridge == null ? null : (enabled) => bridge.setOverlayHandle(enabled);
   controller.overlayHandleState =
       bridge == null ? null : () => bridge.isOverlayHandleEnabled();
+  // 把手位置上锁（§6.0）：桌面无系统级把手 = null，设置项只落 settings.json。
+  controller.handleLockControl =
+      bridge == null ? null : (locked) => bridge.setHandleLocked(locked);
 
   dispatcher = ReminderDispatcher(
     service: service,

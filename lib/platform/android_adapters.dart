@@ -108,6 +108,10 @@ class AndroidNativeBridge {
   /// 把手开关的真实状态（设置页据此初始化，而不是靠本地假设）。
   Future<bool> isOverlayHandleEnabled() => _invoke('isOverlayHandleEnabled');
 
+  /// 把手位置上锁（§6.0：锁上后竖向拖动不再改变 y；长按换边仍可用）。
+  Future<bool> setHandleLocked(bool locked) =>
+      _invoke('setHandleLocked', {'locked': locked});
+
   Future<bool> isIgnoringBatteryOptimizations() =>
       _invoke('isIgnoringBatteryOptimizations');
 

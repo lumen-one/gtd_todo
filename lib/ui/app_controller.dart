@@ -407,6 +407,18 @@ class AppController extends ChangeNotifier {
   /// 由应用内把手负责，退到后台由系统把手负责，原生侧自动切换）。
   bool get overlayHandleEnabled => _overlayHandleEnabled;
 
+  /// 装配点注入：把手位置上锁（安卓原生；桌面无此能力 = null）。
+  Future<bool> Function(bool locked)? handleLockControl;
+
+  /// 把手位置上锁（§6.0）：锁上后竖向拖动不再改变把手高度。
+  ///
+  /// 先推给原生（系统级把手），再落 settings.json——两边都写：原生自己管把手位置，
+  /// 服务可能在 Dart 起来之前就被拉起，不能只靠通道补投。
+  Future<void> setHandleLocked(bool locked) async {
+    await handleLockControl?.call(locked);
+    await updateSettings(_settings.copyWith(handleLocked: locked));
+  }
+
   /// 装配点注入：查询把手真实状态（安卓原生；桌面无此能力 = null）。
   Future<bool> Function()? overlayHandleState;
 

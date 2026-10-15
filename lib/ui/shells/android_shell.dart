@@ -190,8 +190,9 @@ class _AndroidShellState extends State<AndroidShell> {
     // 监听 Activity 前后台），所以应用内把手**始终显示**——每个场景恰好一个把手，
     // 不会出现"两个把手叠在一起"或"把手指着面板碍事"。
     children.add(_Handle(
-      dy: _handleDy.clamp(24, size.height - _kHandleHeight - 32),
+      dy: _handleDy.clamp(24, size.height - _kHotHeight - 32),
       onLeft: _panelOnLeft,
+      locked: widget.controller.settings.handleLocked,
       onDrag: (dy) => setState(() => _handleDy = dy),
       onOpen: _openPanel,
       onDockSwitch: () => setState(() => _panelOnLeft = !_panelOnLeft),
@@ -231,8 +232,9 @@ class _AndroidShellState extends State<AndroidShell> {
         child: ResizablePanel(
           controller: widget.controller,
           dockLeft: _panelOnLeft,
-          // 面板垂直居中于把手（ui-interaction.md §6.0）：把手的中心即锚点。
-          anchorCenterY: _handleDy + _kHandleHeight / 2,
+          // 面板垂直居中于把手（ui-interaction.md §6.0）：把手的中心即锚点
+          // （热区中心 = 白条中心，白条在热区里竖直居中）。
+          anchorCenterY: _handleDy + _kHotHeight / 2,
           child: SidePanel(
             controller: widget.controller,
             pageCtrl: _pageCtrl,
@@ -249,17 +251,30 @@ class _AndroidShellState extends State<AndroidShell> {
   }
 }
 
-// 把手（v1.10 / 决议 40）：贴在边缘的一段半透明白条，10×88dp、白色 55% 不透明，
-// 与原生悬浮把手同一套参数——两个场景共用一个把手（决议 34），外观必须一致。
-// 外观改了，**能做的事一条没少**：竖向拖动换位置、横向拖出展开、点按展开、长按换边。
+// 把手（v1.10 / 决议 40，v1.11 再缩淡一档）：贴在边缘的一段半透明白条，
+// **6×72dp、白色 35% 不透明**，与原生悬浮把手同一套参数——两个场景共用一个把手
+// （决议 34），外观必须一致。
+// 外观改了，**能做的事一条没少**：竖向拖动换位置、横向拖出展开、点按展开、长按换边
+// （位置可上锁，锁上后竖向拖动不改高度）。
 // 点按是后补的：它同时是决议 41 的兜底入口（ROM 不认手势排除区时仍打得开）。
 
-/// 把手高度（dp）：[_Handle] 的外观与"面板居中于把手"的锚点计算共用这一个数。
-const double _kHandleHeight = 88;
+/// 白条尺寸（dp）：与原生 `OverlayHandleService` 的 BAR_* 一致。
+const double _kBarWidth = 6;
+const double _kBarHeight = 72;
+
+/// 可起手的热区（dp）：白条缩细之后没有它就摁不准。
+///
+/// **竖向与原生一致（200dp）**，横向只有 12dp——这是应用内壳特有的取舍：
+/// 热区在**我们自己的**设置页之上，再宽就会吃掉卡片边缘的点击（设置页左右留白
+/// 恰好 12dp）。系统级把手浮在别人的 App 上，吃掉的边不是我们的内容，所以那里
+/// 敢开到 28dp；这里不行。
+const double _kHotWidth = 12;
+const double _kHotHeight = 200;
 
 class _Handle extends StatelessWidget {
   final double dy;
   final bool onLeft;
+  final bool locked;
   final ValueChanged<double> onDrag;
   final VoidCallback onOpen;
   final VoidCallback onDockSwitch;
@@ -267,6 +282,7 @@ class _Handle extends StatelessWidget {
   const _Handle({
     required this.dy,
     required this.onLeft,
+    required this.locked,
     required this.onDrag,
     required this.onOpen,
     required this.onDockSwitch,
@@ -279,30 +295,58 @@ class _Handle extends StatelessWidget {
       left: onLeft ? 0 : null,
       right: onLeft ? null : 0,
       child: GestureDetector(
-        onVerticalDragUpdate: (d) => onDrag(dy + d.delta.dy),
+        // 外层：整块热区只吃**拖动**（竖拖移位 / 横拖拉开），不挂 onTap——
+        // 只有拖拽回调的探测器不会吞掉下层卡片的点击（实测确认）。
+        // 上锁后竖向拖动不再改高度，横拖拉开与点按照旧。
+        onVerticalDragUpdate: locked ? null : (d) => onDrag(dy + d.delta.dy),
         onHorizontalDragEnd: (d) {
           final v = d.velocity.pixelsPerSecond.dx;
           final towardCenter = onLeft ? v > 500 : v < -500;
           if (towardCenter) onOpen();
         },
-        onTap: onOpen,
-        onLongPress: onDockSwitch, // 长按：停靠到另一侧
-        child: Container(
-          width: 10,
-          height: _kHandleHeight,
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.55),
-            borderRadius: BorderRadius.horizontal(
-              left: onLeft ? Radius.zero : const Radius.circular(5),
-              right: onLeft ? const Radius.circular(5) : Radius.zero,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.12),
-                blurRadius: 3,
-                offset: Offset(onLeft ? 1 : -1, 1),
+        child: SizedBox(
+          width: _kHotWidth,
+          height: _kHotHeight,
+          child: Align(
+            // 白条贴在**屏幕边缘**那一侧、竖直居中（与原生同口径）。
+            alignment: onLeft ? Alignment.centerLeft : Alignment.centerRight,
+            child: GestureDetector(
+              // 内层：点按与长按的靶是**白条本身**（上下各留 10dp 好摁），
+              // 不是整块热区——热区是给"拖动起手"用的。
+              onTap: onOpen,
+              onLongPress: onDockSwitch, // 长按：停靠到另一侧
+              child: SizedBox(
+                width: _kHotWidth,
+                height: _kBarHeight + 20,
+                // 用 Align 而不是 Center：白条要**贴住屏幕边缘**那一侧，
+                // 居中会让它离边 3dp，看起来就不像"贴边"了。
+                child: Align(
+                  alignment: onLeft ? Alignment.centerLeft : Alignment.centerRight,
+                  child: Container(
+                    width: _kBarWidth,
+                    height: _kBarHeight,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.35),
+                      borderRadius: BorderRadius.horizontal(
+                        left: onLeft
+                            ? Radius.zero
+                            : Radius.circular(_kBarWidth / 2),
+                        right: onLeft
+                            ? Radius.circular(_kBarWidth / 2)
+                            : Radius.zero,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.12),
+                          blurRadius: 3,
+                          offset: Offset(onLeft ? 1 : -1, 1),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ),
-            ],
+            ),
           ),
         ),
       ),
