@@ -186,7 +186,10 @@ class _AndroidShellState extends State<AndroidShell> {
 
   List<Widget> _overlay(BuildContext context) {
     final size = MediaQuery.of(context).size;
-    final panelWidth = size.width * 0.88 > 420 ? 420.0 : size.width * 0.88;
+    // 面板宽度由 ResizablePanel 自算（设置值 / 默认公式 / 拖拽实时值）；
+    // 收起时滑出屏外的落点要按同一宽度算，这里取一次当前值——拖拽只发生
+    // 在展开态，用不到它。
+    final panelWidth = panelWidthFor(widget.controller.settings, size.width);
     final children = <Widget>[];
 
     // 把手：贴屏白条、上下拖动停靠；点按 / 横拖朝屏内 = 展开；长按 = 换边。
@@ -216,7 +219,8 @@ class _AndroidShellState extends State<AndroidShell> {
       ));
     }
 
-    // 侧边栏面板：关 = 滑出屏外；开 = 滑入。拖拽"过头"（继续往屏内拖）→ 隐私
+    // 侧边栏面板：关 = 滑出屏外；开 = 滑入（宽度与拖拽语义都在
+    // ResizablePanel 里，两个宿主共用）。
     children.add(AnimatedPositioned(
       duration: const Duration(milliseconds: 240),
       curve: Curves.easeOutCubic,
@@ -224,16 +228,19 @@ class _AndroidShellState extends State<AndroidShell> {
       bottom: MediaQuery.of(context).padding.bottom + 8,
       left: _panelOnLeft ? (_panelOpen ? 6 : -panelWidth - 12) : null,
       right: _panelOnLeft ? null : (_panelOpen ? 6 : -panelWidth - 12),
-      width: panelWidth,
       child: IgnorePointer(
         ignoring: !_panelOpen,
-        child: SidePanel(
+        child: ResizablePanel(
           controller: widget.controller,
-          pageCtrl: _pageCtrl,
-          onClose: _closePanel,
-          onPrivacy: _enterPrivacy,
-          onOpenCalendar: () =>
-              showCalendarDialog(context, widget.controller),
+          dockLeft: _panelOnLeft,
+          child: SidePanel(
+            controller: widget.controller,
+            pageCtrl: _pageCtrl,
+            onClose: _closePanel,
+            onPrivacy: _enterPrivacy,
+            onOpenCalendar: () =>
+                showCalendarDialog(context, widget.controller),
+          ),
         ),
       ),
     ));
@@ -308,7 +315,9 @@ class _DrawerFallback extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Drawer(
-      width: 360,
+      // 与悬浮侧边栏同一个宽度设置（没拖过 = 默认公式）
+      width: panelWidthFor(
+          controller.settings, MediaQuery.of(context).size.width),
       child: DefaultTabController(
         length: 3,
         child: Scaffold(
