@@ -43,9 +43,13 @@ class AppSettings {
   final String themePreset;
 
   /// 侧边栏宽度（逻辑像素；可拖拽调整，松手落盘，口径见 ui-interaction.md §6.0）。
-  /// null = 用默认公式 min(0.88 × 屏宽, 420)；老设置文件缺 `panel_width`
+  /// null = 用默认公式 min(0.80 × 屏宽, 360)；老设置文件缺 `panel_width`
   /// 键即此态，向后兼容。
   final double? panelWidth;
+
+  /// 侧边栏高度（逻辑像素；同 [panelWidth]）。null = 默认 0.85 × 可用高度
+  /// （屏高 − 上下安全区 − 上下贴靠 inset）。
+  final double? panelHeight;
 
   const AppSettings({
     this.notificationWindows = const [[9 * 60, 21 * 60]],
@@ -59,6 +63,7 @@ class AppSettings {
     this.routineShowInPool = true,
     this.themePreset = 'orange',
     this.panelWidth,
+    this.panelHeight,
   });
 
   static const AppSettings defaults = AppSettings();
@@ -75,9 +80,11 @@ class AppSettings {
     bool? routineShowInPool,
     String? themePreset,
     double? panelWidth,
+    double? panelHeight,
     bool clearNotesPath = false,
     bool clearLastPickDate = false,
     bool clearPanelWidth = false,
+    bool clearPanelHeight = false,
   }) {
     return AppSettings(
       notificationWindows: notificationWindows ?? this.notificationWindows,
@@ -92,6 +99,7 @@ class AppSettings {
       routineShowInPool: routineShowInPool ?? this.routineShowInPool,
       themePreset: themePreset ?? this.themePreset,
       panelWidth: clearPanelWidth ? null : (panelWidth ?? this.panelWidth),
+      panelHeight: clearPanelHeight ? null : (panelHeight ?? this.panelHeight),
     );
   }
 
@@ -107,6 +115,7 @@ class AppSettings {
         'routine_show_in_pool': routineShowInPool,
         'theme_preset': themePreset,
         if (panelWidth != null) 'panel_width': panelWidth,
+        if (panelHeight != null) 'panel_height': panelHeight,
       };
 
   factory AppSettings.fromJson(Map<String, Object?> json) {
@@ -130,6 +139,7 @@ class AppSettings {
       routineShowInPool: json['routine_show_in_pool'] != false,
       themePreset: (json['theme_preset'] as String?) ?? 'orange',
       panelWidth: (json['panel_width'] as num?)?.toDouble(),
+      panelHeight: (json['panel_height'] as num?)?.toDouble(),
     );
   }
 }

@@ -304,13 +304,15 @@ void main() {
       expect(legacy.scheduleMode, ScheduleMode.standard);
     });
 
-    test('侧边栏宽度：拖宽持久化往返，老文件缺键回退默认 null', () {
-      const s = AppSettings(panelWidth: 512);
+    test('侧边栏宽高：拖拽持久化往返，老文件缺键回退默认 null', () {
+      const s = AppSettings(panelWidth: 512, panelHeight: 640);
       final back = decodeSettings(encodeSettings(s));
       expect(back.panelWidth, 512);
-      // 老设置文件没有这个键 → null → 用默认公式（不因缺键报错、不写死宽度）
+      expect(back.panelHeight, 640);
+      // 老设置文件没有这些键 → null → 用默认公式（不因缺键报错、不写死尺寸）
       final legacy = AppSettings.fromJson(const {'alarm_mode': true});
       expect(legacy.panelWidth, isNull);
+      expect(legacy.panelHeight, isNull);
     });
   });
 }
