@@ -500,9 +500,6 @@ class FloatingPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
-    final panelWidth = size.width * 0.88 > 420 ? 420.0 : size.width * 0.88;
-
     if (privacy) {
       // 隐私过头：不渲染任何任务数据，只留一条输入框（§11）
       return Stack(children: [
@@ -530,15 +527,20 @@ class FloatingPanel extends StatelessWidget {
           bottom: MediaQuery.of(context).padding.bottom + 8,
           left: dockLeft ? 6 : null,
           right: dockLeft ? null : 6,
-          width: panelWidth,
-          child: SidePanel(
+          // 宽度由 ResizablePanel 自算（设置值 / 默认公式 / 拖拽实时值），
+          // 这里只给停靠侧与上下 inset，不设 width。
+          child: ResizablePanel(
             controller: controller,
-            pageCtrl: pageCtrl,
-            onClose: onCollapse,
-            onPrivacy: onPrivacy,
-            onOpenCalendar: onOpenCalendar,
-            onOpenSettings: onOpenSettings,
-            heroTagPrefix: 'floating',
+            dockLeft: dockLeft,
+            child: SidePanel(
+              controller: controller,
+              pageCtrl: pageCtrl,
+              onClose: onCollapse,
+              onPrivacy: onPrivacy,
+              onOpenCalendar: onOpenCalendar,
+              onOpenSettings: onOpenSettings,
+              heroTagPrefix: 'floating',
+            ),
           ),
         ),
       ],
