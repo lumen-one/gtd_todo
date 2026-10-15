@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gtd_todo/application/settings.dart';
+import 'package:gtd_todo/application/task_service.dart';
+import 'package:gtd_todo/domain/time_context.dart';
+import 'package:gtd_todo/repository/memory_task_repository.dart';
+import 'package:gtd_todo/scheduler/slack_scheduler.dart';
+import 'package:gtd_todo/ui/app_controller.dart';
+import 'package:gtd_todo/ui/panels/settings_panel.dart';
 import 'package:gtd_todo/ui/theme.dart';
 
 /// 暗黑模式契约（ui-interaction.md §8 / §10 #20）：明暗三选一落
@@ -91,6 +97,40 @@ void main() {
     test('时间徽标橙不随明暗变（暗底对比度已达标）', () {
       // 它是 const，两种明暗同一个值——这里锁住"不为暗色另设变体"的口径。
       expect(AppColors.timeBadge, const Color(0xFFF57C00));
+    });
+  });
+
+  group('设置页：明暗三选一（§9 第 7 条）', () {
+    testWidgets('点「深黑」→ 设置的 themeMode 立即切到 dark', (tester) async {
+      final svc = TaskService(
+        repo: MemoryTaskRepository(),
+        scheduler: const SlackScheduler(),
+        workRule: WorkTimeRule.standard,
+        clock: () => DateTime(2026, 10, 15, 9, 0),
+      );
+      final controller = AppController(service: svc, taskDir: '/tmp/tasks');
+      await tester.pumpWidget(MaterialApp(
+        theme: buildAppTheme(Brightness.light),
+        darkTheme: buildAppTheme(Brightness.dark),
+        home: Scaffold(body: SettingsPanel(controller: controller)),
+      ));
+      await tester.pumpAndSettle();
+
+      // 没 bootstrap 过 = 出厂默认：跟随系统。
+      expect(controller.settings.themeMode, 'system');
+      expect(controller.themeMode, ThemeMode.system);
+
+      // 主题节在设置列表下方（ListView 懒加载）：滚到可见再点。
+      final target = find.text('深黑');
+      await tester.scrollUntilVisible(target, 240,
+          scrollable: find.byType(Scrollable).first);
+      await tester.pumpAndSettle();
+      await tester.tap(target);
+      await tester.pumpAndSettle();
+
+      // 切换立即生效：控制器（进而两个引擎的 MaterialApp）立刻读到暗色。
+      expect(controller.settings.themeMode, 'dark');
+      expect(controller.themeMode, ThemeMode.dark);
     });
   });
 }
