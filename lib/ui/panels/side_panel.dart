@@ -68,72 +68,48 @@ class _SidePanelState extends State<SidePanel> {
             // 翻页 = **左右横滑**（PageView 自己的物理，v0.15）：横方向与列表的
             // 纵向滚动正交，两边互不抢手，所以不再需要任何"重手势"。
             // 圆点是页序指示，同时是可点的跳转靶。
+            // 页名与翻页圆点合成一行（面板只有 240–360 dp 宽，圆点单独占
+            // 一行等于白扔 30 dp 的内容高度）；圆点仍是跳转靶。
             Padding(
-              padding: const EdgeInsets.fromLTRB(8, 6, 8, 0),
+              padding: const EdgeInsets.fromLTRB(10, 2, 4, 0),
               child: Row(
                 children: [
+                  Flexible(
+                    child: AnimatedBuilder(
+                      animation: widget.pageCtrl,
+                      builder: (context, _) => AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 180),
+                        child: Text(
+                          _pageNames[_currentPage],
+                          key: ValueKey(_pageNames[_currentPage]),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                   AnimatedBuilder(
                     animation: widget.pageCtrl,
-                    builder: (context, _) => Text(
-                      _pageNames[_currentPage],
-                      style: theme.textTheme.titleMedium,
+                    builder: (context, _) => Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        for (var i = 0; i < 3; i++) _pageDot(i, theme),
+                      ],
                     ),
                   ),
                   const Spacer(),
-                  IconButton(
-                    tooltip: '日历',
-                    icon: const Icon(Icons.calendar_month_outlined, size: 20),
-                    onPressed: widget.onOpenCalendar,
-                  ),
-                  IconButton(
-                    tooltip: '隐私模式',
-                    icon: const Icon(Icons.visibility_off_outlined, size: 20),
-                    onPressed: widget.onPrivacy,
-                  ),
+                  _headButton(Icons.calendar_month_outlined, '日历',
+                      widget.onOpenCalendar),
+                  _headButton(Icons.visibility_off_outlined, '隐私模式',
+                      widget.onPrivacy),
                   if (widget.onOpenSettings != null)
-                    IconButton(
-                      tooltip: '设置',
-                      icon: const Icon(Icons.settings_outlined, size: 20),
-                      onPressed: widget.onOpenSettings,
-                    ),
-                  IconButton(
-                    icon: const Icon(Icons.close, size: 20),
-                    onPressed: widget.onClose,
-                  ),
+                    _headButton(Icons.settings_outlined, '设置',
+                        widget.onOpenSettings!),
+                  _headButton(Icons.close, '关闭', widget.onClose),
                 ],
-              ),
-            ),
-            AnimatedBuilder(
-              animation: widget.pageCtrl,
-              builder: (context, _) => SizedBox(
-                height: 30,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    for (var i = 0; i < 3; i++)
-                      GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () => _pageTo(i),
-                        child: SizedBox(
-                          width: 36,
-                          height: 30,
-                          child: Center(
-                            child: Container(
-                              width: 7,
-                              height: 7,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: i == _currentPage
-                                    ? AppColors.accent
-                                    : theme.colorScheme.outlineVariant,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
               ),
             ),
             const Divider(height: 8),
@@ -161,6 +137,45 @@ class _SidePanelState extends State<SidePanel> {
       ),
     );
   }
+
+  /// 页序圆点：当前页拉成一条短横（形变过渡），点它直接跳页。
+  Widget _pageDot(int index, ThemeData theme) {
+    final active = index == _currentPage;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _pageTo(index),
+      child: SizedBox(
+        width: 16,
+        height: 28,
+        child: Center(
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            width: active ? 14 : 6,
+            height: 6,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(999),
+              color: active
+                  ? AppColors.accent
+                  : theme.colorScheme.outlineVariant.withValues(alpha: 0.7),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 面板头的图标按钮：34 dp 见方。默认 40 的按钮在 240 dp 宽的面板上
+  /// 会把页名和圆点挤没。
+  Widget _headButton(IconData icon, String tooltip, VoidCallback onPressed) =>
+      IconButton(
+        constraints: const BoxConstraints.tightFor(width: 34, height: 34),
+        padding: EdgeInsets.zero,
+        iconSize: 20,
+        tooltip: tooltip,
+        icon: Icon(icon),
+        onPressed: onPressed,
+      );
 
   /// 当前页序号（PageView 还没挂上时按第 1 页算）。
   int get _currentPage =>

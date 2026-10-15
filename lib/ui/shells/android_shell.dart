@@ -158,13 +158,6 @@ class _AndroidShellState extends State<AndroidShell> {
                   icon: const Icon(Icons.menu),
                   onPressed: () => _scaffoldKey.currentState?.openDrawer(),
                 ),
-                actions: [
-                  IconButton(
-                    tooltip: '悬浮侧边栏',
-                    icon: const Icon(Icons.swipe_left_alt),
-                    onPressed: _openPanel,
-                  ),
-                ],
               ),
               drawer: _DrawerFallback(controller: controller),
               body: SettingsPanel(controller: controller),

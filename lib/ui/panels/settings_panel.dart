@@ -84,38 +84,33 @@ class _SettingsPanelState extends State<SettingsPanel> {
     final s = _c.settings;
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(0, 4, 0, 40),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 40),
       children: [
-        _Section('权限引导'),
-        SettingsPermissionsSection(controller: _c),
+        _SectionCard('权限引导', [SettingsPermissionsSection(controller: _c)]),
 
-        _Section('任务目录'),
-        ..._taskDirSection(s),
+        _SectionCard('任务目录', _taskDirSection(s)),
 
-        _Section('提醒与排序'),
-        ..._reminderSection(s),
+        _SectionCard('提醒与排序', _reminderSection(s)),
 
-        _Section('周期任务'),
-        SettingsRoutinesSection(controller: _c),
-        SwitchListTile(
-          secondary: const Icon(Icons.view_list_outlined),
-          title: const Text('在任务池计划段显示'),
-          subtitle: const Text('按下一次发生日期插入计划段'),
-          value: s.routineShowInPool,
-          onChanged: (v) => _c.updateSettings(s.copyWith(routineShowInPool: v)),
-        ),
+        _SectionCard('周期任务', [
+          SettingsRoutinesSection(controller: _c),
+          SwitchListTile(
+            secondary: const Icon(Icons.view_list_outlined),
+            title: const Text('在任务池计划段显示'),
+            subtitle: const Text('按下一次发生日期插入计划段'),
+            value: s.routineShowInPool,
+            onChanged: (v) =>
+                _c.updateSettings(s.copyWith(routineShowInPool: v)),
+          ),
+        ]),
 
-        _Section('定期挑'),
-        ..._pickSection(s),
+        _SectionCard('定期挑', _pickSection(s)),
 
-        _Section('疑问笔记'),
-        _notesSection(s),
+        _SectionCard('疑问笔记', [_notesSection(s)]),
 
-        _Section('主题'),
-        ..._themeSection(s),
+        _SectionCard('主题', _themeSection(s)),
 
-        _Section('回收站'),
-        _trashSection(),
+        _SectionCard('回收站', [_trashSection()]),
       ],
     );
   }
@@ -224,21 +219,24 @@ class _SettingsPanelState extends State<SettingsPanel> {
         // 明暗三选一（§8）：与强调色预设正交——预设换种子，明暗换中性底。
         // 默认跟随系统；切换立即生效（两个引擎都读同一份 settings.json）。
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: SegmentedButton<AppThemeMode>(
-            segments: const [
-              ButtonSegment(
-                  value: AppThemeMode.system, label: Text('跟随系统')),
-              ButtonSegment(value: AppThemeMode.light, label: Text('浅色')),
-              ButtonSegment(value: AppThemeMode.dark, label: Text('深黑')),
-            ],
-            selected: {AppThemeMode.fromId(s.themeMode)},
-            onSelectionChanged: (v) =>
-                _c.updateSettings(s.copyWith(themeMode: v.first.id)),
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+          child: SizedBox(
+            width: double.infinity,
+            child: SegmentedButton<AppThemeMode>(
+              segments: const [
+                ButtonSegment(
+                    value: AppThemeMode.system, label: Text('跟随系统')),
+                ButtonSegment(value: AppThemeMode.light, label: Text('浅色')),
+                ButtonSegment(value: AppThemeMode.dark, label: Text('深黑')),
+              ],
+              selected: {AppThemeMode.fromId(s.themeMode)},
+              onSelectionChanged: (v) =>
+                  _c.updateSettings(s.copyWith(themeMode: v.first.id)),
+            ),
           ),
         ),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
           child: Wrap(
             spacing: 8,
             children: [
@@ -346,16 +344,39 @@ class _SettingsPanelState extends State<SettingsPanel> {
   }
 }
 
-class _Section extends StatelessWidget {
+/// 分区 = 橙色小标题 + 一张装着本区所有行的 Card。
+///
+/// 改卡片化的理由：设置页有八个区、三十来行，原来全平铺成一条长列表，只靠
+/// 橙色标题分段——滚起来分不清哪几行属于哪一区。卡片让"区"成为看得见的块。
+class _SectionCard extends StatelessWidget {
   final String title;
+  final List<Widget> children;
 
-  const _Section(this.title);
+  const _SectionCard(this.title, this.children);
 
   @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 18, 16, 4),
-        child: Text(title,
-            style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                color: AppColors.accent, fontWeight: FontWeight.w700)),
-      );
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(6, 2, 6, 6),
+            child: Text(title,
+                style: theme.textTheme.labelLarge?.copyWith(
+                    color: AppColors.accent, fontWeight: FontWeight.w700)),
+          ),
+          Card(
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: children,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

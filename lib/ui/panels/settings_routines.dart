@@ -66,7 +66,7 @@ class _SettingsRoutinesSectionState extends State<SettingsRoutinesSection> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
           child: Text(
             '每天生成当天实例，不占工时、默认不响。',
             style: theme.textTheme.bodySmall
@@ -83,17 +83,14 @@ class _SettingsRoutinesSectionState extends State<SettingsRoutinesSection> {
           _routineTile(context, r,
               highlighted: r.id == _c.settingsFocusRoutineId),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          child: Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  icon: const Icon(Icons.add),
-                  label: const Text('新建周期任务'),
-                  onPressed: () => _editRoutine(context, null),
-                ),
-              ),
-            ],
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+          child: SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              icon: const Icon(Icons.add),
+              label: const Text('新建周期任务'),
+              onPressed: () => _editRoutine(context, null),
+            ),
           ),
         ),
       ],
@@ -103,13 +100,15 @@ class _SettingsRoutinesSectionState extends State<SettingsRoutinesSection> {
   Widget _routineTile(BuildContext context, Routine r,
       {required bool highlighted}) {
     final key = _routineKeys.putIfAbsent(r.id, () => GlobalKey());
-    return Card(
+    // 本区整体已经装在设置页的分区卡片里，这里不再套 Card（卡中卡）：
+    // 高亮改用一层浅色底，比描边在卡片内更安静。
+    return Container(
       key: key,
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
-      shape: highlighted
-          ? RoundedRectangleBorder(
-              side: BorderSide(color: AppColors.accent, width: 1.6),
-              borderRadius: BorderRadius.circular(14),
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: highlighted
+          ? BoxDecoration(
+              color: AppColors.accent.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(12),
             )
           : null,
       child: ListTile(

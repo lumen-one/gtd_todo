@@ -78,7 +78,7 @@ class TaskTile extends StatelessWidget {
                   child: Text('$number', style: numberStyle(theme.textTheme)),
                 ),
                 const SizedBox(width: 8),
-              ]               else if (overdue) ...[
+              ] else if (overdue) ...[
                 _Dot(color: AppColors.overdueFor(theme.brightness)),
                 const SizedBox(width: 8),
               ] else if (dimmed) ...[
