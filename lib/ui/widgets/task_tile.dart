@@ -78,8 +78,8 @@ class TaskTile extends StatelessWidget {
                   child: Text('$number', style: numberStyle(theme.textTheme)),
                 ),
                 const SizedBox(width: 8),
-              ] else if (overdue) ...[
-                const _Dot(color: AppColors.overdue),
+              ]               else if (overdue) ...[
+                _Dot(color: AppColors.overdueFor(theme.brightness)),
                 const SizedBox(width: 8),
               ] else if (dimmed) ...[
                 const _Dot(color: Colors.blueGrey),
@@ -135,9 +135,13 @@ class TaskTile extends StatelessWidget {
     if (task.type == TaskType.fixed && deadline != null) {
       badges.add(_Badge(label: fmtTime(deadline), color: AppColors.timeBadge));
     } else if (overdue) {
-      badges.add(const _Badge(label: '已逾期', color: AppColors.overdue));
+      badges.add(_Badge(
+          label: '已逾期',
+          color: AppColors.overdueFor(Theme.of(context).brightness)));
     } else if (metric?.displayStatus == TaskDisplayStatus.infeasible) {
-      badges.add(const _Badge(label: '裕度告急', color: AppColors.overdue));
+      badges.add(_Badge(
+          label: '裕度告急',
+          color: AppColors.overdueFor(Theme.of(context).brightness)));
     } else if (metric?.displayStatus == TaskDisplayStatus.snoozed) {
       badges.add(const _Badge(label: '已推迟', color: Colors.blueGrey));
     } else if (task.pinnedAt != null) {

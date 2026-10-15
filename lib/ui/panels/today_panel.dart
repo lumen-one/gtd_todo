@@ -91,7 +91,7 @@ class TodayPanel extends StatelessWidget {
         ],
         // ① 逾期组：无编号、橙红置顶，完成/改期前不消失（决议 2）
         if (view.overdue.isNotEmpty) ...[
-          const _GroupHeader('逾期', color: AppColors.overdue),
+          _GroupHeader('逾期', color: AppColors.overdueFor(theme.brightness)),
           for (final t in view.overdue)
             TaskTile(
               controller: controller,

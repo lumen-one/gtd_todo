@@ -230,8 +230,9 @@ Widget _actions(BuildContext context, BuildContext sheetContext,
           icon: Icon(icon, size: 18),
           label: Text(label),
           style: OutlinedButton.styleFrom(
-            foregroundColor:
-                label.startsWith('删除') ? AppColors.overdue : null,
+            foregroundColor: label.startsWith('删除')
+                ? AppColors.overdueFor(Theme.of(context).brightness)
+                : null,
           ),
           onPressed: () async {
             Navigator.of(sheetContext).pop();

@@ -128,7 +128,7 @@ class _SettingsPermissionsSectionState
                   size: 18,
                   color: _permState[kind] == true
                       ? Colors.green
-                      : AppColors.overdue,
+                      : AppColors.overdueFor(theme.brightness),
                 ),
                 const SizedBox(width: 8),
                 TextButton(

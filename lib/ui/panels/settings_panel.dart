@@ -48,7 +48,8 @@ Widget _modeButton(AppController c, AppSettings s, ScheduleMode mode) {
 /// 设置页（ui-interaction.md §9，暂定 App 唯一主体页面）：
 /// 1. 权限引导 + 任务目录 + 悬浮把手；2. 周期任务管理（routines.md）；
 /// 3. 提醒与排序（**调度模式三档：完整/标准/无排序** + 时间段多段式 + 闹钟模式）；
-/// 4. 定期挑；5. 疑问笔记路径；6. 周期任务在任务池的显示开关；7. 主题预设；8. 回收站。
+/// 4. 定期挑；5. 疑问笔记路径；6. 周期任务在任务池的显示开关；
+/// 7. 主题（**明暗三选一：跟随系统/浅色/深黑** + 强调色预设）；8. 回收站。
 class SettingsPanel extends StatefulWidget {
   final AppController controller;
 
@@ -112,7 +113,7 @@ class _SettingsPanelState extends State<SettingsPanel> {
         _Section('疑问笔记'),
         _notesSection(s),
 
-        _Section('主题预设'),
+        _Section('主题'),
         ..._themeSection(theme, s),
 
         _Section('回收站'),
@@ -234,6 +235,22 @@ class _SettingsPanelState extends State<SettingsPanel> {
       );
 
   List<Widget> _themeSection(ThemeData theme, AppSettings s) => [
+        // 明暗三选一（§8）：与强调色预设正交——预设换种子，明暗换中性底。
+        // 默认跟随系统；切换立即生效（两个引擎都读同一份 settings.json）。
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: SegmentedButton<AppThemeMode>(
+            segments: const [
+              ButtonSegment(
+                  value: AppThemeMode.system, label: Text('跟随系统')),
+              ButtonSegment(value: AppThemeMode.light, label: Text('浅色')),
+              ButtonSegment(value: AppThemeMode.dark, label: Text('深黑')),
+            ],
+            selected: {AppThemeMode.fromId(s.themeMode)},
+            onSelectionChanged: (v) =>
+                _c.updateSettings(s.copyWith(themeMode: v.first.id)),
+          ),
+        ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Wrap(
@@ -252,7 +269,8 @@ class _SettingsPanelState extends State<SettingsPanel> {
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
-          child: Text('只换强调色与中性底；逾期橙红、时间徽标等状态语义色不变（§8）',
+          child: Text('明暗换中性底（深黑 = 暖深褐黑）、预设换强调色；'
+              '逾期橙红等状态语义色不随预设变（暗色下自动提亮，§8）',
               style: theme.textTheme.bodySmall
                   ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
         ),
