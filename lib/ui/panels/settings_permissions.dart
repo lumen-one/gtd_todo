@@ -18,43 +18,43 @@ class SettingsPermissionsSection extends StatefulWidget {
 
 class _SettingsPermissionsSectionState
     extends State<SettingsPermissionsSection> with WidgetsBindingObserver {
+  /// 每项只留一句「给谁用」；降级结果在申请失败时由 toast 说明，不预写在行里。
   static const List<(PermissionKind, IconData, String, String)> _permissions = [
     (
       PermissionKind.notifications,
       Icons.notifications_active_outlined,
       '通知',
-      '到点提醒要能弹出来；被拒则只在应用内高亮（§11）'
+      '到点提醒要能弹出来'
     ),
     (
       PermissionKind.exactAlarm,
       Icons.alarm,
       '精确闹钟',
-      '安卓 12+ 准点响铃要单独授权；被拒提醒可能迟到（如实提示）'
+      '安卓 12+ 准点响铃要单独授权'
     ),
     (
       PermissionKind.batteryExemption,
       Icons.battery_saver,
-      '电池优化白名单',
-      'Doze/省电模式会推迟甚至吞掉闹钟（附录 B）'
+      '电池优化',
+      '免得省电模式推迟或吞掉闹钟'
     ),
     (
       PermissionKind.overlayWindow,
       Icons.picture_in_picture_alt_outlined,
       '悬浮窗',
-      '贴屏把手与其他 App 上方拖出侧边栏；被拒退化为 App 内抽屉（§11）'
+      '在其他 App 上方展开侧边栏'
     ),
     (
       PermissionKind.showOnLockScreen,
       Icons.screen_lock_portrait_outlined,
-      '锁屏/上层显示',
-      '闹钟模式的全屏提醒需要它；被拒退化为普通通知 + 响铃'
+      '锁屏显示',
+      '闹钟的全屏提醒需要它'
     ),
     (
       PermissionKind.folderAccess,
       Icons.folder_open,
-      '任务目录（所有文件访问）',
-      '让 Obsidian 与 App 共用同一个 vault 目录；SAF 下监听不可用，'
-          '降级为回前台刷新'
+      '任务目录',
+      '与 Obsidian 共用同一个 vault'
     ),
   ];
 
@@ -104,15 +104,6 @@ class _SettingsPermissionsSectionState
     final theme = Theme.of(context);
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Text(
-            '逐项申请并解释用途；被拒时对应功能优雅降级（§11）。'
-            '桌面端全部视为已授予。',
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-          ),
-        ),
         for (final (kind, icon, title, why) in _permissions)
           ListTile(
             leading: Icon(icon),

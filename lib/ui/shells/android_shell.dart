@@ -152,9 +152,9 @@ class _AndroidShellState extends State<AndroidShell> {
             Scaffold(
               key: _scaffoldKey,
               appBar: AppBar(
-                title: const Text('动态任务调度 Todo'),
+                title: const Text('GTD Todo'),
                 leading: IconButton(
-                  tooltip: '抽屉兜底（同一套面板）',
+                  tooltip: '菜单',
                   icon: const Icon(Icons.menu),
                   onPressed: () => _scaffoldKey.currentState?.openDrawer(),
                 ),

@@ -18,7 +18,7 @@ Future<void> showSettingsNotesPathDialog(
           children: [
             Text('疑问笔记路径', style: Theme.of(ctx).textTheme.titleSmall),
             const SizedBox(height: 4),
-            Text('Obsidian 里那篇笔记（Markdown）；App 只读，编辑仍回 Obsidian。',
+            Text('App 只读，编辑仍回 Obsidian',
                 style: Theme.of(ctx).textTheme.bodySmall),
             const SizedBox(height: 10),
             TextField(

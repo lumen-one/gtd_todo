@@ -159,8 +159,8 @@ Future<void> showEditSheet(BuildContext context, AppController controller,
               title: const Text('提醒我'),
               subtitle: Text(
                 controller.reminderMode == ReminderMode.full
-                    ? '当前是完整模式：该响的都会响，这个开关不额外做什么'
-                    : '当前是标准模式（只排列不提醒）：打开它，这一件才会出声',
+                    ? '完整模式下该响的都会响'
+                    : '打开它，这一件才会出声',
                 style: Theme.of(ctx).textTheme.bodySmall,
               ),
               value: remind,

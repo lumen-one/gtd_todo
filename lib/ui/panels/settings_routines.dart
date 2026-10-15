@@ -68,8 +68,7 @@ class _SettingsRoutinesSectionState extends State<SettingsRoutinesSection> {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Text(
-            '规则住在任务目录下的 routines.md（一条一个 frontmatter 条目），'
-            'Obsidian 可直接看改；每天生成当天实例，不占工时、默认不响。',
+            '每天生成当天实例，不占工时、默认不响。',
             style: theme.textTheme.bodySmall
                 ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
@@ -78,7 +77,7 @@ class _SettingsRoutinesSectionState extends State<SettingsRoutinesSection> {
           const ListTile(
             leading: Icon(Icons.repeat),
             title: Text('还没有周期任务'),
-            subtitle: Text('点下面的按钮新建：每天 / 每周 X，可选时刻与到点提醒'),
+            subtitle: Text('点下面按钮新建：每天 / 每周 X'),
           ),
         for (final r in _c.routines)
           _routineTile(context, r,
@@ -154,7 +153,7 @@ class _SettingsRoutinesSectionState extends State<SettingsRoutinesSection> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('删除规则「${r.title}」？'),
-        content: const Text('从 routines.md 移除；今天未完成的实例一并移入回收站。'),
+        content: const Text('今天未完成的实例一并移入回收站。'),
         actions: [
           TextButton(
               onPressed: () => Navigator.of(ctx).pop(false),

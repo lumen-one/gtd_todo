@@ -150,7 +150,7 @@ Future<void> _deleteRoutineWithConfirm(BuildContext context,
     context: context,
     builder: (ctx) => AlertDialog(
       title: Text('删除规则「$name」？'),
-      content: const Text('规则会从 routines.md 移除；今天未完成的实例一并移入回收站。'),
+      content: const Text('今天未完成的实例一并移入回收站。'),
       actions: [
         TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -325,7 +325,7 @@ Future<void> deleteTaskWithUndo(
   if (!context.mounted) return;
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
-      content: Text('已删除「${task.title}」（可在设置回收找回）'),
+      content: Text('已删除「${task.title}」'),
       // 新版 Flutter 里带 action 的 SnackBar 默认 persist（到点不消失，等用户点
       // action）——与决议 15 的"撤销 toast"口径冲突，显式关掉。
       persist: false,

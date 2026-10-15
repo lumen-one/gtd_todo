@@ -17,14 +17,13 @@ String _mm(int minuteOfDay) {
 
 /// 三档调度模式的说明（决议 43）：完整 → 标准 → 无排序，**逐级弱化**算法替人做主
 /// 的程度，所以它们是一组三选一，不是两个互不相干的开关。
+///
+/// 界面上只留半句（"谁排前后 / 出不出声"），细化解释不去挤窄屏——三档的差别
+/// 用户切一下就体会到了。
 String _modeHint(ScheduleMode mode) => switch (mode) {
-      ScheduleMode.full => '完整：算法排先后，凡算法判定该响的都响',
-      ScheduleMode.standard =>
-        '标准（默认）：算法排先后，但默认不出声——'
-            '要响的那一件在编辑表单里开『提醒我』',
-      ScheduleMode.manual =>
-        '无排序：标准的再弱化版——今日清单不再按算法排先后，顺序全靠手动拖；'
-            '今天该看哪几件仍由算法挑（锚点落在今天 / 今天到期），清单不会因此变长',
+      ScheduleMode.full => '完整：排先后，该响的都响',
+      ScheduleMode.standard => '标准：排先后，默认不响',
+      ScheduleMode.manual => '无排序：顺序全靠手动拖',
     };
 
 /// 三选一按钮（选中=实心，其余=描边）：比 SegmentedButton 放得下三个字以上的标签，
@@ -82,7 +81,6 @@ class _SettingsPanelState extends State<SettingsPanel> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final s = _c.settings;
 
     return ListView(
@@ -91,18 +89,18 @@ class _SettingsPanelState extends State<SettingsPanel> {
         _Section('权限引导'),
         SettingsPermissionsSection(controller: _c),
 
-        _Section('任务目录与入口'),
+        _Section('任务目录'),
         ..._taskDirSection(s),
 
         _Section('提醒与排序'),
-        ..._reminderSection(theme, s),
+        ..._reminderSection(s),
 
-        _Section('周期任务（routines.md）'),
+        _Section('周期任务'),
         SettingsRoutinesSection(controller: _c),
         SwitchListTile(
           secondary: const Icon(Icons.view_list_outlined),
           title: const Text('在任务池计划段显示'),
-          subtitle: const Text('决议 27：周期任务按"下一次发生日期"升序插入计划段'),
+          subtitle: const Text('按下一次发生日期插入计划段'),
           value: s.routineShowInPool,
           onChanged: (v) => _c.updateSettings(s.copyWith(routineShowInPool: v)),
         ),
@@ -114,7 +112,7 @@ class _SettingsPanelState extends State<SettingsPanel> {
         _notesSection(s),
 
         _Section('主题'),
-        ..._themeSection(theme, s),
+        ..._themeSection(s),
 
         _Section('回收站'),
         _trashSection(),
@@ -135,9 +133,7 @@ class _SettingsPanelState extends State<SettingsPanel> {
         SwitchListTile(
           secondary: const Icon(Icons.view_sidebar_outlined),
           title: const Text('系统级贴屏把手'),
-          subtitle: const Text('在其他 App 上方就地展开侧边栏面板（不跳进应用）；'
-              '应用在前台时自动收起、改用应用内把手。需悬浮窗权限，'
-              '被拒时退化为 App 内抽屉'),
+          subtitle: const Text('在别的 App 上方也能展开侧边栏'),
           value: _c.overlayHandleEnabled,
           onChanged: (v) async {
             final ok = await _c.setOverlayHandle(v);
@@ -155,7 +151,7 @@ class _SettingsPanelState extends State<SettingsPanel> {
         ),
       ];
 
-  List<Widget> _reminderSection(ThemeData theme, AppSettings s) => [
+  List<Widget> _reminderSection(AppSettings s) => [
         ListTile(
           leading: const Icon(Icons.tune_outlined),
           title: const Text('调度模式'),
@@ -171,20 +167,10 @@ class _SettingsPanelState extends State<SettingsPanel> {
             ],
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-          child: Text(
-            '三档只改"谁排前面"与"出不出声"：今天该做哪几件、多久催一次、'
-            '逾期与"做不到"的提示都一样。',
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-          ),
-        ),
         SwitchListTile(
           secondary: const Icon(Icons.alarm),
           title: const Text('闹钟模式'),
-          subtitle: const Text('时点性提醒升级为全屏 + 持续响铃（决议 18：'
-              '不可推到点 + 设了响的周期任务；Slack 软提醒永远普通通知）'),
+          subtitle: const Text('到点提醒升级为全屏并持续响铃'),
           value: s.alarmMode,
           onChanged: (v) => _c.updateSettings(s.copyWith(alarmMode: v)),
         ),
@@ -205,7 +191,7 @@ class _SettingsPanelState extends State<SettingsPanel> {
         SwitchListTile(
           secondary: const Icon(Icons.shuffle),
           title: const Text('每天从散件段挑一件'),
-          subtitle: const Text('附到今日清单尾部，不响提醒；手动挑过的日子自动让位'),
+          subtitle: const Text('附到今日清单尾部，不响提醒'),
           value: s.pickEnabled,
           onChanged: (v) => _c.updateSettings(s.copyWith(pickEnabled: v)),
         ),
@@ -234,7 +220,7 @@ class _SettingsPanelState extends State<SettingsPanel> {
         onTap: () => showSettingsNotesPathDialog(context, _c),
       );
 
-  List<Widget> _themeSection(ThemeData theme, AppSettings s) => [
+  List<Widget> _themeSection(AppSettings s) => [
         // 明暗三选一（§8）：与强调色预设正交——预设换种子，明暗换中性底。
         // 默认跟随系统；切换立即生效（两个引擎都读同一份 settings.json）。
         Padding(
@@ -267,19 +253,12 @@ class _SettingsPanelState extends State<SettingsPanel> {
             ],
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
-          child: Text('明暗换中性底（深黑 = 暖深褐黑）、预设换强调色；'
-              '逾期橙红等状态语义色不随预设变（暗色下自动提亮，§8）',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-        ),
       ];
 
   Widget _trashSection() => ListTile(
         leading: const Icon(Icons.delete_sweep_outlined),
         title: Text('清空回收（${_c.trashTasks.length} 件）'),
-        subtitle: const Text('删除的任务先进 .gtd/.trash/，tasks.md 那一行会被注释掉（可捞）'),
+        subtitle: const Text('删除的任务先进回收站，可捞回'),
         onTap: _c.trashTasks.isEmpty ? null : () => _purgeTrash(context),
       );
 
@@ -298,7 +277,7 @@ class _SettingsPanelState extends State<SettingsPanel> {
             children: [
               Text('任务目录', style: Theme.of(ctx).textTheme.titleSmall),
               const SizedBox(height: 4),
-              Text('选择 Obsidian vault 里的目录；改动需要重启应用生效。',
+              Text('改动需重启应用生效',
                   style: Theme.of(ctx).textTheme.bodySmall),
               const SizedBox(height: 10),
               TextField(

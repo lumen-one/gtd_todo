@@ -39,7 +39,7 @@ Future<void> showQuickDump(BuildContext context, AppController controller,
     controller.createTask(title: text);
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('已静默入池（散件段）'),
+        content: Text('已入池'),
         duration: Duration(seconds: 2),
       ),
     );

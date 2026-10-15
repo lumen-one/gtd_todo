@@ -139,15 +139,16 @@ class _CreateTaskDialogState extends State<_CreateTaskDialog> {
     ).pop(_CreateResult(_kind, _date, _titleCtrl.text, _noteCtrl.text));
   }
 
+  /// 底部单行状态：**只说"点下去会发生什么"**，其余说明不进对话框——
+  /// 类型与日期档位本身就把选项摊开了。
   String get _hint {
     switch (_kind) {
       case CreateKind.plain:
-        // v1.17（D18）：三无的创建缺省工作强度 = '长期'（不估工时、不设优先级）。
-        return '点确认 = 稍后整理（入池散件段 · 工作强度默认「长期」）';
+        return '确认后入池散件段';
       case CreateKind.withDeadline:
-        return _date == null ? '点确认会先问截止到哪天' : '截止 ${_format(_date!)}';
+        return _date == null ? '确认后再选截止' : '截止 ${_format(_date!)}';
       case CreateKind.fixedAtTime:
-        return _date == null ? '点确认会先问哪天几点' : '定点 ${_format(_date!)}';
+        return _date == null ? '确认后再选时间' : '定点 ${_format(_date!)}';
     }
   }
 
@@ -167,14 +168,7 @@ class _CreateTaskDialogState extends State<_CreateTaskDialog> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text('新建待办', style: theme.textTheme.titleMedium),
-            const SizedBox(height: 4),
-            Text(
-              '回车 = 跳到备注 · 直接点确认 = 三无',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
             TextField(
               controller: _titleCtrl,
               focusNode: _titleFocus,

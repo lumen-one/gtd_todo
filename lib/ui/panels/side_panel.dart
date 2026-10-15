@@ -86,13 +86,13 @@ class _SidePanelState extends State<SidePanel> {
                     onPressed: widget.onOpenCalendar,
                   ),
                   IconButton(
-                    tooltip: '隐私过头（只留输入）',
+                    tooltip: '隐私模式',
                     icon: const Icon(Icons.visibility_off_outlined, size: 20),
                     onPressed: widget.onPrivacy,
                   ),
                   if (widget.onOpenSettings != null)
                     IconButton(
-                      tooltip: '打开应用设置（周期任务 / 主题 / 权限）',
+                      tooltip: '设置',
                       icon: const Icon(Icons.settings_outlined, size: 20),
                       onPressed: widget.onOpenSettings,
                     ),
@@ -289,13 +289,11 @@ class PanelOnboardDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 每条一句：首次引导只教"手往哪放"，细枝末节留给实际用一次。
     const steps = [
-      (Icons.swipe_left_alt, '拖出展开', '点一下屏幕边缘那道白色细条直接展开；或从它上面朝屏幕里拖着走——侧边栏跟着手指滑出，拖够远就开、没够就滑回去；长按细条可换边停靠。'),
-      (Icons.swap_horiz, '左右横滑翻页',
-          '三页：今日 → 疑问 → 池子。在页面区左右横拖就翻页（上下拖是滚动清单，两回事）；'
-          '也可以直接点顶部那三个圆点跳到某一页。'),
-      (Icons.add_circle_outline, '右下角添加',
-          '「+」进完整创建（类型与日期都是按钮，默认三无、点确认直接入池），「～」两秒堆三无。'),
+      (Icons.swipe_left_alt, '拖出展开', '点边缘细条即开，或朝屏内拖；长按换边'),
+      (Icons.swap_horiz, '横滑翻页', '今日 / 疑问 / 池子，左右横拖切换'),
+      (Icons.add_circle_outline, '右下角添加', '「+」完整创建，「～」两秒堆三无'),
     ];
     return AlertDialog(
       title: const Text('三步上手'),

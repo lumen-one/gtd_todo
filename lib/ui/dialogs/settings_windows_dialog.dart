@@ -40,8 +40,7 @@ Future<void> showSettingsWindowsDialog(
                   style: Theme.of(ctx).textTheme.titleSmall),
               const SizedBox(height: 4),
               Text(
-                  '可推任务的提醒只落在时间段内，段外顺延到下一时段开头（不吞掉）；'
-                  '时点性提醒不受限制',
+                  '段外的提醒顺延到下一时段开头；时点性提醒不受限',
                   textAlign: TextAlign.center,
                   style: Theme.of(ctx).textTheme.bodySmall),
               const SizedBox(height: 8),
