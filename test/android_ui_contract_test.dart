@@ -303,5 +303,14 @@ void main() {
       final legacy = AppSettings.fromJson(const {'alarm_mode': true});
       expect(legacy.scheduleMode, ScheduleMode.standard);
     });
+
+    test('侧边栏宽度：拖宽持久化往返，老文件缺键回退默认 null', () {
+      const s = AppSettings(panelWidth: 512);
+      final back = decodeSettings(encodeSettings(s));
+      expect(back.panelWidth, 512);
+      // 老设置文件没有这个键 → null → 用默认公式（不因缺键报错、不写死宽度）
+      final legacy = AppSettings.fromJson(const {'alarm_mode': true});
+      expect(legacy.panelWidth, isNull);
+    });
   });
 }

@@ -42,6 +42,11 @@ class AppSettings {
   /// 主题预设 id（§8：v1 橙主题为默认；其余预设只换强调色种子）。
   final String themePreset;
 
+  /// 侧边栏宽度（逻辑像素；可拖拽调整，松手落盘，口径见 ui-interaction.md §6.0）。
+  /// null = 用默认公式 min(0.88 × 屏宽, 420)；老设置文件缺 `panel_width`
+  /// 键即此态，向后兼容。
+  final double? panelWidth;
+
   const AppSettings({
     this.notificationWindows = const [[9 * 60, 21 * 60]],
     this.scheduleMode = ScheduleMode.standard,
@@ -53,6 +58,7 @@ class AppSettings {
     this.lastPickDate,
     this.routineShowInPool = true,
     this.themePreset = 'orange',
+    this.panelWidth,
   });
 
   static const AppSettings defaults = AppSettings();
@@ -68,8 +74,10 @@ class AppSettings {
     String? lastPickDate,
     bool? routineShowInPool,
     String? themePreset,
+    double? panelWidth,
     bool clearNotesPath = false,
     bool clearLastPickDate = false,
+    bool clearPanelWidth = false,
   }) {
     return AppSettings(
       notificationWindows: notificationWindows ?? this.notificationWindows,
@@ -83,6 +91,7 @@ class AppSettings {
           clearLastPickDate ? null : (lastPickDate ?? this.lastPickDate),
       routineShowInPool: routineShowInPool ?? this.routineShowInPool,
       themePreset: themePreset ?? this.themePreset,
+      panelWidth: clearPanelWidth ? null : (panelWidth ?? this.panelWidth),
     );
   }
 
@@ -97,6 +106,7 @@ class AppSettings {
         if (lastPickDate != null) 'last_pick_date': lastPickDate,
         'routine_show_in_pool': routineShowInPool,
         'theme_preset': themePreset,
+        if (panelWidth != null) 'panel_width': panelWidth,
       };
 
   factory AppSettings.fromJson(Map<String, Object?> json) {
@@ -119,6 +129,7 @@ class AppSettings {
       lastPickDate: json['last_pick_date'] as String?,
       routineShowInPool: json['routine_show_in_pool'] != false,
       themePreset: (json['theme_preset'] as String?) ?? 'orange',
+      panelWidth: (json['panel_width'] as num?)?.toDouble(),
     );
   }
 }
