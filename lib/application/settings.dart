@@ -42,6 +42,16 @@ class AppSettings {
   /// 主题预设 id（§8：v1 橙主题为默认；其余预设只换强调色种子）。
   final String themePreset;
 
+  /// 明暗模式（§8）：跟随系统 / 浅色 / 深黑，一组三选一。**默认跟随系统**。
+  ///
+  /// 与 [themePreset] 正交——预设换**强调色种子**，明暗换**中性底与明度**
+  /// （深色底 = 暖深褐黑，不是纯黑）。落 settings.json 的 `theme_mode`；
+  /// 老设置文件缺此键即默认值，向后兼容。
+  ///
+  /// 同 [themePreset]：application 只存稳定 id，枚举与 `ThemeMode` 映射在
+  /// UI 层（ui/theme.dart 的 `AppThemeMode`）——设置形状不依赖 Flutter。
+  final String themeMode;
+
   /// 侧边栏宽度（逻辑像素；可拖拽调整，松手落盘，口径见 ui-interaction.md §6.0）。
   /// null = 用默认公式 min(0.80 × 屏宽, 360)；老设置文件缺 `panel_width`
   /// 键即此态，向后兼容。
@@ -62,6 +72,7 @@ class AppSettings {
     this.lastPickDate,
     this.routineShowInPool = true,
     this.themePreset = 'orange',
+    this.themeMode = 'system',
     this.panelWidth,
     this.panelHeight,
   });
@@ -79,6 +90,7 @@ class AppSettings {
     String? lastPickDate,
     bool? routineShowInPool,
     String? themePreset,
+    String? themeMode,
     double? panelWidth,
     double? panelHeight,
     bool clearNotesPath = false,
@@ -98,6 +110,7 @@ class AppSettings {
           clearLastPickDate ? null : (lastPickDate ?? this.lastPickDate),
       routineShowInPool: routineShowInPool ?? this.routineShowInPool,
       themePreset: themePreset ?? this.themePreset,
+      themeMode: themeMode ?? this.themeMode,
       panelWidth: clearPanelWidth ? null : (panelWidth ?? this.panelWidth),
       panelHeight: clearPanelHeight ? null : (panelHeight ?? this.panelHeight),
     );
@@ -114,6 +127,7 @@ class AppSettings {
         if (lastPickDate != null) 'last_pick_date': lastPickDate,
         'routine_show_in_pool': routineShowInPool,
         'theme_preset': themePreset,
+        'theme_mode': themeMode,
         if (panelWidth != null) 'panel_width': panelWidth,
         if (panelHeight != null) 'panel_height': panelHeight,
       };
@@ -138,6 +152,7 @@ class AppSettings {
       lastPickDate: json['last_pick_date'] as String?,
       routineShowInPool: json['routine_show_in_pool'] != false,
       themePreset: (json['theme_preset'] as String?) ?? 'orange',
+      themeMode: (json['theme_mode'] as String?) ?? 'system',
       panelWidth: (json['panel_width'] as num?)?.toDouble(),
       panelHeight: (json['panel_height'] as num?)?.toDouble(),
     );

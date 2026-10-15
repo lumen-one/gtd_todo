@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart' show ThemeMode;
 
 import '../application/delivery.dart';
 import '../application/notification_window.dart';
@@ -93,6 +94,10 @@ class AppController extends ChangeNotifier {
 
   /// 主题预设（§8/§9 第 7 条）。
   AppThemePreset get themePreset => AppThemePreset.fromId(_settings.themePreset);
+
+  /// 明暗模式（§8/§9 第 7 条）→ MaterialApp 的 themeMode。
+  /// 缺省跟随系统（设置缺键 / 值不认识时）。
+  ThemeMode get themeMode => AppThemeMode.fromId(_settings.themeMode).themeMode;
 
   /// 待消费的提示（一次性 toast）。
   String? get pendingNotice => _pendingNotice;

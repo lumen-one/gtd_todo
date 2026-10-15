@@ -25,6 +25,34 @@ enum AppThemePreset {
       );
 }
 
+/// 明暗模式（§8）：**跟随系统（默认）/ 浅色 / 深黑**，一组三选一。
+///
+/// 与 [AppThemePreset] 正交：预设换**强调色种子**，明暗换**中性底与明度**。
+/// 设置里存 id（`settings.json` 的 `theme_mode`），枚举与 [themeMode] 映射
+/// 都在这里——application 层只看见字符串，同 [AppThemePreset] 的模式。
+enum AppThemeMode {
+  system('system', '跟随系统'),
+  light('light', '浅色'),
+  dark('dark', '深黑');
+
+  const AppThemeMode(this.id, this.label);
+
+  final String id;
+  final String label;
+
+  static AppThemeMode fromId(String? id) => AppThemeMode.values.firstWhere(
+        (m) => m.id == id,
+        orElse: () => AppThemeMode.system,
+      );
+
+  /// 映射成 Flutter 的 ThemeMode（两个引擎的 MaterialApp 消费它）。
+  ThemeMode get themeMode => switch (this) {
+        AppThemeMode.system => ThemeMode.system,
+        AppThemeMode.light => ThemeMode.light,
+        AppThemeMode.dark => ThemeMode.dark,
+      };
+}
+
 class AppColors {
   /// 当前强调色（主题预设的种子）；默认橙。
   static Color accent = AppThemePreset.orange.seed;
@@ -34,6 +62,15 @@ class AppColors {
 
   /// 逾期橙红（比主橙更红）——状态语义，不随预设变化。
   static const Color overdue = Color(0xFFD84315);
+
+  /// 逾期橙红的**暗色提亮变体**（§8）：同一个"逾期"语义，在深色底上换亮一档，
+  /// 把小字徽标的对比度从约 3.4:1 拉到约 5.5:1。语义色"不随预设变"与
+  /// "随明暗提亮"是两回事——前者防装饰性漂移，后者保可读性。
+  static const Color overdueOnDark = Color(0xFFFF7043);
+
+  /// 当前明暗下的逾期色：徽标 / 圆点 / 组头统一走这里，别直接引 [overdue]。
+  static Color overdueFor(Brightness brightness) =>
+      brightness == Brightness.dark ? overdueOnDark : overdue;
 
   /// 固定时点的时间徽标橙——状态语义，不随预设变化。
   static const Color timeBadge = Color(0xFFF57C00);
@@ -79,6 +116,24 @@ ThemeData buildAppTheme(Brightness brightness,
       ),
     ),
     snackBarTheme: const SnackBarThemeData(behavior: SnackBarBehavior.floating),
+    // 暗色一致性（§8）：AppBar 与 scaffold 同底——M3 默认给 AppBar 一层
+    // surfaceTint，暗底下会染出种子色、和内容区分层；浅色保持现状不动。
+    appBarTheme: isDark
+        ? const AppBarTheme(
+            backgroundColor: AppColors.darkSurface,
+            surfaceTintColor: Colors.transparent,
+            elevation: 0,
+            scrolledUnderElevation: 0,
+          )
+        : null,
+    // 暗色：弹窗 / bottom sheet 用卡色（darkCard），与 Card 同一层——
+    // 默认的 surface 比卡还暗，对话框会"沉"进背景。
+    dialogTheme: isDark
+        ? const DialogThemeData(backgroundColor: AppColors.darkCard)
+        : null,
+    bottomSheetTheme: isDark
+        ? const BottomSheetThemeData(backgroundColor: AppColors.darkCard)
+        : null,
   );
 }
 

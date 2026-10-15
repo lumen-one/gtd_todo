@@ -134,13 +134,29 @@ class _OverlayRootState extends State<_OverlayRoot> {
   @override
   Widget build(BuildContext context) {
     final core = _core;
+    // ListenableBuilder 监听控制器：设置里改主题预设 / 明暗（主引擎写
+    // settings.json → 文件监听触发本引擎 bootstrap）要**立刻**反映到悬浮
+    // 面板上。原先 MaterialApp 不监听——预设切换要等引擎重启才生效，
+    // 与 _assembleOverlayCore 里"主题改完应当立刻反映"的注释不符。
+    // core 还没装配好（_core == null）时没什么可听的，直接建。
+    if (core == null) return _buildApp(null);
+    return ListenableBuilder(
+      listenable: core.controller,
+      builder: (context, _) => _buildApp(core),
+    );
+  }
+
+  Widget _buildApp(_OverlayCore? core) {
     final preset = core?.controller.themePreset ?? AppThemePreset.orange;
+    final mode = core?.controller.themeMode ?? ThemeMode.system;
     AppColors.applyPreset(preset);
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       // 窗口是透明的：面板下面是用户当前所在的 App。
       color: Colors.transparent,
       theme: buildAppTheme(Brightness.light, preset: preset),
+      darkTheme: buildAppTheme(Brightness.dark, preset: preset),
+      themeMode: mode,
       home: _error != null
           ? _OverlayErrorCard(
               message: '$_error',

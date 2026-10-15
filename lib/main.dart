@@ -181,7 +181,8 @@ class GtdTodoApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 主题预设切换 → 整体重建（AppColors.accent 是进程内当前强调色）。
+    // 主题预设 / 明暗模式切换 → 整体重建（AppColors.accent 是进程内当前强调色；
+    // themeMode 直接读设置，深色底与语义色都在 ThemeData 里）。
     return ListenableBuilder(
       listenable: controller,
       builder: (context, _) {
@@ -191,7 +192,7 @@ class GtdTodoApp extends StatelessWidget {
           title: '动态任务调度 Todo',
           theme: buildAppTheme(Brightness.light, preset: preset),
           darkTheme: buildAppTheme(Brightness.dark, preset: preset),
-          themeMode: ThemeMode.light,
+          themeMode: controller.themeMode,
           home: Platform.isAndroid
               ? AndroidShell(controller: controller)
               : DesktopShell(controller: controller),
