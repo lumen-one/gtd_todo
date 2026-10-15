@@ -578,10 +578,13 @@ abstract class PermissionPort {
 
 | 层                | 位置                                                    | 职责                                                                                                     |
 | ----------------- | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| 原生命令/事件通道 | `gtd/overlay`（MethodChannel）                          | `notifyReady` / `collapse` / `expand` / `openApp{target,routineId}` ↔ 原生 `state{expanded,dockedRight}` |
+| 原生命令/事件通道 | `gtd/overlay`（MethodChannel）                          | `notifyReady` / `collapse` / `expand` / `openApp{target,routineId}` ↔ 原生 `state{expanded,dockedRight,handleCenterY}` |
 | 第二个引擎入口    | `lib/overlay_main.dart`（DartEntrypoint `overlayMain`） | 只剩入口与装配：装配**同一套** domain/application（自己的实例）；通道桥与面板宿主壳 `OverlayBridge` / `OverlayPanelShell` 在 `lib/ui/overlay/`                        |
 | 面板本体          | `lib/ui/panels/side_panel.dart`                         | `SidePanel` / `PanelActions` / `PanelPrivacyBar` / `PanelOnboardDialog`：**应用内壳与悬浮窗共用同一份**  |
 | 窗口              | 原生 `OverlayHandleService`                             | 全屏**透明** `TYPE_APPLICATION_OVERLAY` 窗口承载引擎的 FlutterView；展开时隐藏原生把手                   |
+
+> `handleCenterY`（逻辑像素）= 原生把手的中心 Y：面板垂直居中于它（ui-interaction.md
+> §6.0）；字段缺失（老版本原生 / 桌面）时 Dart 侧贴顶展开，向后兼容。
 
 边界（写死，避免两个引擎打架）：
 
