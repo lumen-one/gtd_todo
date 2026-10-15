@@ -55,7 +55,8 @@ import kotlin.math.min
  * - 展开时把手隐藏，收起后按宿主前后台状态决定是否重新显示；
  * - 宿主在前台（[notifyHostForeground] true）→ 收起面板 + 隐藏把手（有应用内把手）；
  * - [setEnabled] false → 销毁引擎、移除面板与把手、停服务；
- * - 手柄只竖向移动、贴边停靠、位置持久化（v1.5 行为保持不变）。
+ * - 手柄只竖向移动（**位置可上锁**：[setLocked] true 时拖不动 y）、贴边停靠、
+ *   位置持久化（v1.5 行为保持不变）。
  *
  * 所有 WindowManager / 引擎操作都吞异常：用户中途撤销悬浮窗权限或引擎起不来时
  * 只降级或停服务，绝不让进程崩掉。
@@ -94,17 +95,51 @@ class OverlayHandleService : Service() {
         private const val KEY_Y = "y"
 
         /**
-         * 手柄尺寸（dp）：**贴在边缘的一段半透明白条**（v1.10 / 决议 40）。
+         * 把手位置是否**上锁**（v1.11 / ui-interaction.md §6.0）。
          *
-         * 原先是 26×72 的橙色圆角块；现在故意做窄做淡——日常它就该是"几乎看不见"的，
-         * 只在用户主动去找时才注意到。竖向留到 88dp 是为了抓握与点按够得着：
-         * 宽度还能再砍，高度再短就一次摁不准了。
+         * true = 竖向拖动不再改变 y，把手钉在当前高度；长按换左右边、横拖拉开、点按
+         * 展开都照旧。锁定意图存在 `settings.json` 的 `handle_locked`（UI 层的用户
+         * 设置），这里只是执行侧的一份镜像：原生自己管把手位置，服务可能被拉起时
+         * Dart 还没起来，不能依赖通道补投。
          */
-        private const val HANDLE_WIDTH_DP = 10
-        private const val HANDLE_HEIGHT_DP = 88
+        private const val KEY_LOCKED = "locked"
 
-        /** 白条的不透明度（0–255 的 alpha）：55% ≈ 140。 */
-        private const val HANDLE_ALPHA = 140
+        /**
+         * **可见**白条的尺寸（dp）：**贴在边缘的一段半透明白条**（v1.10 / 决议 40，
+         * v1.11 再缩一档）。
+         *
+         * 沿革：26×72 的橙色圆角块 → 10×88 的白色细条 → 现在 6×72。故意做窄做淡——
+         * 日常它就该是"几乎看不见"的，只在用户主动去找时才注意到。**它能缩到这么小，
+         * 靠的是下面那块热区**：抓握精度由 [HOT_ZONE_WIDTH_DP] / [HOT_ZONE_HEIGHT_DP]
+         * 承担，白条只负责"让人知道它在哪"。
+         */
+        private const val BAR_WIDTH_DP = 6
+        private const val BAR_HEIGHT_DP = 72
+
+        /**
+         * **热区**（可起手的触摸窗口，dp）：窗口本身这么大，白条只是里面贴边居中的一条。
+         *
+         * 高度取 200 是硬上限：系统"每边最多兑现 200dp 的返回手势排除"，再多不认
+         * （超出部分会被丢回给系统返回手势）。宽度 28 是手感与"抢走多少屏边"的折中——
+         * 热区是 overlay 窗口，它盖住的触摸归把手，底下 App 收不到。
+         */
+        private const val HOT_ZONE_WIDTH_DP = 28
+        private const val HOT_ZONE_HEIGHT_DP = 200
+
+        /** 白条的不透明度（0–255 的 alpha）：35% ≈ 89。 */
+        private const val BAR_ALPHA = 89
+
+        /** 白条的描边：极淡，只为压在浅色壁纸上时不至于整条消失。 */
+        private const val BAR_STROKE = "#14000000"
+
+        /**
+         * 点按/长按的靶 = **白条外扩这么多 dp**（不是整块热区）。
+         *
+         * 热区放大是为了"拖动起手不必精准"，但点按若也跟着占满 28×200dp，用户在别的
+         * App 边缘随手一摁就会弹出面板。白条只有 6dp 宽，直接当靶太薄，于是外扩 10dp
+         * 凑出一个 26×92dp 的靶——比热区小一个数量级，又够手指摁。
+         */
+        private const val BAR_TAP_PADDING_DP = 10
 
         /** 判定为"拖拽"的最小位移（px），低于它算点击。 */
         private const val TOUCH_SLOP_DP = 6
@@ -220,6 +255,18 @@ class OverlayHandleService : Service() {
             }
         }
 
+        /**
+         * 把手位置上锁/解锁（[NativeBridge] 转 settings.json 的 `handle_locked`）。
+         *
+         * 服务活着就直接改内存里的标志（同进程，主线程 post）；没活着也没关系——
+         * 值已落 prefs，下次 onCreate 会读到。
+         */
+        fun setLocked(context: Context, locked: Boolean) {
+            val app = context.applicationContext
+            prefs(app).edit().putBoolean(KEY_LOCKED, locked).apply()
+            instance?.applyLocked(locked)
+        }
+
         private fun canDrawOverlays(context: Context): Boolean = try {
             Settings.canDrawOverlays(context)
         } catch (_: Throwable) {
@@ -235,8 +282,11 @@ class OverlayHandleService : Service() {
 
     private var windowManager: WindowManager? = null
 
-    /** 把手（v1.5 行为保持不变）。 */
+    /** 把手（v1.5 行为保持不变）的**根视图 = 透明热区**，触摸挂它上面。 */
     private var handleView: View? = null
+
+    /** 热区里那条可见白条（换边时要挪它到另一侧的边）。 */
+    private var barView: View? = null
     private var layoutParams: WindowManager.LayoutParams? = null
 
     /** 面板（v1.6 新增）：第二个引擎的 FlutterView + 全屏透明窗口。 */
@@ -250,6 +300,9 @@ class OverlayHandleService : Service() {
 
     /** 本应用是否在前台（在前台时把手隐藏，避免盖住自己的界面）。 */
     private var hostForeground = false
+
+    /** 把手竖向位置是否上锁（[KEY_LOCKED]）：锁上时拖拽不再改 y。 */
+    private var handleLocked = false
 
     /** 面板是否展开（展开时把手隐藏，二次展开不重复挂窗口）。 */
     private var panelExpanded = false
@@ -307,6 +360,7 @@ class OverlayHandleService : Service() {
         density = resources.displayMetrics.density
         prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE).also {
             dockedRight = it.getBoolean(KEY_DOCKED_RIGHT, true)
+            handleLocked = it.getBoolean(KEY_LOCKED, false)
         }
         startForegroundSafely()
     }
@@ -388,16 +442,21 @@ class OverlayHandleService : Service() {
         val wm = getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return
         windowManager = wm
 
-        val view = FrameLayout(this).apply {
+        // 白条：热区里唯一可见的东西（不放任何子 View，见 handleBackground 的说明）。
+        val bar = View(this).apply {
             background = handleBackground()
-            // 不放任何子 View：白条本身就是提示，再画一道白色握把线等于没有
-            // （v1.10 / 决议 40 删掉了原来那条）。
             elevation = 4f * density
+        }
+        // 根视图是整块透明的热区：能起手的面积远大于白条，用户不必精确摁到那条线上。
+        // 代价写在这里：热区盖住的触摸归把手，底下的 App 收不到。
+        val view = FrameLayout(this).apply {
+            setBackgroundColor(Color.TRANSPARENT)
+            addView(bar, barLayoutParams())
         }
 
         val params = WindowManager.LayoutParams(
-            handleWidthPx(),
-            handleHeightPx(),
+            hotZoneWidthPx(),
+            hotZoneHeightPx(),
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
             } else {
@@ -413,12 +472,14 @@ class OverlayHandleService : Service() {
         }
 
         handleView = view
+        barView = bar
         layoutParams = params
         try {
             wm.addView(view, params)
         } catch (t: Throwable) {
             Log.w(TAG, "addView failed: ${t.message}", t)
             handleView = null
+            barView = null
             layoutParams = null
             stopSelf()
             return
@@ -431,6 +492,7 @@ class OverlayHandleService : Service() {
     private fun removeHandle() {
         val view = handleView
         handleView = null
+        barView = null
         layoutParams = null
         try {
             if (view != null) windowManager?.removeView(view)
@@ -485,7 +547,8 @@ class OverlayHandleService : Service() {
     }
 
     /**
-     * 白条的底色（v1.10 / 决议 40）：带一层极淡描边，压在浅色壁纸上也不至于消失。
+     * 白条的底色（v1.10 / 决议 40，v1.11 再淡一档）：带一层极淡描边，压在浅色壁纸上
+     * 也不至于消失。
      *
      * 刻意**不跟随主题预设**：它浮在别人的 App、别人的壁纸上，"在哪都看得见"这一层
      * 保证比配色一致重要（理由同 ui-interaction.md §17C）。
@@ -493,9 +556,40 @@ class OverlayHandleService : Service() {
     private fun handleBackground(): GradientDrawable = GradientDrawable().apply {
         shape = GradientDrawable.RECTANGLE
         // 圆角 = 宽度的一半 → 一条胶囊状竖条，而不是一块方板。
-        cornerRadius = (HANDLE_WIDTH_DP / 2f) * density
-        setColor(Color.argb(HANDLE_ALPHA, 255, 255, 255))
-        setStroke(1, Color.parseColor("#2B000000"))
+        cornerRadius = (BAR_WIDTH_DP / 2f) * density
+        setColor(Color.argb(BAR_ALPHA, 255, 255, 255))
+        setStroke(1, Color.parseColor(BAR_STROKE))
+    }
+
+    /** 白条在热区里的位置：竖直居中 + 贴在**屏幕边缘**那一侧（换边时跟着挪）。 */
+    private fun barGravity(): Int =
+        Gravity.CENTER_VERTICAL or (if (dockedRight) Gravity.END else Gravity.START)
+
+    private fun barLayoutParams(): FrameLayout.LayoutParams =
+        FrameLayout.LayoutParams(barWidthPx(), barHeightPx(), barGravity())
+
+    /** 换边 / 停靠侧变化后把白条挪到新的那一侧。 */
+    private fun applyBarGravity() {
+        val bar = barView ?: return
+        val lp = bar.layoutParams as? FrameLayout.LayoutParams ?: return
+        lp.gravity = barGravity()
+        bar.layoutParams = lp // 重新赋值才会触发 requestLayout
+    }
+
+    /**
+     * 点按/长按是否落在**白条的靶**上（白条外扩 [BAR_TAP_PADDING_DP]）。
+     *
+     * @param x 视图自身坐标系的横坐标（`MotionEvent.x`），不是屏幕坐标。
+     */
+    private fun isOnBar(v: View, x: Float, y: Float): Boolean {
+        val w = v.width
+        val h = v.height
+        if (w <= 0 || h <= 0) return false
+        val pad = BAR_TAP_PADDING_DP * density
+        val left = (if (dockedRight) w - barWidthPx() else 0).toFloat()
+        val top = (h - barHeightPx()) / 2f
+        return x >= left - pad && x <= left + barWidthPx() + pad &&
+            y >= top - pad && y <= top + barHeightPx() + pad
     }
 
     /**
@@ -511,7 +605,11 @@ class OverlayHandleService : Service() {
      * - **坐标是视图自身坐标系**（`Rect(0,0,w,h)`），ViewRootImpl 会按视图在窗口里的位置
      *   叠加偏移，不需要自己换算成窗口坐标。
      *
-     * 只罩住把手这一小块，远在系统给每边的配额内。面板是**全屏**窗口，**不给**它声明——
+     * 声明的是**整块热区**（v1.11 起是 28×200dp），不是那条白条——用户正是从热区
+     * 里起手的。200dp 是系统"每边最多兑现 200dp 排除"的配额上限，正好用满：再多系统
+     * 不认，超出的部分会被丢回给返回手势。
+     *
+     * 面板是**全屏**窗口，**不给**它声明——
      * 那里的横向返回已经等同于收起面板，加了反而丢掉"边缘 = 返回"这个自然退出口
      * （局限记在架构合同 §12）。
      */
@@ -548,6 +646,13 @@ class OverlayHandleService : Service() {
             private var downY = 0f
             private var dragging = false
             private var longPressed = false
+
+            /**
+             * 这次 DOWN 是否落在**白条的靶**上（[BAR_TAP_PADDING_DP] 外扩范围内）。
+             *
+             * 只有它是 true 才认点按与长按——热区是给"拖动起手"用的，不是给点按用的。
+             */
+            private var downOnBar = false
             private val longPressRunnable = Runnable {
                 longPressed = true
                 toggleDock()
@@ -564,9 +669,12 @@ class OverlayHandleService : Service() {
                         downY = event.rawY
                         dragging = false
                         longPressed = false
+                        // event.x/y 是**视图自身坐标系**：白条在热区里的位置按它算。
+                        downOnBar = isOnBar(v, event.x, event.y)
                         velocityTracker?.recycle()
                         velocityTracker = VelocityTracker.obtain()
-                        mainHandler.postDelayed(longPressRunnable, 500L)
+                        // 长按（换边）与点按同一个靶：热区里随手摁一下不该换边。
+                        if (downOnBar) mainHandler.postDelayed(longPressRunnable, 500L)
                         return true
                     }
 
@@ -594,8 +702,9 @@ class OverlayHandleService : Service() {
                             if (pullTracking) sendPullProgress()
                             return true
                         }
-                        if (dragging) {
+                        if (dragging && !handleLocked) {
                             // 只竖向移动：x 永远贴边，不会被横向拖动带偏。
+                            // 上锁时整段跳过——把手钉在当前高度（长按换边仍可用）。
                             params.y = clampY((startY + dy).toInt())
                             if (wm != null) params.x = edgeX(wm)
                             updateView(v, params)
@@ -617,7 +726,8 @@ class OverlayHandleService : Service() {
                         }
                         // 松手后回到贴边位置并把 y 夹回屏内（落盘，重启保留）。
                         relayout()
-                        if (!longPressed && !moved) {
+                        // 点按的靶是白条，不是整块热区（[BAR_TAP_PADDING_DP]）。
+                        if (!longPressed && !moved && downOnBar) {
                             // 单次点按：展开面板
                             expandPanel()
                         }
@@ -728,6 +838,7 @@ class OverlayHandleService : Service() {
         val params = layoutParams ?: return
         dockedRight = !dockedRight
         prefs?.edit()?.putBoolean(KEY_DOCKED_RIGHT, dockedRight)?.apply()
+        applyBarGravity()
         val wm = windowManager
         if (wm != null) params.x = edgeX(wm)
         params.y = clampY(params.y)
@@ -1072,10 +1183,11 @@ class OverlayHandleService : Service() {
         false
     }
 
-    /** 面板贴哪一侧（Dart 侧按此排版）；同时把把手挪到同侧。 */
+    /** 面板贴哪一侧（Dart 侧按此排版）；同时把把手挪到同侧、白条贴到新侧的边缘。 */
     private fun setDockSide(right: Boolean) {
         dockedRight = right
         prefs?.edit()?.putBoolean(KEY_DOCKED_RIGHT, right)?.apply()
+        applyBarGravity()
         val view = handleView
         val params = layoutParams
         val wm = windowManager
@@ -1107,7 +1219,14 @@ class OverlayHandleService : Service() {
      */
     private fun handleCenterY(): Double? {
         val params = layoutParams ?: return null
-        return ((params.y + handleHeightPx() / 2f) / density).toDouble()
+        // 热区中心 = 白条中心（白条在热区里竖直居中）。
+        return ((params.y + hotZoneHeightPx() / 2f) / density).toDouble()
+    }
+
+    /** 上锁状态变化（[setLocked]）：只改内存标志，位置不动——锁的是"不能再挪"。 */
+    private fun applyLocked(locked: Boolean) {
+        handleLocked = locked
+        Log.i(TAG, "overlay handle locked=$locked")
     }
 
     /**
@@ -1166,26 +1285,31 @@ class OverlayHandleService : Service() {
             resources.displayMetrics.heightPixels
         }
 
-    /** 手柄宽度的像素值。 */
-    private fun handleWidthPx(): Int = (HANDLE_WIDTH_DP * density).toInt()
+    /** 热区宽度的像素值（窗口尺寸 = 可起手的范围）。 */
+    private fun hotZoneWidthPx(): Int = (HOT_ZONE_WIDTH_DP * density).toInt()
 
-    private fun handleHeightPx(): Int = (HANDLE_HEIGHT_DP * density).toInt()
+    private fun hotZoneHeightPx(): Int = (HOT_ZONE_HEIGHT_DP * density).toInt()
 
-    /** 贴边位置：右停靠 = 屏幕宽 − 手柄宽；左停靠 = 0。 */
+    /** 可见白条的像素尺寸。 */
+    private fun barWidthPx(): Int = (BAR_WIDTH_DP * density).toInt()
+
+    private fun barHeightPx(): Int = (BAR_HEIGHT_DP * density).toInt()
+
+    /** 贴边位置：右停靠 = 屏幕宽 − 热区宽；左停靠 = 0。 */
     private fun edgeX(wm: WindowManager): Int =
-        if (dockedRight) max(0, screenWidth(wm) - handleWidthPx()) else 0
+        if (dockedRight) max(0, screenWidth(wm) - hotZoneWidthPx()) else 0
 
     /** 上次落盘的 y（首次 = 屏幕竖向居中）。 */
     private fun restoredY(wm: WindowManager): Int {
         val saved = prefs?.getInt(KEY_Y, -1) ?: -1
-        val y = if (saved >= 0) saved else max(0, (screenHeight(wm) - handleHeightPx()) / 2)
+        val y = if (saved >= 0) saved else max(0, (screenHeight(wm) - hotZoneHeightPx()) / 2)
         return clampY(y)
     }
 
     private fun clampY(y: Int): Int {
         val wm = windowManager ?: return max(0, y)
         // 底部留一点余量，避免手柄卡在导航栏下面抠不出来。
-        val bottom = max(0, screenHeight(wm) - handleHeightPx() - (24 * density).toInt())
+        val bottom = max(0, screenHeight(wm) - hotZoneHeightPx() - (24 * density).toInt())
         return min(max(0, y), bottom)
     }
 

@@ -156,6 +156,7 @@ class NativeBridge(
                 "requestOverlayPermission" -> result.success(requestOverlayPermission())
                 "setOverlayHandle" -> result.success(setOverlayHandle(call))
                 "isOverlayHandleEnabled" -> result.success(isOverlayHandleEnabled())
+                "setHandleLocked" -> result.success(setHandleLocked(call))
                 "isIgnoringBatteryOptimizations" -> result.success(isIgnoringBatteryOptimizations())
                 "notifyReady" -> {
                     dartReady = true
@@ -291,6 +292,18 @@ class NativeBridge(
     private fun setOverlayHandle(call: MethodCall): Boolean {
         val enabled = call.argument<Boolean>("enabled") ?: false
         return OverlayHandleService.setEnabled(activity, enabled)
+    }
+
+    /**
+     * 把手位置上锁（settings.json 的 `handle_locked` 的执行侧）。
+     *
+     * 只锁"竖向拖动改变 y"，长按换边与横拖拉开都照旧。服务没在跑也没关系——
+     * 值已落原生 prefs，下次服务 onCreate 会读到。
+     */
+    private fun setHandleLocked(call: MethodCall): Boolean {
+        val locked = call.argument<Boolean>("locked") ?: false
+        OverlayHandleService.setLocked(activity, locked)
+        return true
     }
 
     /** 把手开关的真实状态（设置页据此初始化开关，而不是靠本地假设）。 */
