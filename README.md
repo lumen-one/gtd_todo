@@ -20,7 +20,8 @@ dart run tool/seed_tasks.dart      # 生成示例任务数据（tasks.md + .gtd/
 
 ## 任务数据（Obsidian 可直接编辑）
 
-任务存放在 `tasks/` 目录（可用环境变量 `GTD_TASKS_DIR` 覆盖）。
+任务存放在 `tasks/` 目录（可用环境变量 `GTD_TASKS_DIR` 覆盖；已加入 .gitignore 不入库，
+`tool/seed_tasks.dart` 可重新生成样例）。
 用 Obsidian 把本目录（或整个项目目录）作为 Vault 打开即可直接查看和修改。
 
 **双文档：人写人看的归一个文档，内核算的归另一个文档。**
@@ -62,9 +63,9 @@ status: active
 - 人在 Obsidian 里改名/改日期/加删行都能生效：两条文档靠行指纹配对，
   人写的那半边以文档为准，内核那半边（工时/优先级/裕度/剩余量）原样保留；
 - **人类文档里不出现任何内核字段**（没有 id、没有裕度、没有优先级噪声）；
-- **三无任务默认'长期'**（v0.16 决议 46）：工作强度是"长期"标记而非分钟数——不估工时、
+- **三无任务默认'长期'**：工作强度是"长期"标记而非分钟数——不估工时、
   不设优先级、没有裕度，内核属性文档里只有一个任务 id；有截止的可推任务仍必须给数字工时；
-- **挂起进行**（v0.17 决议 47）：长期任务可『挂起进行』——顶置在今日页最顶的挂起组
+- **挂起进行**：长期任务可『挂起进行』——顶置在今日页最顶的挂起组
   （无编号、组内可上下拖动调序），保持到完成或主动取消，不按天过期；标记落 metadata
   `in_progress`，完成命令顺手清除；
 - `log`（操作流水）单独一个文档：`tasks/.gtd/log.md`，append-only；
@@ -115,17 +116,18 @@ lib/
 ├── domain/       纯 Dart：Task / Schedule / TimeContext / Reminder / DomainEvent
 ├── repository/   TaskRepository 接口 + 双文档 Markdown 实现（人类文档 + 内核属性文档）+ Memory 实现
 ├── scheduler/    Scheduler 接口 + SlackPriorityScheduler（默认：时间裕度优先）
-│                 + SlackScheduler（旧口径，留作对照）+ 注册表 / 影子运行
+│                 + SlackScheduler（旧口径，留作对照）+ 注册表
 ├── application/  TaskService：用户行为 → 重新调度 → 产出 ScheduleResult
+│                 （按子域拆 part：task_service/ 下回收站 / 周期实例同步 / 四种排序）
 │                 + 周期任务 / 今日视图 / 送达策略 / EventLog（log.md 订阅者）
 ├── platform/     平台适配器（安卓原生 / 桌面 / 设置与引导落盘）——只有组装点 import
-└── ui/           Flutter 界面 + AppController（薄胶水）
+└── ui/           Flutter 界面 + AppController（薄胶水）+ overlay/（悬浮面板引擎侧）
 ```
 
 依赖铁律：箭头只能指向更纯粹的层；Markdown / 算法 / 通知都是"朝上插"进接口的实现；
 Scheduler 不依赖 UI、Markdown、Notification，时间由外部注入，因此可以无 UI 重放测试。
 
 注意：不要在周期 tick 里无条件调用 `refreshSchedule()`（会不断重锚导致提醒永远到不了）；
-只有"事件发生"（操作、提醒到点、文件变更）才重锚。重锚分两条（v1.16）：命令重算走
+只有"事件发生"（操作、提醒到点、文件变更）才重锚。重锚分两条：命令重算走
 `recomputeSchedule()`（当前内存态，不读盘），`refreshSchedule()` 只留给文件监听 /
 回前台 / 启动 / 提醒到点。

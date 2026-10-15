@@ -1,42 +1,39 @@
 # 架构契约：分层与接口设计
 
-> 版本：v1.18（修订记录见 §13）
 > 定位：这是写代码时对照的**合同**。结构或接口变更必须先改本文件，再改代码。
 >
 > **标注约定（全文统一）**：
 >
-> - **【现状】** = v0 已实现且有测试覆盖；
+> - **【现状】** = 已实现且有测试覆盖；
 > - **【规划】** = 已确认方向、未实现，落地前以本节契约为准；
 > - **【待细化】** = 接口形状未定，实现前必须先补全本文件对应条款。
 >   未标注的条目默认【规划】。"与代码同步"仅指标注为【现状】的范围。
 >
 > 分工：产品定位、调度数学与阶段规划见原《动态任务调度 Todo 设计文档》。**客户端层的
-> 需求与决议见 docs/ui-interaction.md（v0.17，决议 1–47）**——本文件为它提供结构与插座，
+> 需求见 docs/ui-interaction.md**——本文件为它提供结构与插座，
 > 对接点 = §3.5 命令清单 + §4.3 送达策略 + §4.1 Scheduler 的 `reminderMode` +
-> `buildTodayView` 的 `scheduleMode`（业务层排序口径，v1.12）；
-> 结构冲突以本文件为准，产品行为以 UI 文档为准；与 `docs/changelog.md` 冲突时，
-> 以正文与 §11 决策记录为准。改动任何口径前，先查 `docs/crosswalk.md` 的联动表。
-> 本文件接管原设计文档
+> `buildTodayView` 的 `scheduleMode`（业务层排序口径）；
+> 结构冲突以本文件为准，产品行为以 UI 文档为准。本文件接管原设计文档
 > 结构章节（按名称引用）：「总体架构」「Repository 层」「Scheduler 层」「一个非常重要的
 > 边界」「AI Provider」「时间系统必须独立」「推荐项目结构」。两者冲突时以本文件为准。
 >
-> **存储形态（v1.7，见决议 36 与附录 B）**：任务数据是**双文档**——
+> **存储形态（见附录 B）**：任务数据是**双文档**——
 > 人写人看的 `tasks.md`（**一个**文档、`# 标题` 分类、一行一条任务）
 >
 > + 内核属性文档 `.gtd/<任务id>.md`（应用算的：任务 id、工作强度、优先级、
 >   时间裕度、剩余工作量）。两条文档靠**行指纹**对号，人是人类文档唯一作者。
->   **长期任务例外（v1.17，D18）**：工作强度 = '长期'（三无任务的创建缺省）时，上面那些字段
+>   **长期任务例外**：工作强度 = '长期'（三无任务的创建缺省）时，上面那些字段
 >   全部缺行——这份文档只剩一个任务 id。
 >
-> **提醒模式（v1.9，见决议 38 与 §3.1）**：默认**标准模式**——算法照常排出先后
+> **提醒模式（见 §3.1）**：默认**标准模式**——算法照常排出先后
 > （时间裕度优先：`risk = f(slack)` **非线性**，`priority = risk × importance`），
 > 但**不产出提醒**；个别任务可手动开提醒（metadata `remind`）。**完整模式** = 原方案，
 > 算法判定该响的都响。模式是"**门槛**"不是"送达策略"：它决定任务**出不出声**
 > （`TaskMetric.reminds` 与结果级的 `nextReminderAt`），与"什么时候允许打扰"
-> （§4.3 的通知时间段）正交，两者串联而不是互相覆盖。
+> （§4.3 的通知时间段）各管一段，两者串联而不是互相覆盖。
 >
-> **调度模式三档（v1.12，见决议 43、D17 与 §3.1）**：**完整 → 标准 → 无排序**，
-> 逐级弱化算法替人做主的程度，一次只能选一个（不是两个正交开关）：
+> **调度模式三档（见 §3.1）**：**完整 → 标准 → 无排序**，
+> 逐级弱化算法替人做主的程度，一次只能选一个（不是两个独立开关）：
 >
 > - **标准（默认）**：算法照常排先后，但不产出提醒（个别任务可手动开 `remind`）；
 > - **完整**：在标准之上把门槛也放开——算法判定该响的都响；
@@ -83,7 +80,7 @@
           │       同一套 Application API       │
 ┌─────────┴──────────────────────────────────┴──────────────────┐
 │  Application：TaskService —— 唯一写入口（正典表述见 §3.2 规则 A）│
-│  + RoutineService（周期规则；生成的实例仍经 TaskService 写，v1.5）│
+│  + RoutineService（周期规则；生成的实例仍经 TaskService 写）      │
 │  校验规则 → 变更状态 → 发领域事件 → 重锚调度                     │
 └─────────┬──────────────────────────────────────────────────────┘
 ┌─────────┴──────────── Domain（宪法，纯 Dart）──────────────────┐
@@ -128,11 +125,12 @@
 | `lib/main.dart`                 | 一切（唯一组装点）                 | 业务逻辑                                                          |
 
 - UI 允许 import domain 的**类型**（Task、ScheduleResult）做展示——有意选择的务实例外；
-  代价（Task 字段变化会波及 UI）已知并接受，缓解见 §10 第 1 条。
+  代价（Task 字段变化会波及 UI）已知并接受。
 - **"application 不得 import 具体实现"包含默认值**：`scheduler ?? const SlackScheduler()`
-  这类默认选择属于组装点职责。~~已知违规~~ **已修复（v1.2）**：默认实现的选择移至
-  main.dart 组装点，`TaskService` 构造函数要求注入 `Scheduler` 接口；
-  `test/architecture_test.dart` 持续拦截此类回归。
+  这类默认选择属于组装点职责。默认实现的选择在 main.dart 组装点，
+  `TaskService` 构造函数要求注入 `Scheduler` 接口；`test/architecture_test.dart`
+  持续拦截此类回归。application 内部同目录相对 import（含 part 拆分）天然合法，
+  不算越线。
 - `main.dart` 是全项目唯一允许问"我现在是什么平台"的地方（组装时按平台挑插头），且不写业务逻辑。
 
 ---
@@ -143,24 +141,23 @@
 
 | 类型                          | 职责                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | 状态          |
 | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
-| `Task`                        | 任务事实：id、title、**created（= 人类文档的「创建」；v1.7 起由人类文档持有）**、**deadline（可空：fixed=时点 / flex=截止 / null=散件，v1.4）**、**estimatedWork（v1.17 起可表达'长期'：三无缺省，标记而非分钟数；长期任务同时没有 remainingWork 与 importance）**、remainingWork、importance、status、snoozedUntil、description、**tags（v1.7）**、**completedAt（v1.7）**、**remindEnabled（v1.9：metadata `remind`，标准模式下的逐任务提醒开关）**、metadata；**不可变 + copyWith（v1.2 起由编译器强制写路径唯一）**；类型 TaskType 走 metadata 缓冲带 | 现状          |
-| `TaskType`                    | flex（可推）/ fixed（不可推）/ **routine（周期实例，v1.5）**——三者的调度与完成语义不同                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | 现状          |
+| `Task`                        | 任务事实：id、title、**created（= 人类文档的「创建」，由人类文档持有）**、**deadline（可空：fixed=时点 / flex=截止 / null=散件）**、**estimatedWork（可表达'长期'：三无缺省，标记而非分钟数；长期任务同时没有 remainingWork 与 importance）**、remainingWork、importance、status、snoozedUntil、description、**tags**、**completedAt**、**remindEnabled（metadata `remind`，标准模式下的逐任务提醒开关）**、metadata；**不可变 + copyWith（由编译器强制写路径唯一）**；类型 TaskType 走 metadata 缓冲带 | 现状          |
+| `TaskType`                    | flex（可推）/ fixed（不可推）/ **routine（周期实例）**——三者的调度与完成语义不同                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | 现状          |
 | `Routine`                     | 周期规则：频率（每天/每周 X）、时点、响不响、启用开关；**不是任务**（住在 `routines.md`），每天生成一个当天实例（TaskType.routine）                                                                                                                                                                                                                                                                                                                                                                                                                       | 现状          |
 | `RoutineOccurrence`           | 一次具体发生（规则 + 时刻）：任务池计划段插入与日历打点用                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | 现状          |
-| `TaskDocument` / `TaskLine`   | 人类文档 `tasks.md` 的解析结果：整篇行数组 + 识别出的任务行（行号/小节/行指纹/人类那半边字段）                                                                                                                                                                                                                                                                                                                                                                                                                                                            | 现状（v1.7）  |
+| `TaskDocument` / `TaskLine`   | 人类文档 `tasks.md` 的解析结果：整篇行数组 + 识别出的任务行（行号/小节/行指纹/人类那半边字段）                                                                                                                                                                                                                                                                                                                                                                                                                                                            | 现状          |
 | `TaskStatus`                  | pending / active / snoozed / completed / **overdue（派生，不写入存储）**；只增不改                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | 现状          |
-| `WorkTimeRule` / `WorkWindow` | 工时日历：每周工作窗、节假日；`workMinutesBetween`、`addWorkMinutes`、`nextWindowStart`（D8「到下个工作窗」）                                                                                                                                                                                                                                                                                                                                                                                                                                             | 现状          |
+| `WorkTimeRule` / `WorkWindow` | 工时日历：每周工作窗、节假日；`workMinutesBetween`、`addWorkMinutes`、`nextWindowStart`（「到下个工作窗」档位，§3.5）                                                                                                                                                                                                                                                                                                                                                                                                                                             | 现状          |
 | `Clock`                       | 当前时间 `DateTime now()`，构造注入【现状，形态为 `DateTime Function()`】                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | 现状          |
-| `TaskMetric`                  | 单任务派生指标：available、slack、**risk（v1.9，裕度的非线性函数）**、**priority（v1.9 = risk × importance，排序键）**、urgency、displayStatus、interval、nextReminderAt（**提醒锚点**）、**reminds（v1.9：当前模式下会不会出声）**；计算结果，不持久化【现状】                                                                                                                                                                                                                                                                                           | 现状          |
-| `ScheduleResult`              | 一次调度的输出：items（**已排序**：永远按调度优先级排，不知道有"无排序"这一回事）、nextTaskId、nextReminderAt（**下一站"会响"的提醒**，v1.9 起已过模式门槛）、infeasible/overdue 名单；所有算法的统一方言【现状】                                                                                                                                                                                                                                                                                                                                         | 现状          |
-| `ReminderMode`                | 提醒**门槛**（内核方言）：**standard**（标准：只排列不提醒，逐任务可手动开）/ **full**（完整：算法判定该响的都响）。v1.9 起进 `Scheduler.schedule` 的入参                                                                                                                                                                                                                                                                                                                                                                                                 | 现状          |
-| `ScheduleMode`                | **调度模式**（用户可见的三档，domain）：**full** / **standard**（默认）/ **manual**，逐级弱化算法替人做主的程度；由它派生**内核门槛**（`ScheduleMode.reminderMode`，给 `Scheduler.schedule`）与**业务层排序口径**（`isManual`：今日可推组是否改用手动序）（D17）。**定义在 domain（`domain/schedule.dart`），但只被 application 与 UI 消费，`Scheduler` 不认得它**                                                                                                                                                                                        | 现状（v1.12） |
+| `TaskMetric`                  | 单任务派生指标：available、slack、**risk（裕度的非线性函数）**、**priority（= risk × importance，排序键）**、urgency、displayStatus、interval、nextReminderAt（**提醒锚点**）、**reminds（当前模式下会不会出声）**；计算结果，不持久化【现状】                                                                                                                                                                                                                                                                                           | 现状          |
+| `ScheduleResult`              | 一次调度的输出：items（**已排序**：永远按调度优先级排，不知道有"无排序"这一回事）、nextTaskId、nextReminderAt（**下一站"会响"的提醒**，已过模式门槛）、infeasible/overdue 名单；所有算法的统一方言【现状】                                                                                                                                                                                                                                                                                                                                         | 现状          |
+| `ReminderMode`                | 提醒**门槛**（内核方言）：**standard**（标准：只排列不提醒，逐任务可手动开）/ **full**（完整：算法判定该响的都响）。进 `Scheduler.schedule` 的入参                                                                                                                                                                                                                                                                                                                                                                                                 | 现状          |
+| `ScheduleMode`                | **调度模式**（用户可见的三档，domain）：**full** / **standard**（默认）/ **manual**，逐级弱化算法替人做主的程度；由它派生**内核门槛**（`ScheduleMode.reminderMode`，给 `Scheduler.schedule`）与**业务层排序口径**（`isManual`：今日可推组是否改用手动序）。**定义在 domain（`domain/schedule.dart`），但只被 application 与 UI 消费，`Scheduler` 不认得它**                                                                                                                                                                                        | 现状          |
 | `ReminderEvent`               | 到点提醒事件：firedAt + **taskId + kind（soft 软提醒 / point 时点提醒）** + 当时的调度快照                                                                                                                                                                                                                                                                                                                                                                                                                                                                | 现状          |
 | `PointReminder`               | 时点性提醒候选（不可推到点 + 设了响的周期实例）：到点时刻 + 目标任务；到点后 30 分钟内仍可补响（`pointReminderGrace`）                                                                                                                                                                                                                                                                                                                                                                                                                                    | 现状          |
 | `DomainEvent`                 | 领域事件：type、taskId、at、**origin(user/ai/migration/system)**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | 现状          |
 
-调度核心公式（**默认算法 `slack-priority.v1`「时间裕度优先」**，v1.9 起取代 v0 的
-`slack.v1`；属 domain 词汇的一部分）【现状】：
+调度核心公式（**默认算法 `slack-priority.v1`「时间裕度优先」**，属 domain 词汇的一部分）【现状】：
 
 ```text
 available = workMinutesBetween(now, deadline)      # 跳过休息时间
@@ -174,13 +171,13 @@ nextReminderAt = addWorkMinutes(now, interval)     # 锚点，结果自动落在
 默认：τ=480（1 个工作日的裕度换 e⁻¹ 的风险）、γ=1、α=0.5、minInterval=30、maxInterval=480
 ```
 
-- **'长期'不进这套公式**（v1.17，D18）：工作强度 = '长期'的任务没有截止，本来就被 B1/B2
+- **'长期'不进这套公式**：工作强度 = '长期'的任务没有截止，本来就被 B1/B2
   挡在派生之外；把它们塞进公式只会逼出一个假装精确的 risk——那正是'长期'要避免的。
 
 - **裕度优先**：谁的风险高谁排前面；`importance`（人的优先级，1–5，缺省 3）是**乘数**，
   让"重要的事"整体前移，但**盖不过**已经贴住截止的事（risk→1 时乘数再小也靠前）；
 
-- **风险是非线性的（D16）**：线性 f 要给 slack 凭空规定"到哪算 0"、还会算出负数；
+- **风险是非线性的**：线性 f 要给 slack 凭空规定"到哪算 0"、还会算出负数；
   指数族只要一个尺度 τ，且恒落在 (0,1]：**裕度还宽时催得少，裕度一薄就陡然变急**。
   γ>1 = 裕度充足时把风险压得更低（更平）、裕度一薄就迅速冲到 1（更陡）——
   "到点前才慌"的那类人；
@@ -188,7 +185,7 @@ nextReminderAt = addWorkMinutes(now, interval)     # 锚点，结果自动落在
 排序：infeasible 与 normal 同池按 **priority 降序**（deadline 升序、id 升序裁决）；
 overdue、snoozed 沉底；overdue 退出提醒循环。
 
-**无排序（第三档，v1.12，D17）**：这一层**完全不属于内核**——`Scheduler.schedule`
+**无排序（第三档）**：这一层**完全不属于内核**——`Scheduler.schedule`
 不收任何排序口径，`ScheduleResult.items` 在任何一档都按上面的排序键排。
 `ScheduleMode.manual` 只让**业务层**（`buildTodayView`）不再采用这个顺序：
 今日可推组改按 `manual_order`（metadata，没序号的按**id 升序**沉在末尾，
@@ -202,17 +199,17 @@ overdue、snoozed 沉底；overdue 退出提醒循环。
   提醒锚点与间隔、提醒门槛（B4）**全部不变**——它们管"多久响一次""要不要升级"
   "出不出声"，不是"谁排前面"；
 - **任务池不变**：池子本来就是手动整理序（`pool_order`），没有算法排序可言，
-  周期条目按发生日期混排（决议 27）照旧。
+  周期条目按发生日期混排照旧。
 
-**提醒门槛（v1.9，两个模式，D15）**：`reminderAllowed(task, mode)` 不成立时这一件**不出声**
+**提醒门槛（两个模式）**：`reminderAllowed(task, mode)` 不成立时这一件**不出声**
 ——`TaskMetric.reminds = false`、`reminderAt = null`，于是 `ScheduleResult.nextReminderAt`
 （下一站**会响**的提醒）取不到它，**标准模式下通常为 null**（= 没有下一站）：
 单闹钟、通知链路、前台轮询全都自然安静，谁都不必各自判断模式。
 而**锚点与间隔照算**：`TaskMetric.nextReminderAt` / `intervalMinutes` 不受门槛影响——
 "今天该看哪几件"（今日清单准入）是调度问题，不是打扰问题。
 
-**旧算法 `slack.v1`（v0.9 版语义）保留在注册表里**，供对照与影子运行；其差异只有两点：
-排序键用 `urgency` 降序（importance 降序裁决），提醒门槛与上面同一套（v1.9 同步补上）。
+**旧算法 `slack.v1` 保留在注册表里作对照**；其差异只有两点：
+排序键用 `urgency` 降序（importance 降序裁决），提醒门槛与上面同一套。
 
 ### 3.2 核心规则（三类分开：不变量 / 派生规则 / 架构规则）
 
@@ -220,30 +217,30 @@ overdue、snoozed 沉底；overdue 退出提醒循环。
 
 - A1. `0 ≤ remainingWork ≤ estimatedWork`【现状：已守护——updateTask 缩减预估时同步 clamp】；
 - A2. `estimatedWork ≥ 1`（创建与更新均校验，违反抛 ArgumentError）；
-  **fixed 类型豁免**（允许 0，v1.4）【现状：已守护】；
-  **长期豁免**（v1.17，D18）：工作强度 = '长期'（三无缺省）时不校验——它本来就没有分钟数，
+  **fixed 类型豁免**（允许 0）【现状：已守护】；
+  **长期豁免**：工作强度 = '长期'（三无缺省）时不校验——它本来就没有分钟数，
   A1 的 clamp 同理不适用（没有可夹的数）；
-- A3. `1 ≤ importance ≤ 5`（**缺省 3**＝人的优先级；v1.9 明确缺省值，它同时是调度
+- A3. `1 ≤ importance ≤ 5`（**缺省 3**＝人的优先级，它同时是调度
   优先级的乘数）【现状：构造时 clamp、缺省 3】；
-  **长期任务豁免**（v1.17，D18）：工作强度 = '长期'的任务**不设优先级**——没有"缺省 3"
+  **长期任务豁免**：工作强度 = '长期'的任务**不设优先级**——没有"缺省 3"
   可言（同 A2 的 fixed 豁免先例）；
 - A4. `snoozed` 状态必须伴随未来的 `snoozedUntil`；到期自动回 `active`【现状】。
 
 **派生规则**（由状态与时间计算，不写入存储）：
 
 - B1. `deadline` 在过去且仍有剩余工时 → `overdue`，退出提醒循环；
-  **无 deadline（散件）不参与派生**（v1.4）【现状】；
+  **无 deadline（散件）不参与派生**【现状】；
 - B2. `available < remainingWork` → `infeasible`，升级处理（改截止/砍范围/加班），
-  不得静默；**fixed 不进调度**（走 AlarmPort 时点闹钟，v1.4）【现状】。
+  不得静默；**fixed 不进调度**（走 AlarmPort 时点闹钟）【现状】。
 - B3. `risk = f(slack)`（非线性，§3.1 公式）与 `priority = risk × importance` 都是
-  **派生值**：算出来的排序键，**不写入任何文档**（D16）。内核属性文档里的
+  **派生值**：算出来的排序键，**不写入任何文档**。内核属性文档里的
   `priority` 键始终指**人定的优先级**（= `Task.importance`），与调度优先级同名不同物【现状】。
 - B4. **提醒门槛**：`reminderAllowed(task, mode) = mode == full || task.reminderRequested`
   （= metadata `remind`，或周期实例的规则设了响）。不满足时这一件 `reminds = false`、
   `reminderAt` 为 null（**锚点与间隔照算**，只是 `ScheduleResult.nextReminderAt` 取不到它），
   也不进 `nextPointReminder()`——"不出声"在调度结果里就是**事实**（null），
-  下游不需要各自判断模式（D15）【现状】。
-- B5. **手动序是用户意图**（v1.12，D17）：`manual_order`（metadata，非负整数序号）
+  下游不需要各自判断模式【现状】。
+- B5. **手动序是用户意图**：`manual_order`（metadata，非负整数序号）
   = 人拖出来的顺序，**持久化在任务上**；与 `pinned`（插队）、`pool_order`（池子整理）
   同属"人的意图"一类，和 B3 的调度优先级正好相反——后者不落盘、换算法即变。手动序
   **只在无排序档（`ScheduleMode.manual`）参与比较**：标准/完整两档下它原样躺在
@@ -253,22 +250,22 @@ overdue、snoozed 沉底；overdue 退出提醒循环。
 
 - C1.（**写路径唯一——正典表述**）Task 的任何字段变更只能发生在 TaskService 的命令
   方法内部；UI、AI、迁移一律通过命令，不得直接赋值。【现状：Task 不可变 + copyWith，
-  由编译器强制（v1.2）】本文件其他位置（§0、§1 铁律 2、§6、D4）均为对此条的引用。
+  由编译器强制）】本文件其他位置（§0、§1 铁律 2、§6）均为对此条的引用。
 - C2. **防 Zeno**：重锚只在事件发生时调用（用户命令、提醒到点、文件变更）；周期 tick
   只做 `pollReminder()`——否则 nextReminderAt 每次重锚不断后移，提醒永远到不了
-  【现状：已遵守，靠注释约定】。重锚**分两条**（v1.16）：命令走 `recomputeSchedule`
+  【现状：已遵守，靠注释约定】。重锚**分两条**：命令走 `recomputeSchedule`
   （当前内存态，不读盘），外部改动走 `refreshSchedule`（先 `loadAll` 从盘回流再重算）。
 - C3. **AI 无第二条写路径**：AI 的变更与人类点击走同一命令通道（详见 §6）【规划】。
 
 ### 3.3 领域事件（添加而不修改的钩子）【现状】
 
 TaskService 每个命令完成后广播 `DomainEvent`（含 origin）。通知、同步、统计、AI 观察、
-**操作流水（`EventLog`，决议 37）**全部做成订阅者。**新增功能 = 新增订阅者，不改 TaskService。**
+**操作流水（`EventLog`）**全部做成订阅者。**新增功能 = 新增订阅者，不改 TaskService。**
 
 ### 3.4 升级三道防线（domain 演进的影响控制）
 
 1. **分级保真**（正典表述，附录 B 与 §7 规则 4 均引用此条）。
-   v1.7 起任务数据是**两个文档**，保真因此分两层：
+   任务数据是**两个文档**，保真因此分两层：
 
    | 文档                       | 谁写                 | 保真级别                                                                                                             |
    | -------------------------- | -------------------- | -------------------------------------------------------------------------------------------------------------------- |
@@ -284,49 +281,52 @@ TaskService 每个命令完成后广播 `DomainEvent`（含 origin）。通知�
    **旧格式（一任务一文件）的保真承诺不变**，由只读兼容 codec 承担（见 §4.1）。
 
 2. **metadata 缓冲带**：实验性/AI 生成的新字段先住 metadata，稳定后转正为正式字段。
-   转正先例：`tags` / `completedAt` 于 v1.7 由人类文档字段升为 `Task` 正式字段。
+   转正先例：`tags` / `completedAt` 由人类文档字段升为 `Task` 正式字段。
 
 3. **显式迁移器**：破坏性变更走 `schema: N` 版本号 + 启动时备份 + 纯函数迁移 vN→vN+1。
    绝不悄悄改语义；字段只增不改，废弃先标记后迁移。
-   **v1.7 的一次性形态迁移**（旧"一任务一文件" → 双文档）不属于此列：目录里若只有
+   **一次性形态迁移**（旧"一任务一文件" → 双文档）不属于此列：目录里若只有
    旧文件而没有 `tasks.md`，首次读取自动迁移，旧文件原样挪进 `legacy-tasks/` 存档
    （**只进不出，可人工回捞**），不删数据。【现状】
 
-### 3.5 命令清单（正典）【现状，v1.4（v1.5/v1.9 的新增标在各行）】
+### 3.5 命令清单（正典）【现状】
 
 一切状态变更（用户 / AI / 迁移）走本清单的命令；**UI 动作 ↔ 命令** 的映射以此为准
 （来源：ui-interaction.md §10，CommandKind 按 §6 由此生成）。
 
-现状（v1.4，UI 文档落地后的全集）：
+实现上 `lib/application/task_service.dart` 按子域拆 part（`task_service/` 下：回收站 /
+周期实例同步 / 四种排序，extension 挂在同一库上），命令清单与 API 不变。
+
+现状（UI 文档落地后的全集）：
 
 | 命令                                                                             | 语义                                                                                                                                                                                                                                     |
 | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `createTask`                                                                     | 创建：deadline / estimatedWorkMinutes 可选；fixed 必须有截止且豁免 A2（工时可为 0），**flex 无截止（三无）缺省工作强度 = '长期'（豁免 A2/A3，v1.17）**，flex 有截止缺省 30 分钟且必须 ≥ 1（A2）；类型走 metadata `type`（附录 B 登记表） |
-| `completeTask` / `snoozeTask` / `snoozeUntil` / `snoozeToNextWindow` / `logWork` | 完成 / 推迟（D8 两档）/ 绝对档位推迟（明早 9 点、自选，决议 26）/ 记工时。**完成命令顺手清掉挂起标记 `in_progress`**（v1.18，D19：挂起保持到完成或主动取消）                                                                                                                                                                 |
-| `updateTask`                                                                     | 更新（含类型转换 fixed↔flex、清截止；fixed 必须有截止的合并后校验）。**清截止不自动改写工作强度**（v1.17，D18）：'长期' ↔ 数字工时都在编辑里显式设，不悄悄改语义（§3.4 防线三）                                                          |
-| `pinToTop(taskId)`                                                               | 插队 = 持久意图记在任务（metadata `pinned`），保持到完成、栈式压顶；仅对可推组生效，**且无排序档下不生效**（那一档顺序整体由 `manual_order` 定，见 B5 / D17）                                                                            |
-| `setTaskReminder(taskId, enabled)`                                               | **逐任务提醒开关**（v1.9，D15）：写 metadata `remind`；标准模式下这是让单个任务出声的**唯一**手段，完整模式下无意义（本来就全响）                                                                                                        |
+| `createTask`                                                                     | 创建：deadline / estimatedWorkMinutes 可选；fixed 必须有截止且豁免 A2（工时可为 0），**flex 无截止（三无）缺省工作强度 = '长期'（豁免 A2/A3）**，flex 有截止缺省 30 分钟且必须 ≥ 1（A2）；类型走 metadata `type`（附录 B 登记表） |
+| `completeTask` / `snoozeTask` / `snoozeUntil` / `snoozeToNextWindow` / `logWork` | 完成 / 推迟（两档）/ 绝对档位推迟（明早 9 点、自选）/ 记工时。**完成命令顺手清掉挂起标记 `in_progress`**（挂起保持到完成或主动取消）                                                                             |
+| `updateTask`                                                                     | 更新（含类型转换 fixed↔flex、清截止；fixed 必须有截止的合并后校验）。**清截止不自动改写工作强度**：'长期' ↔ 数字工时都在编辑里显式设，不悄悄改语义（§3.4 防线三）                                                          |
+| `pinToTop(taskId)`                                                               | 插队 = 持久意图记在任务（metadata `pinned`），保持到完成、栈式压顶；仅对可推组生效，**且无排序档下不生效**（那一档顺序整体由 `manual_order` 定，见 B5）                                                                            |
+| `setTaskReminder(taskId, enabled)`                                               | **逐任务提醒开关**：写 metadata `remind`；标准模式下这是让单个任务出声的**唯一**手段，完整模式下无意义（本来就全响）                                                                                                        |
 | `pickForToday` / `returnToPool`                                                  | 挑散件到今日尾部（`picked_for_today` 标记，当日手动挑优先、尾部最多一件）/ 放回池子                                                                                                                                                      |
 | `setPoolOrder(taskId, order)`                                                    | 池子显示序（`pool_order`，仅整理无调度含义，重启保留）；**单条改序**——一次手势要改整段时走下一条                                                                                                                                         |
 | `setPoolOrders(taskIds)`                                                         | 池子显示序的**整段重编号**（0 连续）：一次拖动手势 = 一次落盘 + 一个事件 + 一次重算                                                                                                                                                      |
 | `setPinnedStack(taskIds)`                                                        | 插队栈的**整段重写**：按给定顺序决定谁压最上面（越靠上 `pinned` 时刻越新）；同样一次落盘 + 一次重算                                                                                                                                      |
-| `setManualOrder(taskIds)`                                                        | **手动序**（v1.12，D17）：按给定顺序整段重编 `manual_order`（从 0 连续编号）；只在无排序档参与今日清单的顺序，其余两档下原样保留                                                                                                         |
-| `setInProgress(taskId, enabled)`                                                 | **挂起进行开关**（v1.18，D19 / ui 决议 47）：写/删 metadata `in_progress`（值 = 挂起时刻 ISO）。**仅'长期'任务可挂**（有截止的归调度管）；取消不受此限（'转正'后也要能取消）。保持到完成或主动取消，不按天过期                                                                |
-| `setInProgressStack(taskIds)`                                                    | 挂起组的**整段重写**：按给定顺序决定谁排最顶（越靠上 `in_progress` 时刻越新）；同样一次落盘 + 一次重算（§3.5 通用约束）                                                                                                                |
+| `setManualOrder(taskIds)`                                                        | **手动序**：按给定顺序整段重编 `manual_order`（从 0 连续编号）；只在无排序档参与今日清单的顺序，其余两档下原样保留                                                                                                         |
+| `setInProgress(taskId, enabled)`                                                 | **挂起进行开关**：写/删 metadata `in_progress`（值 = 挂起时刻 ISO）。**仅'长期'任务可挂**（有截止的归调度管）；取消不受此限（'转正'后也要能取消）。保持到完成或主动取消，不按天过期                           |
+| `setInProgressStack(taskIds)`                                                    | 挂起组的**整段重写**：按给定顺序决定谁排最顶（越靠上 `in_progress` 时刻越新）；同样一次落盘 + 一次重算（§3.5 通用约束）                                                                                                                  |
 | `updateScheduleMode(mode)`                                                       | **调度模式**三档切换（**full** / **standard** 默认 / **manual**）：同时决定给内核的门槛与业务层的顺序口径；只重算，不动任何任务数据、无迁移                                                                                              |
-| `deleteTask` / `restoreTask` / `purgeTrash`                                      | 软删除三件套：移入 `.gtd/.trash/` / 从回收站恢复 / 清空回收（D11）                                                                                                                                                                       |
+| `deleteTask` / `restoreTask` / `purgeTrash`                                      | 软删除三件套：移入 `.gtd/.trash/` / 从回收站恢复 / 清空回收                                                                                                                                                                       |
 | `recomputeSchedule` / `refreshSchedule`                                          | 重锚（C2）两条：前者用**当前内存态**重算（**命令走这条，不读盘**）；后者先 `loadAll` 从盘回流再重算（文件监听 / 回前台 / 启动 / `restoreTask` / 提醒到点走这条）                                                                         |
-| **周期任务（v1.5）**                                                             |                                                                                                                                                                                                                                          |
-| `createRoutine` / `updateRoutine` / `deleteRoutine` / `setRoutineEnabled`        | 规则增删改与启用开关（RoutineService，写 `routines.md`）；每次改动同步当天实例（决议 23：没有"编辑实例"）                                                                                                                                |
-| `generateTodayInstances`                                                         | 每天生成当天实例（origin=system，幂等；启动/跨日/回前台触发，决议 5）                                                                                                                                                                    |
-| `skipRoutineToday(instanceId)`                                                   | 跳过今天：不完成、今日不再显示、次日再生（`routine_skipped`，决议 23）                                                                                                                                                                   |
+| **周期任务**                                                             |                                                                                                                                                                                                                                          |
+| `createRoutine` / `updateRoutine` / `deleteRoutine` / `setRoutineEnabled`        | 规则增删改与启用开关（RoutineService，写 `routines.md`）；每次改动同步当天实例（没有"编辑实例"）                                                                                                                                |
+| `generateTodayInstances`                                                         | 每天生成当天实例（origin=system，幂等；启动/跨日/回前台触发）                                                                                                                                                                    |
+| `skipRoutineToday(instanceId)`                                                   | 跳过今天：不完成、今日不再显示、次日再生（`routine_skipped`）                                                                                                                                                                   |
 | `completeTask`（复用）                                                           | 例行实例"完成"走同一条命令；实例走软删除清理由删规则触发                                                                                                                                                                                 |
 
-领域事件相应扩充：taskPinned / taskPicked / taskRestored / trashPurged（v1.4）、
+领域事件相应扩充：taskPinned / taskPicked / taskRestored / trashPurged、
 **routineCreated / routineUpdated / routineDeleted / routineInstanceGenerated /
-routineSkipped（v1.5，taskId = 规则 id 或实例 id）**、**taskReminderSet（v1.9，逐任务提醒开关）**、**manualOrderChanged / scheduleModeChanged（v1.12：手动序改写与调度模式切换，订阅者只需重算视图）**、**poolOrderChanged（v1.14：池子整理序整段改写）**、**taskInProgressSet（v1.18：挂起进行开关与挂起组整段重写，订阅者只需重算视图）**。
+routineSkipped（taskId = 规则 id 或实例 id）**、**taskReminderSet（逐任务提醒开关）**、**manualOrderChanged / scheduleModeChanged（手动序改写与调度模式切换，订阅者只需重算视图）**、**poolOrderChanged（池子整理序整段改写）**、**taskInProgressSet（挂起进行开关与挂起组整段重写，订阅者只需重算视图）**。
 
-> **一次用户手势 = 一个事件 + 一次重算；落盘排在事件之后**（v1.14 立，v1.16 修正）。
+> **一次用户手势 = 一个事件 + 一次重算；落盘排在事件之后**。
 >
 > ① **整段重编号不能拆成 N 次单条写**：第 k 条写完时只有前 k 个序号是新的，那个半
 > 成品顺序会被立刻渲染出来，清单就在几个位置之间来回跳。所以批量落盘、内存态先
@@ -336,7 +336,7 @@ routineSkipped（v1.5，taskId = 规则 id 或实例 id）**、**taskReminderSet
 > `events.listen((_) => notifyListeners())`），把落盘排在事件之前，等于让"界面看到
 > 新顺序"去等 N×2 次文件写 + 一次全量回读；那几帧里列表仍是旧顺序，条目先弹回
 > 原位再跳过去——闪动的另一半。**顺序是持久数据（该落盘），但"算出显示顺序"不该
-> 依赖盘**：v1.16 起命令一律"换内存态 → 发事件 → 落盘 → 用内存态重算"，只有外部
+> 依赖盘**：命令一律"换内存态 → 发事件 → 落盘 → 用内存态重算"，只有外部
 > 改动才真的回读。
 >
 > 落盘失败**只记不抛**（`TaskService.persistFailures`）：内存态已是界面看到的终态，
@@ -350,7 +350,7 @@ routineSkipped（v1.5，taskId = 规则 id 或实例 id）**、**taskReminderSet
 ### 4.1 计算类插座（domain 定义）
 
 ```dart
-/// 存取：只管生命周期，不管格式。【现状（v1.2 起异步化）】
+/// 存取：只管生命周期，不管格式。【现状】
 abstract class TaskRepository {
   Future<List<Task>> loadAll();
   Future<Task?> getTask(String id);
@@ -362,7 +362,7 @@ abstract class TaskRepository {
 }
 
 /// 格式编解码：纯函数，无 IO。"存哪"（repository）与"什么格式"（codec）分离。
-/// 【现状】v1.7 起双文档各有专用形状，本接口只剩**旧格式只读兼容**这一位：
+/// 【现状】双文档各有专用形状，本接口只剩**旧格式只读兼容**这一位：
 ///   - 旧"一任务一文件"（`md-frontmatter/1`，附录 B.5）= 唯一的 TaskCodec 实现；
 ///   - 内核属性文档走 TaskSidecarCodec（下），人类文档走 TaskDocumentCodec（下）
 ///     ——两者都**不是** TaskCodec：一个要多带 digest 接线与登记键写回，
@@ -383,8 +383,8 @@ abstract class Scheduler {
     required List<Task> tasks,
     required DateTime now,
     required WorkTimeRule workRule,
-    ReminderMode reminderMode = ReminderMode.standard,   // v1.9：提醒门槛（D15）
-    // 没有 sortMode 是**故意的**（v1.12 D17）：内核那份排序还服务于 nextTask /
+    ReminderMode reminderMode = ReminderMode.standard,   // 提醒门槛
+    // 没有 sortMode 是**故意的**：内核那份排序还服务于 nextTask /
     // 提醒锚点等计算，排序是业务层的查询口径，下沉到这里会让它出现在所有算法的实现里。
   });
 }
@@ -400,7 +400,7 @@ class DecodeResult {
 class EncodedTask {
   final Task task;
   final String? originalRaw;   // 磁盘当前内容；null = 新文件
-  final String? baselineRaw;   // 应用最后见到/写入的内容——D9 正文归属的比对基准
+  final String? baselineRaw;   // 应用最后见到/写入的内容——正文归属的比对基准
 }
 class ParamSpec { final String key, label, hint; final num min, max, defaultValue; }
 class RepositoryEvent { final RepoChangeType type; final String path; final DateTime at; }
@@ -411,7 +411,7 @@ class RepositoryEvent { final RepoChangeType type; final String path; final Date
 
 - **Codec 注册表**：按 `formatId` 挑 codec；旧格式的 codec 永远保留负责读旧文件【现状】。
 
-**双文档的三个构件（v1.7，正典见附录 B）**：
+**双文档的三个构件（正典见附录 B）**：
 
 ```dart
 /// 人类文档 tasks.md：一个文档、# 标题分类、一行一条任务。【现状】
@@ -431,7 +431,7 @@ class TaskDocumentCodec {
 
 /// 内核属性文档 .gtd/<id>.md：任务 id / 工作强度 / 优先级 / 时间裕度 /
 /// 剩余工作量 + digest（连接键）。【现状】
-/// 长期任务例外（v1.17，D18）：只有 id 一行——上面那些键全部缺行，
+/// 长期任务例外：只有 id 一行——上面那些键全部缺行，
 /// digest 也没有（配对走附录 B.3 第 2/3 档）。
 /// 注意：它**不是** TaskCodec 实现（多了 digest 接线 + 登记键写回，见上）。
 class TaskSidecarCodec {
@@ -461,57 +461,55 @@ class MarkdownTaskRepository implements TaskRepository { /* … */ }
   的语义搞混——所以内核属性文档与人类文档各走专用 codec（`TaskSidecarCodec` /
   `TaskDocumentCodec`），`TaskCodec` 只留给旧格式的只读兼容；
   两者共用一个 repository 做归属合并。
-- **行指纹（digest）登记**：见附录 B。它是 D9"外部修改检测"在双文档形态下的实现——
+- **行指纹（digest）登记**：见附录 B。它是"外部修改检测"在双文档形态下的实现——
   比 mtime 可靠（同分钟两次改动也分得开），也比"重新渲染一遍再比"可靠
   （内核属性文档本来就不含任务名，重新渲染必然不等）。
-- **Scheduler 注册表 + 影子运行**：当前选择存设置；切换算法无需迁移（nextReminder 是
-  计算结果，重算即生效）；新算法可影子运行（只记日志对比）【现状】。
-  v1.9 起注册的是**两个**算法：`slack-priority.v1`（**默认**，时间裕度优先，公式见 §3.1）
-  与 `slack.v1`（旧，裕度几何递减）；默认由组装点（main.dart）挑，设置页暂不提供切换入口。
-  `ShadowScheduler` 把 `reminderMode` 原样透传给两边，影子差异除 nextTask / interval 外
-  也看 `priority`——排序口径变了，要看得见。
-  **v1.12 的"无排序"不进注册表**：它不是第三个算法，`sortMode` 也不是 `schedule` 的
+- **Scheduler 注册表**：当前选择存设置；切换算法无需迁移（nextReminder 是
+  计算结果，重算即生效）【现状】。
+  注册的是**两个**算法：`slack-priority.v1`（**默认**，时间裕度优先，公式见 §3.1）
+  与 `slack.v1`（旧，裕度几何递减，留作对照）；默认由组装点（main.dart）挑，设置页暂不提供切换入口。
+  **"无排序"不进注册表**：它不是第三个算法，`sortMode` 也不是 `schedule` 的
   入参——这一档改的是"清单按什么顺序展示"，属业务层查询（见下条）。注册表里
   仍然只有那两个 `id`。
 
-**UI 文档带来的新座位（v1.4–v1.7 陆续落地）**：
+**UI 文档带来的新座位**：
 
 - **RoutineRepository / RoutineCodec**：周期规则存独立 `routines.md`（非 Task 文件，
   TaskRepository/TaskCodec 不覆盖；一条规则一个 frontmatter 条目，Obsidian 可改）；
   每天生成当天实例（origin=system），实例不占工时、不进 ScheduleResult 排序
-  【现状（v1.5）：domain/routine.dart + repository/{routine_codec,routine_repository,
+  【现状：domain/routine.dart + repository/{routine_codec,routine_repository,
   markdown_routine_repository}.dart + application/routine_service.dart】；
 - **NotesReaderPort**：疑问笔记**只读**（frontmatter 闭合后到下一个 `---` 的正文段、
-  含 `[[` 的行屏蔽、对该文件零写入）【现状（v1.4）：application/notes_reader.dart
+  含 `[[` 的行屏蔽、对该文件零写入）【现状：application/notes_reader.dart
   定义接口与提取规则，platform/app_adapters.dart 落盘适配器】；
 - **今日视图查询 `buildTodayView()` / 任务池查询 `buildPoolView()`**（application 层）：
   聚合 ScheduleResult（可推/逾期）+ 固定时点组 + 例行实例 + 被挑散件四种来源，
-  UI 只消费查询结果（D12）【现状（v1.4）；v1.5 补：例行组落地，
-  计划段以 `PoolRow`（任务行 / 周期条目）按日期混排，决议 27/14】；
-  **v1.12 起 `buildTodayView` 收 `ScheduleMode`**：只有**无排序**这一档换个排法——
+  UI 只消费查询结果【现状】；
+  计划段以 `PoolRow`（任务行 / 周期条目）按日期混排；
+  **`buildTodayView` 收 `ScheduleMode`**：只有**无排序**这一档换个排法——
   今日可推组改按 `Task.manualOrder`（无序号者按 id 升序沉末尾），插队压顶那一层取消
   （顺序本身就由人定，不需要补丁）。**可推组的成员不变**——三档都用提醒锚点筛
   "今天该看哪几件"（见 ui-interaction.md §6.1）；
   `buildPoolView` **不收**这个入参：池子本来就是手动整理序（`pool_order`），
-  周期条目按发生日期混排（决议 27）在任何一档都一样；
+  周期条目按发生日期混排在任何一档都一样；
 - **SettingsPort**：应用设置（通知时间段、定期挑、疑问笔记路径、主题预设、
-  周期任务是否进池等）的存取端口【现状（v1.4）：application/settings.dart +
-  platform 落盘实现】；**v1.5 起设置文件仍在任务目录 `settings.json`**，
+  周期任务是否进池等）的存取端口【现状：application/settings.dart +
+  platform 落盘实现】；设置文件仍在任务目录 `settings.json`，
   但"任务目录是哪个"改存应用支持目录的 `bootstrap.json`（`BootstrapPort`），
   否则改目录会把设置本身弄丢。
-- **EventLogPort**：操作流水（决议 37）的**只追加**落盘插座——
+- **EventLogPort**：操作流水的**只追加**落盘插座——
   `application/event_log.dart` 定义 `EventLogPort` + `EventLog` 订阅者，
   落盘任务目录 `.gtd/log.md`（append-only，应用从不重写历史行）
-  【现状（v1.7）：platform/app_adapters.dart 的 `FileEventLogPort`】。
+  【现状：platform/app_adapters.dart 的 `FileEventLogPort`】。
   **只在主引擎装配**（两个引擎都挂会把同一件事记两遍，理由同 §4.2 边界 1）；
   `.gtd/log.md` **不是内核属性文档**——内核属性扫描与文件监听都要跳过它，
   否则每次读盘都会多出一条"属性文档无法解析"的假警告，
   监听它更会自激成环（写日志 → 文件变化 → 重锚 → 又写日志）。
 
-### 4.2 交付类插座（application 定义）【接口 + 桌面适配器 + 安卓适配器现状（v1.5）】
+### 4.2 交付类插座（application 定义）【接口 + 桌面适配器 + 安卓适配器现状】
 
 ```dart
-enum ReminderChannel { normal, alarm }   // alarm = 闹钟渠道：全屏 + 持续响铃（决议 3/18）
+enum ReminderChannel { normal, alarm }   // alarm = 闹钟渠道：全屏 + 持续响铃
 enum PermissionKind {
   notifications, exactAlarm, batteryExemption,
   overlayWindow,        // 悬浮侧边栏（SYSTEM_ALERT_WINDOW）
@@ -521,7 +519,7 @@ enum PermissionKind {
 
 class NotificationAction { final String id; final String label; }  // 如 done / snooze1h
 
-/// 交付内容草案（v1.5）：挂闹钟时就把"到点交付什么"定下来。
+/// 交付内容草案：挂闹钟时就把"到点交付什么"定下来。
 /// 桌面不需要（到点由应用自己 show）；安卓需要——系统闹钟到点时应用可能已被杀，
 /// 原生接收器只能照这份草案自己弹通知。
 class ReminderDraft {
@@ -564,9 +562,9 @@ abstract class PermissionPort {
 桌面适配器（`lib/platform/desktop_adapters.dart`【现状】）：`TimerAlarmPort`（前台 Timer，
 系统闹钟在桌面的等价物）、`StreamNotificationPort`（应用内弹窗回流）、
 `GrantedPermissionPort`、`DesktopFolderPickerPort`（**文件可挑，目录仍不挑**——
-桌面任务目录走环境变量 `GTD_TASKS_DIR` / 引导配置，v1 不做目录选择 UI）。
+桌面任务目录走环境变量 `GTD_TASKS_DIR` / 引导配置，不做目录选择 UI）。
 
-安卓适配器（`lib/platform/android_adapters.dart` + `android/…/gtd/` 原生侧【现状，v1.5】）：
+安卓适配器（`lib/platform/android_adapters.dart` + `android/…/gtd/` 原生侧【现状】）：
 `AndroidAlarmPort` / `AndroidNotificationPort`（系统精确闹钟 AlarmManager + 通知渠道
 `gtd_normal`/`gtd_alarm`/`gtd_overlay` + 通知按钮 + full-screen intent）、
 `AndroidPermissionPort`（permission_handler + 原生全屏 intent/悬浮窗查询）、
@@ -574,14 +572,14 @@ abstract class PermissionPort {
 原生侧另有 `OverlayHandleService`（贴屏把手，前台服务 + WindowManager）。
 `platform/` 不受 §2 矩阵约束（组装点装配），但不得被 domain/scheduler/application import。
 
-**系统级悬浮面板（v1.6，第二个 Flutter 引擎）**：文档 §0 的产品定位是"日常操作发生在
+**系统级悬浮面板（第二个 Flutter 引擎）**：文档 §0 的产品定位是"日常操作发生在
 悬浮侧边栏里，App 主体几乎不开"，所以把手拖出必须**在当前 App 上方就地展开面板**，
 而不是跳进应用。实现：
 
 | 层                | 位置                                                    | 职责                                                                                                     |
 | ----------------- | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | 原生命令/事件通道 | `gtd/overlay`（MethodChannel）                          | `notifyReady` / `collapse` / `expand` / `openApp{target,routineId}` ↔ 原生 `state{expanded,dockedRight}` |
-| 第二个引擎入口    | `lib/overlay_main.dart`（DartEntrypoint `overlayMain`） | 装配**同一套** domain/application（自己的实例）+ 悬浮面板宿主 `OverlayPanelShell`                        |
+| 第二个引擎入口    | `lib/overlay_main.dart`（DartEntrypoint `overlayMain`） | 只剩入口与装配：装配**同一套** domain/application（自己的实例）；通道桥与面板宿主壳 `OverlayBridge` / `OverlayPanelShell` 在 `lib/ui/overlay/`                        |
 | 面板本体          | `lib/ui/panels/side_panel.dart`                         | `SidePanel` / `PanelActions` / `PanelPrivacyBar` / `PanelOnboardDialog`：**应用内壳与悬浮窗共用同一份**  |
 | 窗口              | 原生 `OverlayHandleService`                             | 全屏**透明** `TYPE_APPLICATION_OVERLAY` 窗口承载引擎的 FlutterView；展开时隐藏原生把手                   |
 
@@ -589,10 +587,10 @@ abstract class PermissionPort {
 
 1. **交付类插座与观察类订阅者只在主引擎装配**：全局单闹钟归主引擎那一份，悬浮引擎
    不起 ReminderDispatcher（两个引擎各自挂闹钟会互相覆盖）；`EventLog`（操作流水）
-   同理只在主引擎挂，否则同一件事会被记两遍（决议 37）；
+   同理只在主引擎挂，否则同一件事会被记两遍；
 2. **写路径仍然唯一**：悬浮面板的命令同样走它自己的 `TaskService`（C1 不变），
    两个引擎之间的状态同步走**文件**——两边都 `watch()` 任务目录（与"Obsidian 手改
-   回流"同一条通路），并发写由 D9 的字段归属合并兜底；
+   回流"同一条通路），并发写由字段归属合并兜底；
 3. **进应用的唯一入口**是面板头部的『设置』与实例菜单的『编辑规则』
    （`openApp{target,routineId}`），其余交互全部就地完成。
 
@@ -600,15 +598,15 @@ abstract class PermissionPort {
 application 层的 **ReminderDispatcher**（见 §4.3）。装配点负责把 AlarmPort 注入。
 **适配器无自主权**：只执行"取消旧的、挂新的"，不得自行重排或补挂。
 
-### 4.3 送达策略与提醒协调者【现状（接口 + 桌面适配器 + 安卓适配器，v1.5）】
+### 4.3 送达策略与提醒协调者【现状（接口 + 桌面适配器 + 安卓适配器）】
 
-**NotificationWindowRule（通知时间段，D10）**：与 WorkTimeRule（工时产能，domain）
+**NotificationWindowRule（通知时间段）**：与 WorkTimeRule（工时产能，domain）
 **解耦**——slack 数学不动，"什么时候真正打扰用户"由它裁决，归 application 层。
 
 - 多段式（默认 9:00–21:00 一段）；空段列表 = 不限制（原样送达）；
 - 映射规则：nextReminderAt（或相对档位推算出的时刻）落在段内 → 原样；
   落在段外 → **顺延到下一时段开头（只顺延、不吞掉）**；
-  绝对档位（明早 9 点 / 自选）原样响（ui-interaction.md 决议 26）；
+  绝对档位（明早 9 点 / 自选）原样响（见 ui-interaction.md）；
 - 与工时窗口交集为空属用户自选配置：同样按顺延处理，不报错、不静默丢弃。
 
 **ReminderDispatcher（单闹钟协调者）**：订阅 `scheduleReanchored` →
@@ -616,19 +614,19 @@ application 层的 **ReminderDispatcher**（见 §4.3）。装配点负责把 Al
 订阅 `alarm.fired` → `TaskService.pollReminder()` → `NotificationPort.show(...)`
 （带 actions：完成 / 推迟1小时）→ 再排下一站（链路自续）。
 
-**v1.9：门槛在算法/服务那一层，协调者不必知道模式。** 标准模式下
+**门槛在算法/服务那一层，协调者不必知道模式。** 标准模式下
 `ScheduleResult.nextReminderAt` 为 null（除非有任务手动开了提醒），于是 `_reschedule()`
 自然算不出软提醒那一站；时点提醒同理——`TaskService.nextPointReminder()` 按同一门槛过滤
 （标准模式下只返回手动开了提醒的 fixed 与设了响的周期实例）。
 "默认不打扰"因此不需要在通知实现里各写一遍 if，也不会出现"调度算出下一站、通知层再吞掉"
 这种两处口径。
 
-**两个提醒源（v1.5）**：
+**两个提醒源**：
 
 | 源               | 谁                            | 送达时刻                                          | 渠道                                  |
 | ---------------- | ----------------------------- | ------------------------------------------------- | ------------------------------------- |
 | **Slack 软提醒** | 可推任务（flex + 截止）       | 经 NotificationWindowRule（段外顺延到下一段开头） | 永远普通通知                          |
-| **时点性提醒**   | 不可推到点 + 设了响的周期实例 | 原样响（不受静默段限制，决议 26）                 | 闹钟模式开 → alarm 渠道 + full-screen |
+| **时点性提醒**   | 不可推到点 + 设了响的周期实例 | 原样响（不受静默段限制）                 | 闹钟模式开 → alarm 渠道 + full-screen |
 
 - 单闹钟取两者中更早的一个（`ScheduleResult.nextReminderAt` vs
   `TaskService.nextPointReminder()`）；
@@ -652,29 +650,33 @@ lib/ui/
 ├── shells/       android_shell.dart / desktop_shell.dart
 │                 ← 抽屉、返回键、状态栏、窗口标题栏……平台差异全在这
 ├── panels/       task_list_panel.dart / today_panel.dart / notes_panel.dart /
-│                 pool_panel.dart / settings_panel.dart /
-│                 side_panel.dart（应用内壳与悬浮面板共用同一份，v1.6）
+│                 pool_panel.dart / settings_panel.dart（设置页壳；权限节与周期节在
+│                 settings_permissions.dart / settings_routines.dart）/
+│                 side_panel.dart（应用内壳与悬浮面板共用同一份）
 │                 ← 功能面板，平台无关，只被 shell 摆放
-├── dialogs/      创建对话框（**类型+日期档位按钮、默认三无，v1.11 去手势化**）/
+├── dialogs/      创建对话框（**类型+日期档位按钮、默认三无**）/
 │                 编辑表单 / 推迟档位 / 日历 /
 │                 task_detail_sheet.dart（详情卡，只读展示件）/
-│                 quick_dump_dialog.dart（堆三无）/ routine_edit_dialog.dart（周期规则）
+│                 quick_dump_dialog.dart（堆三无）/ routine_edit_dialog.dart（周期规则）/
+│                 settings_windows_dialog.dart / settings_notes_path_dialog.dart（设置页弹窗）
 │                 ← §5.1 shells 之下，panels 与共享 widgets 的辅助件，平台无关
+├── overlay/      overlay_bridge.dart（悬浮引擎的原生通道桥）/
+│                 overlay_panel_shell.dart（悬浮面板宿主壳）
+│                 ← 系统级悬浮面板的 Dart 侧（§4.2），入口在 lib/overlay_main.dart
 ├── widgets/      任务行 / 提醒监听 / 长按菜单（共享小组件）
 ├── app_controller.dart   ← 见 5.2
 └── theme.dart    主题预设（默认橙；只换强调色种子，§8）
 ```
 
-安卓壳（v1.4 落地，应用内形态）：设置页为主体 + 贴屏把手/拖出面板 + **三页左右横翻**
-（v0.15；原先是"竖翻 + 面板头重手势"，已删）+ **隐私过头（显式入口，同样是 v0.15
-改形；"拖过头"那道横滑手势已删）** + Drawer 兜底（同一套 panels）。**系统级悬浮面板**（v1.6）= 原生
+安卓壳（应用内形态）：设置页为主体 + 贴屏把手/拖出面板 + **三页左右横翻**
++ **隐私过头（显式入口）** + Drawer 兜底（同一套 panels）。**系统级悬浮面板** = 原生
 `OverlayHandleService`（SYSTEM_ALERT_WINDOW + 前台服务 + 第二个 Flutter 引擎）：
 把手拖出 → **同一个面板就地在当前 App 上方展开**（透明 overlay 窗口），
 只有『设置 / 编辑规则』才把用户送进应用（详见 §4.2 的边界表）。
 **显示规则**：应用在前台时系统把手与悬浮面板都收起（此时用应用内把手与面板），
 离开应用才显示——**每个场景恰好一个把手、一份面板**；把手**只竖向移动**、永远贴边，
-停靠侧与 y 持久化，旋屏后重新贴边（ui-interaction.md 决议 34/35）。
-**把手的形态与它占的那条边（v1.10，决议 40/41）**：贴边的不再是一块 26×72dp 的橙色
+停靠侧与 y 持久化，旋屏后重新贴边。
+**把手的形态与它占的那条边**：贴边的不再是一块 26×72dp 的橙色
 圆角条，而是 **10×88dp、白色 55% 不透明的细条**，应用内把手用同一套参数；把手视图在
 attach 之后对自己调 `setSystemGestureExclusionRects`，把自己从系统返回手势的边缘带里
 抠出来（这是 `OverlayHandleService` 的职责，属平台呈现，不进 UI 层）。
@@ -693,7 +695,7 @@ attach 之后对自己调 `setSystemGestureExclusionRects`，把自己从系统�
 /// 它不是架构层，是 ui/ 的内部构件；不出现在核心任何一层。
 ```
 
-现状缺口已收紧（v1.2）：UI 仅经 AppController 访问，守卫规则 2 拦截回归。
+现状缺口已收紧：UI 仅经 AppController 访问，守卫规则 2 拦截回归。
 
 ### 5.3 口诀与组装点
 
@@ -763,7 +765,7 @@ class SystemSnapshot {
 
 ---
 
-## 7. 架构守卫（让规则变成会跑的测试）【规则 1–3 已落地（v1.2）：test/architecture_test.dart】
+## 7. 架构守卫（让规则变成会跑的测试）【规则 1–3 已落地：test/architecture_test.dart】
 
 `test/architecture_test.dart` 扫描源文件 import，断言 §2 矩阵，三条起步规则：
 
@@ -779,10 +781,6 @@ class SystemSnapshot {
    一字不动，且永不重排行）；内核属性文档 **字段级保真**（内核字段原地改写，
    注释行、未知字段、行顺序原样保留），**登记的 metadata 键跟随任务对象改写**
    （值变则行变、键消失则行删）。
-   ——取代 v1.0"整文件逐字节保真"与 v1.1–v1.6"一任务一文件 frontmatter 字段级"的
-   表述，两者冲突的裁决规则见 §3.4。
-5. ~~Task 字段赋值的文本扫描~~ **已退役（v1.2）**：被 §10 第 1 条（Task 不可变 + copyWith）取代
-   ——结构上不可能违规后，弱守卫没有存在价值。
 
 谁越线，`flutter test` 直接红。架构从"设计意图"变成"验收标准"。
 
@@ -819,54 +817,13 @@ class SystemSnapshot {
 
 ---
 
-## 10. 现状与差距（v0 基线 → 目标，按优先级）
+## 10. 现状与差距
 
 已成立【现状】：domain/scheduler/application 零平台依赖；接口与实现分离（曾有一处违规，
-**v1.2 已修复**，见 §2）；通知已是接口；时间可注入；ScheduleResult 不落盘；snoozed_until 持久化；
-测试覆盖跨日历/临界/逾期场景（**v1.9：146 个测试全绿**；后续各版状态见
-`docs/changelog.md`）。
+已修复，见 §2）；通知已是接口；时间可注入；ScheduleResult 不落盘；snoozed_until 持久化；
+测试覆盖跨日历/临界/逾期场景。
 
-**进度（2026-10-13）：第 1–14 条全部完成；第 15 条（长期任务，v1.17）契约已定稿、代码未落地**。编号速查：**1** Task 不可变 + copyWith ·
-**2** 领域事件流 · **3** UI 只读门面 · **4** 架构守卫测试 · **5** repository 异步化 ·
-**6** TaskCodec 拆出 · **7** 写冲突策略 + watch · **8** Scheduler ParamSpec / 注册表 / 影子运行 ·
-**9** 交付类插座补齐 · **10** UI 文档 v0.4 落地 · **11** UI 文档剩余项（v1.5）·
-**12** 双文档存储（v1.7）· **13** 算法层 + 提醒模式（v1.9）· **14** 调度模式三档（v1.12）·
-**15** 长期任务（v1.17：三无缺省'长期'、内核属性文档只有 id）。
-各条的落地版本、理由与踩坑记录见 `docs/changelog.md`（本表只保留编号索引，
-不再逐条展开；全文对"§10 第 N 条"的引用以本速查为准）。
-分期小结：1–4 是一次纯内部小迭代；5–7 是存储改造；8 与 13 是算法层升级；9 起进入多平台；
-12 是人机数据归属的再切分（不改调度数学）；13 是"**默认安静**"这条产品决定在算法层的
-落地（顺序不变，只把"出声"变成可选）；14 是"**默认由算法排**"的对应档位——把"今天
-这几件的先后"交回给人，**只改顺序**：今天该看哪几件、多久催一次、要不要升级、
-出不出声，三档全部一致。15 是"三无"的补完——默认'长期'、内核只存 id：算不出来就不写（与 D16 同源），调度数学一行未动。
-
-**剩余差距：AI L2**（§6，`AiProvider` 已定义；设置页只做"展示 + 拒绝"，决议 28）。
-
----
-
-## 11. 决策记录（为什么是这样）
-
-| #   | 决策                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | 理由                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| D1  | nextReminder 是计算结果，不持久化；snoozed_until 是用户意图，持久化                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | 前者换算法即重锚、无需迁移；后者是事实，重启不丢                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| D2  | maxInterval = 480（1 个工作日）而非 2 小时                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | 裕度再大也会被拉回固定间隔 = 退化成"固定提醒"，与设计目标矛盾                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| D3  | 只在事件发生时重锚（防 Zeno，§3.2 C2）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | 周期重锚会让提醒永远到不了点；移动端"单闹钟 + 事件驱动"恰好契合                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| D4  | AI 只经命令通道（§3.2 C3、§6）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | 幻觉的污染面 = 一条待确认提案；可审计；可拔除                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| D5  | 机读字段归内核、人写内容归人，**两者物理分文件**（附录 B、§3.4）；应用只重写内核那半边与人类文档里自己那一行                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | 用户手写内容（含未知字段）永不被应用毁掉；v1.7 把这句承诺从"同一文件的字段级"升级为"两个文件的文档级"                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| D6  | repository 接口异步化（目标形态）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | 安卓主线程 IO 卡顿；SAF 天生异步；越晚改波及越大                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| D7  | overdue 是派生状态，不写入存储                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | 随时间自然成立/消失，持久化反而产生脏数据                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| D8  | snooze 语义分两档：≤120 分钟按**自然时间**；更长或跨休息时段提供显式选项"到下个工作窗"                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | v0 的纯工作分钟语义（周五傍晚推 30 分 → 下周一早）与 UI 文案"推迟30分"的 natural 预期冲突；语义必须写进合同，UI 文案同步改                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| D9  | 写冲突策略：保存前重读文件 + **按字段归属合并**（应用拥有的字段 vs 人类/未知内容各写各的）+ 外部修改提示（检测方式 = 与应用最后见到的内容精确比对，比 mtime 粒度可靠；正文归属以 baselineRaw 为基准）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | 单写者 last-writer-wins 会丢 Obsidian 端对机读字段的修改；分级保真（§3.4）与 D9 是同一机制的两面                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| D10 | 通知时间段是 application 层的**送达策略**（§4.3），与 WorkTimeRule（domain，工时产能）解耦；落在静默段只**顺延到下一时段开头（不吞掉）**；绝对档位原样响                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | 两日历概念混进 slack 数学会污染产能计算；"何时打扰用户"是送达礼貌，不是产能                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| D11 | 删除 = 软删除：内核属性文件移入任务目录 `.gtd/.trash/` + 人类文档那一行用 `%%…%%` 注释掉（Obsidian 可见可捞）+ 撤销 toast + 设置『清空回收』                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Obsidian 共存场景下真删文件不可逆；"文件即备份"原则下回收站是自然延伸                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| D12 | 今日清单聚合查询放 application（`buildTodayView()`），UI 只消费查询结果                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | 四种来源的聚合是查询不是渲染；守住"UI 不含逻辑"（原则 3）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| D13 | **双文档存储**：人写 `tasks.md`（一行一条任务，`# 标题` 分类），内核写 `.gtd/<id>.md`；两文档靠**行指纹**配对                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | 人机混写一个文件必然互相糟蹋。分开之后"谁写谁负责"落到文件层面：应用改自己那半边时物理上碰不到人的内容，Obsidian 共享的那一个文档也保持纯净（无 id、无裕度、无优先级噪声）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| D14 | 人类文档的**复选框只认显式完成**（status/completed_at），不认 `isCompleted` 里"flex 剩余工时归零"的派生判断                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | 派生语义写进文档会让"读→写"往返自己篡改人的意图（`- [ ]` 变 `- [x]`），行指纹随之失效。派生是调度语义，不该落盘成人的决定                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| D15 | **两种提醒模式，默认标准**：标准 = 只排列不提醒（逐任务可手动开，metadata `remind`）；完整 = 原方案（该响的都响）。门槛做在**算法产出这一层**（`reminderAllowed` → `nextReminderAt` / `nextPointReminder` 为 null），不是做在通知实现里                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | 提醒是打扰，默认应该安静；要推着走的事再逐个开。**放算法层的理由**：这样"不出声"在调度结果里就是事实，单闹钟、前台轮询、通知实现、今日徽标都不用各写一遍 if，也不会出现"算出一站、通知层再吞掉"的两处口径。门槛与送达策略（D10）**串联**：先过门槛（要不要出声）再过时间段（什么时候出声）。**v1.12 起这两档并入 `ScheduleMode` 三档**（D17）：多加的那一档只改业务层的顺序口径，门槛那一套逻辑一行没动                                                                                                                                                                                                                                                      |
-| D16 | 排序键 = **调度优先级** `priority = risk × importance`，`risk` 是裕度的**非线性**（指数族）函数 `exp(−(slack/τ)^γ)`；`importance` 缺省 3。**命名**：人定的 1–5 叫优先级（内核属性文档 `priority` 键 = `Task.importance`），算出来的叫调度优先级（**不落盘**）                                                                                                                                                                                                                                                                                                                                                                                                                                                                | 裕度是唯一压力表，但压力不该随裕度**线性**变化：线性要给 slack 凭空规定"到哪算 0"，还会给出负风险；指数族只要一个尺度 τ、恒在 (0,1]，且"裕度还宽时催得少、一薄就陡然变急"正是想要的非线性。importance 作乘数让重要的事整体前移，却盖不过已经贴住截止的事（risk→1）。同名不同物（输入 vs 输出）在 §3.2 B3 与本表写明，避免两份"优先级"打架                                                                                                                                                                                                                                                                                                                    |
-| D17 | **调度模式三档：完整 / 标准（默认）/ 无排序**（v1.12），取代原先"提醒模式 + 排序模式"两个并列开关。无排序 = **标准的再弱化版**：今日可推组的顺序改按 `manual_order`（无序号者按 id 升序沉末尾）、插队压顶那一层取消；**除此之外与标准一模一样**——可推组仍按"锚点落在今天"准入，任务池仍是 `pool_order` 整理序，`slack`/`risk`/`priority`、提醒锚点与间隔、逾期与不可行判定、提醒门槛全部照算。**内核不知道有三档**：`Scheduler.schedule` 只收 `ReminderMode`，`ScheduleMode` 定义在 domain 但只被 application/UI 消费（由它派生内核门槛 + 排序口径），注册表里不会多出一个没有数学的假算法，§8"换算法 = 注册一个新 Scheduler"不被绕开。`manual_order` 是**用户意图**、持久化（B5），只在无排序档生效，切档不迁移、不改写数据 | 三档是**一条逐级弱化的谱系**而不是三个正交维度：它们回答的是同一个问题——"算法替人做主到什么程度"（排先后、要不要出声）。做成一组三选一，用户不需要理解两个开关的组合含义。**准入不跟着关**的理由：用户要的是"今天这几件的先后由我定"，不是"今天该看哪几件也由我定"——后者会让远期任务全涌进今日清单，那是另一个产品（手工 Todo），不是无排序。**不下沉到内核**的理由：内核那份排序还服务于 nextTask / 提醒锚点等计算，把它关掉等于把下一站也弄丢；而且一旦进 `schedule` 的签名，每个算法实现都得处理一个没有数学的分支。**序号存 metadata 而非独立文件**的理由：行级/字段级保真（§3.4）已经保证它跟着任务走，任务删了序号自然消失，不需要第二份需要同步的真相 |
-| D18 | **三无任务的工作强度缺省为'长期'；长期任务的内核属性文档只有一个任务 id**（v1.17，配套 ui v0.16 决议 46）。'长期'是工作强度的**特殊值**（标记而非分钟数，**不是新任务类型**）：标长期 = 不估工时、不设优先级、没有时间裕度与剩余工作量；此时 A1/A2/A3 全部豁免（同 fixed 豁免 A2 的先例），B1/B2 不收窄（无截止本来就不派生）。内核文档只剩 `id` 一行——`digest`/`status`/`completed_at` 也不落（完成态只认人类文档，D14；配对走 B.3 第 2/3 档）。'长期'**不新增 metadata 键**：它在内核文档里的形态就是"没有 `work_intensity` 行"。**只是创建缺省、不是不变量**：清截止不自动改写工作强度，'长期' ↔ 数字工时都在编辑里显式设（§3.4 防线三：绝不悄悄改语义）                                                                  | 长期存在的事估不出工时，也没有优先级可言——硬造"缺省 30 分钟 + 优先级 3"等于让假装精确的数字进调度，与 D16"算不出来就不落盘"同源。内核文档退化成一行 id 是这条口径的**代价**而不是疏漏：行指纹随之消失，改名且数量不等时会按新任务接管（有提示、不静默，旧 id 文件留在 `.gtd/` 等人工处理）。与 routine 实例的"0 工时豁免"是两回事：routine 到点发生、本来不用估；长期是长期存在、估不出来                                                                                                                                                                                                                                                                    |
-| D19 | **长期任务“挂起进行”：今日页顶置组，多件可拖，保持到完成或主动取消**（v1.18，配套 ui v0.17 决议 47）。形态 = metadata `in_progress`（值 = 挂起时刻 ISO，组内按时刻降序 = 后挂在上；拖动整段重写时刻，与插队栈 `setPinnedStack` 同一机制）。`buildTodayView` 分出**挂起组**（今日页最顶、逾期组之上、无编号、三档调度模式下都在）；`buildPoolView` 把挂起中任务从两段隐藏（与被挑散件同一规则）。命令 `setInProgress(taskId, enabled)`（**仅“长期”可挂**；取消不限——“转正”后也要能取消）/ `setInProgressStack(taskIds)` + 事件 `taskInProgressSet`；`completeTask` 顺手清标记。**内核一行不动**：长期任务没有截止，本来就被 B1/B2 挡在派生之外、两个调度器都跳过，挂起组也不经过 `ScheduleResult` | 与插队（决议 9）/ 手动序（D17）同源：**持久意图记在任务上**，不建第二份需要同步的真相（任务删了标记自然消失；软删除跟着文件进回收站）。**不做成当日语义**（`picked_for_today` 那种）：“挂起”读起来是持续的，按天过期会让你每天重点同一件长期任务；**不做成纯内存**：两个引擎各一个 TaskService，状态必然漂移。**只给长期任务开这个口**：有截止的事归调度管（§7.1 的顺序与裕度），这个按钮解决的是“长期存在、估不出来、但此刻正在做”的那一类。**不下沉到内核**的理由同 D17：内核那份排序还服务于 nextTask / 锚点计算，展示层的选择做在展示层 |
+**剩余差距：AI L2**（§6，`AiProvider` 已定义；设置页只做"展示 + 拒绝"）。
 
 ---
 
@@ -874,47 +831,41 @@ class SystemSnapshot {
 
 | 局限                                             | 说明                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | 触发重新评估的时机                                                                                                                                              |
 | ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 扁平目录，无项目/层级                            | v1 约定：分类靠人类文档的 `# 标题` 与 `##标签`，不建子目录                                                                                                                                                                                                                                                                                                                                                                                                                                         | 任务量或组织需求上来时（将同时动 repository、codec、组装点）                                                                                                    |
+| 扁平目录，无项目/层级                            | 约定：分类靠人类文档的 `# 标题` 与 `##标签`，不建子目录                                                                                                                                                                                                                                                                                                                                                                                                                                         | 任务量或组织需求上来时（将同时动 repository、codec、组装点）                                                                                                    |
 | holidays 仅支持具体日期                          | 不支持每年重复的节假日                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | 需要长期日历规则时                                                                                                                                              |
-| frontmatter 注释 ~~不保留~~                      | **v1.2 已解决**：注释行属"非字段内容"，按字段级保真原样保留（codec 用原始行合并实现）                                                                                                                                                                                                                                                                                                                                                                                                              | —（已关闭）                                                                                                                                                     |
-| 双开实例未处理                                   | 桌面双开 = 文件级 last-writer-wins，D9 缓解但不消除                                                                                                                                                                                                                                                                                                                                                                                                                                                | 出现真实双开需求时（实例锁或单一常驻进程）                                                                                                                      |
-| **人类文档是单文件**（v1.7）                     | 所有任务共写一个 `tasks.md`：任务量大时单文件变长（Obsidian 侧仍是普通文档）；两引擎/双开并发改同一行理论上可丢一侧。**未采用"一任务一文件"或"单文件内核索引"**的理由见 D13 与决议 36                                                                                                                                                                                                                                                                                                              | 单文档超过数千行、或出现真实并发丢写时（改为按分类分文件 / 引入行级锁）                                                                                         |
-| **行指纹的三种失配**（v1.7）                     | 指纹不等时按"任务名 → 位置配对"降级认领。若人在 Obsidian 里**同时**改名、增删行，位置配对可能把内核属性配到相邻任务上                                                                                                                                                                                                                                                                                                                                                                              | 出现真实错配案例时（人写一个稳定 id 进行内，例如 `^task-001`；代价是文档变脏）                                                                                  |
-| **提醒链路的"跨天自续"**（v1.5）                 | 应用被杀且用户长时间不打开时：安卓会在到点弹出通知，但**下一站闹钟要等应用再启动才重挂**（Dart 侧才有时序数学）；且错过超过 30 分钟的时点提醒不再补响                                                                                                                                                                                                                                                                                                                                              | 出现"连续多日不打开应用也要准点提醒"的需求时（把重锚搬进原生/后台 isolate）                                                                                     |
-| **悬浮面板不跑提醒调度**（v1.6）                 | 悬浮引擎（第二个 isolate）只做交互与展示，不装配 ReminderDispatcher（避免两个引擎抢同一个全局闹钟）。因此"只有悬浮面板活着"时也不重锚下一站闹钟                                                                                                                                                                                                                                                                                                                                                    | 与上一条一并处理：把调度搬进原生或让两个引擎协商单一调度者                                                                                                      |
-| **两引擎并发写**（v1.6）                         | 应用内壳与悬浮面板各有自己的 TaskService；同步靠文件 watch + D9 字段归属合并，同一次编辑同时发生在两边时理论上可丢一侧（窗口极小）                                                                                                                                                                                                                                                                                                                                                                 | 出现真实丢失案例时（引入跨引擎的单一写入者或文件锁）                                                                                                            |
-| **系统级悬浮面板本体**（v1.5 → **v1.6 已落地**） | 把手拖出即在当前 App 上方就地展开面板（第二个 Flutter 引擎 + 透明 overlay 窗口，复用同一份 panels）；进应用只走『设置 / 编辑规则』                                                                                                                                                                                                                                                                                                                                                                 | —（已落地；新局限见上两条关于调度与并发写的行）                                                                                                                 |
-| **系统手势排除区只给了把手**（v1.10）            | 面板是全屏 overlay 窗口，**没有**声明 `setSystemGestureExclusionRects`：从边缘起手的横向手势仍可能被系统判成返回（结果 = 收起面板，语义恰好一致，见 ui-interaction.md 决议 41）。不给面板加排除区的理由：每边排除区有系统竖向上限（约 200dp），整条边保护不住；加满会丢掉"边缘 = 返回"这个自然退出口。把手只有一小块、在配额内，独占它就够了                                                                                                                                                       | 用户抱怨"贴着边缘滚清单误触返回"（→ 改为整条边声明，接受系统上限）；或某个 ROM 不认把手那份排除区导致横拖打开失效（→ 退化到点按，决议 41 已留兜底）             |
-| 周期实例按天物化成任务文件（v1.5）               | 每天一份：人类文档里一行（`- [ ] 晨跑 创建 …`，Obsidian 可见）+ 内核属性文档 `.gtd/<规则id>-<yyyy-MM-dd>.md`（完成/跳过都有地方落）；规则多时目录文件数会增长，需靠回收站/手工清理历史                                                                                                                                                                                                                                                                                                             | 目录膨胀到影响浏览时（改为归档子目录或按需生成）                                                                                                                |
-| 主题预设只换强调色（v1.5）                       | 状态语义色（逾期橙红、时间徽标橙）固定不随预设变；不是完整主题包                                                                                                                                                                                                                                                                                                                                                                                                                                   | 需要夜间配色/完整主题包时（§8 的"最后做"项）                                                                                                                    |
-| **标准模式下不会自动提醒**（v1.9）               | 默认模式只排列不提醒：没手动开提醒的任务，只有清单顺序在推着你，错过截止不会有声音。这是**产品选择不是缺陷**（改设置或给那一件开提醒即可）                                                                                                                                                                                                                                                                                                                                                         | "忘了"成为主诉时（考虑按截止逼近度自动升级为提醒，或首次创建时问一句要不要响）                                                                                  |
-| **风险的尺度 τ 是全局的**（v1.9）                | 同一个 τ（默认 1 个工作日）套在所有任务上："三天后交"和"三小时后交"用同一个尺度；个人对"紧"的感受只能靠调 τ/γ 或改 importance 表达                                                                                                                                                                                                                                                                                                                                                                 | 出现"同一批任务需要不同压力尺度"的真实需求时（按标签/分类配尺度）                                                                                               |
-| **旧算法只在注册表里留着**（v1.9）               | `slack.v1` 保留是为了对照与影子运行；设置页**没有**"换算法"入口（要改得动组装点）。这符合 §8"换/加算法 = 注册一个新 Scheduler"，但用户当下无法自选                                                                                                                                                                                                                                                                                                                                                 | 需要"用户自选算法"时（设置里补一个选择器；注册表与 `params` 都已就绪）                                                                                          |
-| **标准/完整两档的差别只在"要不要出声"**（v1.9）  | 顺序、分组、编号、今日清单准入在这两档下**完全一样**（`TaskMetric.nextReminderAt` 是锚点，不受门槛影响），所以标准模式不会"少看到事"，只会"少听到响"（v1.12 起的第三档"无排序"连顺序也交还给人，见本节后两条）                                                                                                                                                                                                                                                                                     | 若将来要求标准模式也改动清单构成（例如"没开提醒的都不进今日"），先改 §6.1 与 `buildTodayView`                                                                   |
-| **手动序只覆盖被拖过的那一段**（v1.12）          | 拖动一次就对当前今天的 flex 组整段重编号；没排过序的任务没有 `manual_order` → 按 id 升序沉在末尾，新任务同样从末尾开始                                                                                                                                                                                                                                                                                                                                                                             | 出现"新任务要能插到中间"的需求时（创建后给它一个"插到某件之前"的入口，本质仍是写一个序号）                                                                      |
-| **无排序只管今日的 flex 组**（v1.12）            | 逾期组仍置顶、固定时点组仍按时刻升序（时刻就是序）、例行组仍按当天发生时刻、被挑散件仍在最后；任务池仍按 `pool_order` 整理序、周期条目仍按发生日期混排（决议 27）。`manual_order` 对池子无效                                                                                                                                                                                                                                                                                                       | 要求固定时点组或周期条目也能随手拖时（要动决议 11/27，先改 UI 文档再改 §3.1）                                                                                   |
-| **界面状态领先于盘**（v1.16）                    | 命令改成"换内存态 → **发事件** → 落盘 → 用内存态重算"：事件是 UI 刷新的唯一触发器，把它提到落盘之前，界面就不必等 N 次文件写（拖动闪动由此消失）。代价是命令返回前那一段窗口里，**界面显示的状态盘上还没生效**；落盘失败（权限被撤、盘满、目录被移走）时，这个不一致会一直持续到下一次从盘回流（文件监听 / 回前台 / 重启），表现为"看着改好了、重启回退"。失败**只记不抛**（否则命令半途而废、UI 停在更不一致的地方），唯一查口是 `TaskService.persistFailures`（`<taskId>: <错误>`），目前不接 UI | 出现真实的写失败反馈（设置页给一处"未落盘"提示）；或要求"写成功才推进界面"——那等于把事件退回落盘之后、闪动会回来，正确做法是乐观更新 + 失败回滚，而不是调回顺序 |
-| **长期任务没有行指纹**（v1.17）                  | 工作强度 = '长期'的任务内核属性文档只有 `id`，没有 `digest`：两文档配对降到 B.3 第 2/3 档（任务名/位置）。人在 Obsidian 里**改名且两边剩余数量不等**时，这一行会被当新任务接管（分到新 id），旧 id 的属性文件留在 `.gtd/` 里并附提示——表现为"改名后多出一条、旧条目还在"                                                                                                                                                                                                                           | 出现真实的改名丢任务案例时（给长期任务也写上 `digest`——它就一行、不算"属性"；或人在人类文档里写稳定 id 进行内，例如 `^task-001`）                               |
+| frontmatter 注释 ~~不保留~~                      | 注释行属"非字段内容"（已解决），按字段级保真原样保留（codec 用原始行合并实现）                                                                                                                                                                                                                                                                                                                                                                                                              | —（已关闭）                                                                                                                                                     |
+| 双开实例未处理                                   | 桌面双开 = 文件级 last-writer-wins，字段归属合并缓解但不消除                                                                                                                                                                                                                                                                                                                                                                                                                                                | 出现真实双开需求时（实例锁或单一常驻进程）                                                                                                                      |
+| **人类文档是单文件**                     | 所有任务共写一个 `tasks.md`：任务量大时单文件变长（Obsidian 侧仍是普通文档）；两引擎/双开并发改同一行理论上可丢一侧。**未采用"一任务一文件"或"单文件内核索引"**的理由见附录 B"为什么是双文档"                                                                                                                                                                                                                                                                                                              | 单文档超过数千行、或出现真实并发丢写时（改为按分类分文件 / 引入行级锁）                                                                                         |
+| **行指纹的三种失配**                     | 指纹不等时按"任务名 → 位置配对"降级认领。若人在 Obsidian 里**同时**改名、增删行，位置配对可能把内核属性配到相邻任务上                                                                                                                                                                                                                                                                                                                                                                              | 出现真实错配案例时（人写一个稳定 id 进行内，例如 `^task-001`；代价是文档变脏）                                                                                  |
+| **提醒链路的"跨天自续"**                 | 应用被杀且用户长时间不打开时：安卓会在到点弹出通知，但**下一站闹钟要等应用再启动才重挂**（Dart 侧才有时序数学）；且错过超过 30 分钟的时点提醒不再补响                                                                                                                                                                                                                                                                                                                                              | 出现"连续多日不打开应用也要准点提醒"的需求时（把重锚搬进原生/后台 isolate）                                                                                     |
+| **悬浮面板不跑提醒调度**                 | 悬浮引擎（第二个 isolate）只做交互与展示，不装配 ReminderDispatcher（避免两个引擎抢同一个全局闹钟）。因此"只有悬浮面板活着"时也不重锚下一站闹钟                                                                                                                                                                                                                                                                                                                                                    | 与上一条一并处理：把调度搬进原生或让两个引擎协商单一调度者                                                                                                      |
+| **两引擎并发写**                         | 应用内壳与悬浮面板各有自己的 TaskService；同步靠文件 watch + 字段归属合并，同一次编辑同时发生在两边时理论上可丢一侧（窗口极小）                                                                                                                                                                                                                                                                                                                                                                 | 出现真实丢失案例时（引入跨引擎的单一写入者或文件锁）                                                                                                            |
+| **系统级悬浮面板本体**（已落地） | 把手拖出即在当前 App 上方就地展开面板（第二个 Flutter 引擎 + 透明 overlay 窗口，复用同一份 panels）；进应用只走『设置 / 编辑规则』                                                                                                                                                                                                                                                                                                                                                                 | —（已落地；新局限见上两条关于调度与并发写的行）                                                                                                                 |
+| **系统手势排除区只给了把手**            | 面板是全屏 overlay 窗口，**没有**声明 `setSystemGestureExclusionRects`：从边缘起手的横向手势仍可能被系统判成返回（结果 = 收起面板，语义恰好一致，见 ui-interaction.md）。不给面板加排除区的理由：每边排除区有系统竖向上限（约 200dp），整条边保护不住；加满会丢掉"边缘 = 返回"这个自然退出口。把手只有一小块、在配额内，独占它就够了                                                                                                                                                       | 用户抱怨"贴着边缘滚清单误触返回"（→ 改为整条边声明，接受系统上限）；或某个 ROM 不认把手那份排除区导致横拖打开失效（→ 退化到点按兜底）             |
+| 周期实例按天物化成任务文件               | 每天一份：人类文档里一行（`- [ ] 晨跑 创建 …`，Obsidian 可见）+ 内核属性文档 `.gtd/<规则id>-<yyyy-MM-dd>.md`（完成/跳过都有地方落）；规则多时目录文件数会增长，需靠回收站/手工清理历史                                                                                                                                                                                                                                                                                                             | 目录膨胀到影响浏览时（改为归档子目录或按需生成）                                                                                                                |
+| 主题预设只换强调色                       | 状态语义色（逾期橙红、时间徽标橙）固定不随预设变；不是完整主题包                                                                                                                                                                                                                                                                                                                                                                                                                                   | 需要夜间配色/完整主题包时（§8 的"最后做"项）                                                                                                                    |
+| **标准模式下不会自动提醒**               | 默认模式只排列不提醒：没手动开提醒的任务，只有清单顺序在推着你，错过截止不会有声音。这是**产品选择不是缺陷**（改设置或给那一件开提醒即可）                                                                                                                                                                                                                                                                                                                                                         | "忘了"成为主诉时（考虑按截止逼近度自动升级为提醒，或首次创建时问一句要不要响）                                                                                  |
+| **风险的尺度 τ 是全局的**                | 同一个 τ（默认 1 个工作日）套在所有任务上："三天后交"和"三小时后交"用同一个尺度；个人对"紧"的感受只能靠调 τ/γ 或改 importance 表达                                                                                                                                                                                                                                                                                                                                                                 | 出现"同一批任务需要不同压力尺度"的真实需求时（按标签/分类配尺度）                                                                                               |
+| **旧算法只在注册表里留着**               | `slack.v1` 保留是为了对照；设置页**没有**"换算法"入口（要改得动组装点）。这符合 §8"换/加算法 = 注册一个新 Scheduler"，但用户当下无法自选                                                                                                                                                                                                                                                                                                                                                 | 需要"用户自选算法"时（设置里补一个选择器；注册表与 `params` 都已就绪）                                                                                          |
+| **标准/完整两档的差别只在"要不要出声"**  | 顺序、分组、编号、今日清单准入在这两档下**完全一样**（`TaskMetric.nextReminderAt` 是锚点，不受门槛影响），所以标准模式不会"少看到事"，只会"少听到响"（第三档"无排序"连顺序也交还给人，见本节后两条）                                                                                                                                                                                                                                                                                     | 若将来要求标准模式也改动清单构成（例如"没开提醒的都不进今日"），先改 §6.1 与 `buildTodayView`                                                                   |
+| **手动序只覆盖被拖过的那一段**          | 拖动一次就对当前今天的 flex 组整段重编号；没排过序的任务没有 `manual_order` → 按 id 升序沉在末尾，新任务同样从末尾开始                                                                                                                                                                                                                                                                                                                                                                             | 出现"新任务要能插到中间"的需求时（创建后给它一个"插到某件之前"的入口，本质仍是写一个序号）                                                                      |
+| **无排序只管今日的 flex 组**            | 逾期组仍置顶、固定时点组仍按时刻升序（时刻就是序）、例行组仍按当天发生时刻、被挑散件仍在最后；任务池仍按 `pool_order` 整理序、周期条目仍按发生日期混排。`manual_order` 对池子无效                                                                                                                                                                                                                                                                                                       | 要求固定时点组或周期条目也能随手拖时（先改 UI 文档再改 §3.1）                                                                                   |
+| **界面状态领先于盘**                    | 命令改成"换内存态 → **发事件** → 落盘 → 用内存态重算"：事件是 UI 刷新的唯一触发器，把它提到落盘之前，界面就不必等 N 次文件写（拖动闪动由此消失）。代价是命令返回前那一段窗口里，**界面显示的状态盘上还没生效**；落盘失败（权限被撤、盘满、目录被移走）时，这个不一致会一直持续到下一次从盘回流（文件监听 / 回前台 / 重启），表现为"看着改好了、重启回退"。失败**只记不抛**（否则命令半途而废、UI 停在更不一致的地方），唯一查口是 `TaskService.persistFailures`（`<taskId>: <错误>`），目前不接 UI | 出现真实的写失败反馈（设置页给一处"未落盘"提示）；或要求"写成功才推进界面"——那等于把事件退回落盘之后、闪动会回来，正确做法是乐观更新 + 失败回滚，而不是调回顺序 |
+| **长期任务没有行指纹**                  | 工作强度 = '长期'的任务内核属性文档只有 `id`，没有 `digest`：两文档配对降到 B.3 第 2/3 档（任务名/位置）。人在 Obsidian 里**改名且两边剩余数量不等**时，这一行会被当新任务接管（分到新 id），旧 id 的属性文件留在 `.gtd/` 里并附提示——表现为"改名后多出一条、旧条目还在"                                                                                                                                                                                                                           | 出现真实的改名丢任务案例时（给长期任务也写上 `digest`——它就一行、不算"属性"；或人在人类文档里写稳定 id 进行内，例如 `^task-001`）                               |
 
 ---
 
-## 13. 修订日志
+## 附录 B：Markdown 文件格式约定（双文档）
 
-历史修订（v1.0 起，含每版的口径、理由与踩坑结论）见 `docs/changelog.md`（append-only；与本文冲突时以正文 + §11 决策记录为准）。
-
---- 
-
-## 附录 A：Markdown 文件格式约定（双文档，v1.7）
-
-### A.0 目录布局
+### B.0 目录布局
 
 ```text
 tasks/                       ← 任务目录（设置里可选，GTD_TASKS_DIR 可覆盖）
 ├── tasks.md                 ← 【人类文档】所有任务：一个文档，# 标题分类，一行一条
 ├── .gtd/                    ← 【内核属性文档】应用自己写，一个任务一个
 │   ├── <任务id>.md          　任务id / 工作强度 / 优先级 / 时间裕度 / 剩余工作量
-│   │                       　（**长期任务只有 id 一行**，v1.17）
-│   ├── log.md               　操作流水（决议 37：append-only；**不是任务文档**，
+│   │                       　（**长期任务只有 id 一行**）
+│   ├── log.md               　操作流水（append-only；**不是任务文档**，
 │   │                        　内核属性扫描与文件监听都跳过它）
 │   └── .trash/              　软删除的内核属性文件（Obsidian 可见可捞）
 ├── routines.md              ← 周期规则（B-2，形状不变）
@@ -926,7 +877,7 @@ tasks/                       ← 任务目录（设置里可选，GTD_TASKS_DIR 
 另一方（用户手写的内容被机读字段淹掉、应用的字段被手改搞坏）。分成两个文档之后，
 "谁写谁负责" 落到文件层面：**人写 `tasks.md`，内核写 `.gtd/`，应用只改自己那半边。**
 
-### A.1 人类文档 `tasks.md`
+### B.1 人类文档 `tasks.md`
 
 **这是 Obsidian 里看、改、共享的那一个文档。** 用 `# 标题` 分类（分类即组织方式），
 一条任务 = **一行复选框**：
@@ -968,7 +919,7 @@ tasks/                       ← 任务目录（设置里可选，GTD_TASKS_DIR 
 **人类文档里不出现任何内核字段**：任务 id、工作强度、优先级、时间裕度、剩余工作量
 一个都不写进来。
 
-### A.2 内核属性文档 `.gtd/<任务id>.md`
+### B.2 内核属性文档 `.gtd/<任务id>.md`
 
 frontmatter 为**平铺的 `key: value` 行**（每行一个字段、标量值）；不支持列表、嵌套、
 多行标量；注释行与未知字段行同属"非字段内容"，按**字段级保真原样保留**（§3.4）。
@@ -983,7 +934,7 @@ remaining_load: 0.75   # 剩余工作量（分数：乘以工作强度才是分�
 priority: 3            # 优先级 1–5（与 domain 的 importance 同一枚硬币）
 time_slack: 210        # 时间裕度（工作分钟；计算结果，不落盘也能重算）
 status: snoozed
-snoozed_until: 2026-10-11T17:10   # 与 status: snoozed 配套（D8：用户意图，持久化）
+snoozed_until: 2026-10-11T17:10   # 与 status: snoozed 配套（用户意图，持久化）
 ---
 
 内核备注（可选）：调度解释、AI 留的理由……归内核，应用不主动改。
@@ -1001,11 +952,11 @@ snoozed_until: 2026-10-11T17:10   # 与 status: snoozed 配套（D8：用户意�
 | `priority`       | int 1–5               | 优先级（domain 的 `importance`）                                                                           |
 | `time_slack`     | int（工作分钟，可选） | 时间裕度 = 可用工时 − 剩余工时；调度算出来的，丢了也能重算，所以允许缺行                                   |
 | `status`         | enum                  | pending / active / snoozed / completed（overdue 是派生，不写）                                             |
-| `snoozed_until`  | ISO8601，可选         | 用户 snooze 意图（D8：属事实，持久化）                                                                     |
+| `snoozed_until`  | ISO8601，可选         | 用户 snooze 意图（属事实，持久化）                                                                     |
 | `completed_at`   | ISO8601，可选         | 完成时刻（与人类文档 `完成 <时刻>` 同步落一份）                                                            |
 | `schema`         | int（规划）           | 迁移版本号，见 §3.4 防线三                                                                                 |
 
-**长期任务特例（v1.17，D18）**：工作强度 = '长期'（三无任务的创建缺省）时，本文件只剩：
+**长期任务特例**：工作强度 = '长期'（三无任务的创建缺省）时，本文件只剩：
 
 ```markdown
 ---
@@ -1015,41 +966,41 @@ id: task-004
 
 `work_intensity` / `remaining_load` / `priority` / `time_slack` 全部缺行，`digest` 也没有
 （两文档配对走 B.3 第 2/3 档）；`status` / `completed_at` 同样不落——**完成态只认人类文档**的
-`[x]` / `完成 <时刻>`（D14 口径不变）。'长期'不单独落一行：**没有 `work_intensity` 行就是长期**，
+`[x]` / `完成 <时刻>`。'长期'不单独落一行：**没有 `work_intensity` 行就是长期**，
 因此也**不为'长期'新增 metadata 键**（下方登记表里的 `in_progress` 是挂起标记、与"怎么表达
-长期"无关，v1.18）。与 routine 实例的"0 工时豁免"是两回事：
+长期"无关）。与 routine 实例的"0 工时豁免"是两回事：
 routine 到点发生、本来就不用估；长期是长期存在、估不出来。
 
 **自有 metadata 键登记表**（§3.4 防线二：应用自有键在此登记，编码时**跟随任务对象
 改写**——值变则行变、键在 `Task.metadata` 里消失则整行删；其余未知键原样往返）。
 实现载体 = `TaskSidecarCodec.registeredMetaKeys`；**漏登记这批键的写回，等于让
 "插队 / 池序 / 跳过今天 / 只到点响一次 / 类型转换"这些持久意图在命令自己的重锚里
-蒸发**（v1.7 漏过一次，v1.8 回补，见 §13）。除上表内的字段外，还登记：
+蒸发**。除上表内的字段外，还登记：
 
-| 键                 | 语义                                                                                                                             | 来源                            |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
-| `type`             | 任务类型：`fixed`（不可推）/ `flex`（可推，缺省不写）/ `routine`（周期实例，v1.5）                                               | ui 文档 §4.1 / §10#1            |
-| `pinned`           | 插队标记：持久意图，保持到完成，栈式压顶（仅可推组；**无排序档下不生效**，顺序由 `manual_order` 整体定，决议 43），值 = 插队时刻 | ui 文档 §6.1 / 决议 9 / 43      |
-| `picked_for_today` | 被挑散件标记（当日有效，值 = yyyy-MM-dd；手动挑过则当日自动挑让位）                                                              | ui 文档 §6.3 / 决议 8           |
-| `pool_order`       | 任务池显示序（仅整理，无调度含义，重启保留）                                                                                     | ui 文档决议 14                  |
-| `routine`          | 周期实例所属规则 id                                                                                                              | ui 文档决议 12                  |
-| `routine_date`     | 周期实例的发生日（yyyy-MM-dd；今日清单按它筛『例行组』）                                                                         | ui 文档决议 12                  |
-| `routine_remind`   | 该实例的规则设了响（时点性提醒，只写 `true`）                                                                                    | ui 文档决议 18                  |
-| `routine_skipped`  | 被"跳过今天"的那一天（yyyy-MM-dd；不完成、当天不再显示）                                                                         | ui 文档决议 23                  |
-| `point_fired`      | 已响过的那一次时点提醒（值 = 当时的到点时刻 ISO；改期/推迟后清除）                                                               | v1.5 实现（只到点响一次）       |
-| `remind`           | **逐任务提醒开关**（标准/无排序两档下让这一件出声；只写 `true`，关掉即删键）。完整模式下无意义（本来就全响）                     | ui 文档 §7.0 / 决议 38（v1.9）  |
-| `manual_order`     | **手动序**（**无排序档**下今日可推组的显示序，非负整数；拖动一次整段重编号）。标准/完整两档下**保留但不生效**，切档不迁移        | ui 文档 §6.1 / 决议 43（v1.12） |
-| `in_progress`      | **挂起进行标记**（v1.18，ui 决议 47）：长期任务顶置今日页最顶的挂起组（无编号、组内可拖）。持久意图，**保持到完成或主动取消、不按天过期**（`completeTask` 顺手清除）；值 = 挂起时刻 ISO，组内按时刻降序（后挂在上），拖动整段重写时刻。**仅'长期'任务可挂**（取消不限） | ui 文档 §6.1 / 决议 47（v1.18） |
+| 键                 | 语义                                                                                                                                                                                                                                                                    | 来源                            |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| `type`             | 任务类型：`fixed`（不可推）/ `flex`（可推，缺省不写）/ `routine`（周期实例）                                                                                                                                                                                      | ui 文档 §4.1 / §10#1            |
+| `pinned`           | 插队标记：持久意图，保持到完成，栈式压顶（仅可推组；**无排序档下不生效**，顺序由 `manual_order` 整体定），值 = 插队时刻                                                                                                                                        | ui 文档 §6.1      |
+| `picked_for_today` | 被挑散件标记（当日有效，值 = yyyy-MM-dd；手动挑过则当日自动挑让位）                                                                                                                                                                                                     | ui 文档 §6.3           |
+| `pool_order`       | 任务池显示序（仅整理，无调度含义，重启保留）                                                                                                                                                                                                                            | ui 文档                  |
+| `routine`          | 周期实例所属规则 id                                                                                                                                                                                                                                                     | ui 文档                  |
+| `routine_date`     | 周期实例的发生日（yyyy-MM-dd；今日清单按它筛『例行组』）                                                                                                                                                                                                                | ui 文档                  |
+| `routine_remind`   | 该实例的规则设了响（时点性提醒，只写 `true`）                                                                                                                                                                                                                           | ui 文档                  |
+| `routine_skipped`  | 被"跳过今天"的那一天（yyyy-MM-dd；不完成、当天不再显示）                                                                                                                                                                                                                | ui 文档                  |
+| `point_fired`      | 已响过的那一次时点提醒（值 = 当时的到点时刻 ISO；改期/推迟后清除）                                                                                                                                                                                                      | 只到点响一次       |
+| `remind`           | **逐任务提醒开关**（标准/无排序两档下让这一件出声；只写 `true`，关掉即删键）。完整模式下无意义（本来就全响）                                                                                                                                                            | ui 文档 §7.0  |
+| `manual_order`     | **手动序**（**无排序档**下今日可推组的显示序，非负整数；拖动一次整段重编号）。标准/完整两档下**保留但不生效**，切档不迁移                                                                                                                                               | ui 文档 §6.1 |
+| `in_progress`      | **挂起进行标记**：长期任务顶置今日页最顶的挂起组（无编号、组内可拖）。持久意图，**保持到完成或主动取消、不按天过期**（`completeTask` 顺手清除）；值 = 挂起时刻 ISO，组内按时刻降序（后挂在上），拖动整段重写时刻。**仅'长期'任务可挂**（取消不限） | ui 文档 §6.1 |
 
 - **解析宽容**：坏文件降级进 `warnings`，不崩溃。**warnings 流向**：现暂存于
   `repo.warnings` 仅供诊断；目标形态 = 进领域事件流 + UI"待整理"清单【规划】；
 - 未知字段必须无损往返（载体 = `DecodeResult.task.metadata`）。
-- **调度优先级与 risk 不落盘**（v1.9，D16）：上表的 `priority` 键是**人定的优先级**
+- **调度优先级与 risk 不落盘**：上表的 `priority` 键是**人定的优先级**
   （= `Task.importance`，缺省 3）；`risk × importance` 算出来的**调度优先级**是一次
   计算的输出，换算法/换 τ 即变，写进文件只会产生需要同步的脏数据。同理，
   `time_slack` 允许缺行（丢了也能重算）。
 
-### A.3 两条文档怎么对上号（连接键 + 三档降级）
+### B.3 两条文档怎么对上号（连接键 + 三档降级）
 
 内核属性文档里记着 `digest` = **人类文档那一行的指纹**（只看人写的部分，复选框状态不计）。
 读取时按下表配对，写回时把新的指纹记回去：
@@ -1062,13 +1013,13 @@ routine 到点发生、本来就不用估；长期是长期存在、估不出来
 
 - **数量不等就用前两档，绝不硬猜**：宁可把这一行当新任务接管（新建一个属性文档），
   也不把内核属性挪到另一条任务头上；
-- **长期任务没有 `digest`**（v1.17，D18）：它的稳态配对走第 2 档（任务名相等）；人把名字也改了
+- **长期任务没有 `digest`**：它的稳态配对走第 2 档（任务名相等）；人把名字也改了
   → 第 3 档或按新任务接管（有提示、不静默），旧 id 的属性文件留在 `.gtd/` 里等人工处理；
 - `digest` 不等的已知情形会记一条 notice：`任务行在应用之外被修改，已按归属合并`；
 - 人类文档里删掉一行、内核属性文档还在 → **保留属性文件 + 提示**，不静默删数据
   （文件即备份，删不删由人决定）。
 
-### A.4 软删除（D11 在双文档形态下的落地）
+### B.4 软删除
 
 删除 = **内核属性文件移入 `.gtd/.trash/`** + **人类文档里那一行用 Obsidian 原生注释
 `%%…%%` 包起来**：
@@ -1080,7 +1031,7 @@ routine 到点发生、本来就不用估；长期是长期存在、估不出来
 - 阅读模式下看不见、源文件里可捞回；`%%` 里的内容**一字不动**（还是原来那一行）；
 - 「清空回收」= 真删 `.gtd/.trash/` 内容 + 删掉这些注释行。
 
-### A.5 旧格式（`md-frontmatter/1`）与 `routines.md`
+### B.5 旧格式（`md-frontmatter/1`）与 `routines.md`
 
 **旧格式：一任务一文件的 frontmatter**（`formatId = md-frontmatter/1`）**只读兼容**。
 目录里若只有旧文件而**没有** `tasks.md`，首次读取自动迁移：
@@ -1108,7 +1059,7 @@ type: fixed
 **回归测试**：`test/markdown_task_repository_test.dart`「迁移」组 +
 「人类文档里别人的内容一字不动」组。
 
-#### 附录 A-2：`routines.md`（周期规则文件）
+#### 附录 B-2：`routines.md`（周期规则文件）
 
 与任务文件同目录的**独立文件**（TaskRepository/TaskCodec 不覆盖它），
 **一条规则一个 frontmatter 条目**，条目之间用 `---` 分隔；条目正文是规则备注，
@@ -1121,7 +1072,7 @@ title: 晨跑
 freq: weekly          # daily | weekly
 weekdays: 1,3,5       # weekly 时的星期（1=周一 … 7=周日，逗号分隔标量）
 time: 07:00           # 可选；缺行 = 不限时刻
-remind: true          # 响不响（决议 18；true 必须有时刻）
+remind: true          # 响不响（true 必须有时刻）
 enabled: true         # 启用开关
 created: 2026-10-07T09:00
 ---
@@ -1144,7 +1095,7 @@ created: 2026-10-07T09:00
 | `freq`             | enum         | daily / weekly                            |
 | `weekdays`         | 逗号分隔标量 | weekly 时的星期（1=周一 … 7=周日）        |
 | `time`             | HH:mm，可选  | 缺行 = 不限时刻                           |
-| `remind`           | bool         | 响不响（决议 18；true 必须有时刻）        |
+| `remind`           | bool         | 响不响（true 必须有时刻）        |
 | `enabled`          | bool         | 启用开关                                  |
 | `created`          | ISO8601      | 创建时间                                  |
 | `schema`           | int（规划）  | 迁移版本号，见 §3.4 防线三                |
