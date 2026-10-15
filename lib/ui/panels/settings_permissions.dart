@@ -35,7 +35,7 @@ class _SettingsPermissionsSectionState
       PermissionKind.batteryExemption,
       Icons.battery_saver,
       '电池优化白名单',
-      'Doze/省电模式会推迟甚至吞掉闹钟（附录 A）'
+      'Doze/省电模式会推迟甚至吞掉闹钟（附录 B）'
     ),
     (
       PermissionKind.overlayWindow,

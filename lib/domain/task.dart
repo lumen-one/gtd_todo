@@ -73,7 +73,7 @@ class Task {
   /// ui-interaction.md §4.3：更多的标签 = 更多的属性；内核不解释标签语义。
   final List<String> tags;
 
-  /// 未知 frontmatter 字段 + 应用自有 metadata 键（附录 A.2 登记表：
+  /// 未知 frontmatter 字段 + 应用自有 metadata 键（附录 B.2 登记表：
   /// type / pinned / picked_for_today / pool_order / remind），§3.4 字段级保真的载体。
   final Map<String, String> metadata;
 

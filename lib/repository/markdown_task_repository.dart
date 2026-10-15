@@ -10,14 +10,14 @@ import 'task_document.dart';
 import 'task_repository.dart';
 import 'task_sidecar.dart';
 
-/// **双文档** Markdown 实现（附录 A / 决议 36）。
+/// **双文档** Markdown 实现（附录 B）。
 ///
 /// 任务目录里的布局：
 ///
 /// ```text
 /// tasks/
 /// ├── tasks.md            人类文档：# 标题分类 + 一行一条任务（Obsidian 看/改/共享）
-/// ├── routines.md         周期规则（附录 A-2，独立文件，形态不变）
+/// ├── routines.md         周期规则（附录 B-2，独立文件，形态不变）
 /// ├── .gtd/               内核属性文档目录（一个任务一个，应用自己写）
 /// │   ├── <任务id>.md     任务id / 工作强度 / 优先级 / 时间裕度 / 剩余工作量
 /// │   └── .trash/         软删除的内核属性文件（决议 15：Obsidian 可见可捞）
@@ -195,7 +195,7 @@ class MarkdownTaskRepository implements TaskRepository {
     final freeSidecars = sidecars.values
         .where((s) => !usedIds.contains(s.id))
         .toList()
-      // 按 id 排序 ≈ 按创建先后（id 前缀是时间戳，附录 A.2）。sidecar 没有
+      // 按 id 排序 ≈ 按创建先后（id 前缀是时间戳，附录 B.2）。sidecar 没有
       // created 字段，拿读取时间排序等于随机——'长期'任务没有指纹（D18），
       // 稳态配对全靠这一档，顺序必须确定。
       ..sort((a, b) => a.id.compareTo(b.id));

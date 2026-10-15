@@ -147,7 +147,7 @@ class AppController extends ChangeNotifier {
     await maybePickForToday();
   }
 
-  /// 回到前台：SAF 无文件监听时靠它回流（附录 A），同时补当天的实例，
+  /// 回到前台：SAF 无文件监听时靠它回流（附录 B），同时补当天的实例，
   /// 并把系统级把手的真实开关状态同步回设置页。
   Future<void> onResumed() async {
     await refresh();

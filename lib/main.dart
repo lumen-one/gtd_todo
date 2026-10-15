@@ -153,14 +153,14 @@ Future<void> main() async {
   // （安卓 SAF 等）降级为"回到前台刷新"。
   repo.watch()?.listen((_) => controller.refresh());
 
-  // 回到前台：刷新 + 补当天周期实例（附录 A 的降级路径）。
+  // 回到前台：刷新 + 补当天周期实例（附录 B 的降级路径）。
   final lifecycle = _LifecycleBridge(controller);
   WidgetsBinding.instance.addObserver(lifecycle);
 
   runApp(GtdTodoApp(controller: controller));
 }
 
-/// 生命周期桥：回到前台刷新（附录 A：SAF 无文件监听时的降级）+ 补当天实例。
+/// 生命周期桥：回到前台刷新（附录 B：SAF 无文件监听时的降级）+ 补当天实例。
 class _LifecycleBridge with WidgetsBindingObserver {
   final AppController controller;
 

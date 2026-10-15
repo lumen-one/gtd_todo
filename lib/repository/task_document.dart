@@ -18,7 +18,7 @@ class _Stamp {
 
 /// 人类文档（`tasks.md`）的格式编解码：**纯函数、无 IO**。
 ///
-/// 存储形态（ui-interaction.md §4.3 / 决议 36，architecture.md 附录 B）：
+/// 存储形态（ui-interaction.md §4.3，architecture.md 附录 B）：
 /// 所有任务记在**同一个 `tasks.md`** 里，用 `# 标题` 分类，一条任务 = 一行复选框：
 ///
 /// ```markdown

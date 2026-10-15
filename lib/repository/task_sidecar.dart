@@ -33,14 +33,14 @@ import 'task_codec.dart';
 ///
 /// **'长期'任务例外（v1.17，D18 / ui 决议 46）**：工作强度 = '长期'（三无任务的
 /// 创建缺省）时，这份文档**只剩 `id` 一行**——上面那些内核算出来的键全部缺行，
-/// `digest` 也没有（两文档配对走附录 A.3 第 2/3 档），`status` / `completed_at`
+/// `digest` 也没有（两文档配对走附录 B.3 第 2/3 档），`status` / `completed_at`
 /// 同样不落（完成态只认人类文档的 `[x]` / `完成 <时刻>`，D14）。'长期'不单独落
 /// 一行：**没有 `work_intensity` 行就是长期**，因此不新增 metadata 键。
 /// 应用自有的 metadata 键（[registeredMetaKeys]）照常跟随任务对象改写。
 class TaskSidecarCodec {
   const TaskSidecarCodec();
 
-  /// 内核属性文档的格式标识（附录 A.2 登记）。
+  /// 内核属性文档的格式标识（附录 B.2 登记）。
   static const String formatId = 'md-taskkernel/1';
 
   /// 内核拥有的字段（编码时原地改写；`null` 值 → 整行移除）。
@@ -56,7 +56,7 @@ class TaskSidecarCodec {
     'completed_at',
   ];
 
-  /// 应用自有的 **metadata 键**（附录 A.2 登记表）：不是内核算出来的字段，
+  /// 应用自有的 **metadata 键**（附录 B.2 登记表）：不是内核算出来的字段，
   /// 但同样是应用财产——编码时**跟随任务对象改写**（值变则行变、键消失则行删），
   /// 其余未知键仍原样往返（§3.4 字段级保真）。
   ///
@@ -228,7 +228,7 @@ class TaskSidecarCodec {
   ///
   /// **'长期'任务（v1.17，D18）只写 `id` 一行**：下面这些内核算出来的键
   /// （含 digest / status / completed_at / snoozed_until）全部返回 null →
-  /// 整行移除；完成态只认人类文档（D14），配对走附录 A.3 第 2/3 档。
+  /// 整行移除；完成态只认人类文档（D14），配对走附录 B.3 第 2/3 档。
   String? fieldValue(Task t, String key, {String? digest}) {
     final long = t.isLongTerm;
     switch (key) {
@@ -253,7 +253,7 @@ class TaskSidecarCodec {
         if (long) return null;
         return t.completedAt == null ? null : fmtDateTime(t.completedAt!);
       default:
-        // 登记的应用自有 metadata 键（附录 A.2）：值直接取自任务对象；
+        // 登记的应用自有 metadata 键（附录 B.2）：值直接取自任务对象；
         // 键在 metadata 里消失 → 返回 null → 整行移除（"键消失则行删"）。
         return registeredMetaKeys.contains(key) ? t.metadata[key] : null;
     }
