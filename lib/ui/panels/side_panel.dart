@@ -329,7 +329,7 @@ class PanelOnboardDialog extends StatelessWidget {
 const double _kMinPanelWidth = 240;
 const double _kMinPanelHeight = 320;
 
-/// 拖把手的手势区厚度：骑在面板边缘上，各探出 6dp。
+/// 拖把手的手势区厚度：贴在面板内沿一整条（宽把手贴内侧竖缘、高把手贴底缘）。
 const double _kEdgeGrab = 12;
 
 /// 展开时面板与屏缘的贴靠 inset（上下同用；可用高度 = 屏高 − 安全区 − 2×它）。
@@ -382,6 +382,15 @@ double clampPanelHeight(double height, double availableHeight) {
   return height;
 }
 
+/// 把面板期望的顶边夹紧在可用区 [min, max] 里（max < min 只可能是极端
+/// 窄屏——面板比可用区还高，此时贴顶）。
+double clampPanelTop(double top, double min, double max) {
+  if (max < min) return min;
+  if (top < min) return min;
+  if (top > max) return max;
+  return top;
+}
+
 /// 可拖拽尺寸的侧边栏容器（ui-interaction.md §6.0）：内侧边缘竖条把手横拖
 /// 改宽、底边横条把手竖拖改高，拖动中**实时**改（只 setState），松手把尺寸
 /// 写进 `settings.panelWidth` / `panelHeight` 一笔落盘。
@@ -399,11 +408,19 @@ class ResizablePanel extends StatefulWidget {
   /// 面板本体（[SidePanel]），由宿主装配。
   final Widget child;
 
+  /// 垂直锚点（屏幕坐标 Y，通常是把手的中心）：面板垂直居中于它。
+  /// null = 不居中，贴可用区顶（系统级悬浮窗：原生把手位置未暴露给 Dart）。
+  ///
+  /// 宿主把面板摆在可用区顶部（`padding.top + _kPanelInset`），面板自己在
+  /// 区内 Padding 到居中位——宽高状态不离开本组件，宿主不必知道尺寸。
+  final double? anchorCenterY;
+
   const ResizablePanel({
     super.key,
     required this.controller,
     required this.dockLeft,
     required this.child,
+    this.anchorCenterY,
   });
 
   @override
@@ -461,48 +478,62 @@ class _ResizablePanelState extends State<ResizablePanel> {
 
   @override
   Widget build(BuildContext context) {
+    final mq = MediaQuery.of(context);
     final width = _width;
     final height = _height;
-    return SizedBox(
-      width: width,
-      height: height,
-      // 两个把手都骑在边缘上、探出面板 6dp：Stack 默认 hardEdge 会裁掉探出部分。
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          widget.child,
-          // 宽把手：内侧边缘竖条（停左在右缘、停右在左缘）。
-          Positioned(
-            top: 0,
-            bottom: 0,
-            left: widget.dockLeft ? width - _kEdgeGrab / 2 : null,
-            right: widget.dockLeft ? null : width - _kEdgeGrab / 2,
-            child: _PanelResizeEdge(
-              axis: Axis.horizontal,
-              onResize: (dx) => _onResizeWidth(widget.dockLeft ? dx : -dx),
-              onResizeEnd: _onResizeEnd,
+    final slotTop = mq.padding.top + _kPanelInset;
+    final slotBottom = mq.size.height - mq.padding.bottom - _kPanelInset;
+    // 有锚点 = 垂直居中于它（触边夹紧）；无锚点（悬浮窗）= 贴可用区顶。
+    final top = widget.anchorCenterY == null
+        ? slotTop
+        : clampPanelTop(widget.anchorCenterY! - height / 2, slotTop,
+            slotBottom - height);
+    return Padding(
+      // 宿主把面板放在可用区顶，这里在区内落到锚点居中位。
+      padding: EdgeInsets.only(top: top - slotTop),
+      child: SizedBox(
+        width: width,
+        height: height,
+        // 两个把手都贴在面板内沿（不探出边界——探出部分落在 Stack 的命中
+        // 测试区之外，边界点按不碎；贴内沿整条都在可命中范围内）。
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            widget.child,
+            // 宽把手：内侧边缘竖条（停左贴右缘内沿、停右贴左缘内沿）。
+            Positioned(
+              top: 0,
+              bottom: 0,
+              left: widget.dockLeft ? width - _kEdgeGrab : null,
+              right: widget.dockLeft ? null : width - _kEdgeGrab,
+              child: _PanelResizeEdge(
+                axis: Axis.horizontal,
+                onResize: (dx) => _onResizeWidth(widget.dockLeft ? dx : -dx),
+                onResizeEnd: _onResizeEnd,
+              ),
             ),
-          ),
-          // 高把手：底边横条（顶边固定，底边上下走）。
-          Positioned(
-            left: 0,
-            right: 0,
-            top: height - _kEdgeGrab / 2,
-            child: _PanelResizeEdge(
-              axis: Axis.vertical,
-              onResize: _onResizeHeight,
-              onResizeEnd: _onResizeEnd,
+            // 高把手：底边横条（贴底边内沿）。
+            Positioned(
+              left: 0,
+              right: 0,
+              top: height - _kEdgeGrab,
+              child: _PanelResizeEdge(
+                axis: Axis.vertical,
+                onResize: _onResizeHeight,
+                onResizeEnd: _onResizeEnd,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
 
 /// 面板边缘的拖拽把手：[Axis.horizontal] = 内侧边缘竖条改宽；
-/// [Axis.vertical] = 底边横条改高。手势区骑在边缘上各探出 6dp，不与面板
-/// 内容区的手势（翻页横滑 / 清单纵滚）抢。
+/// [Axis.vertical] = 底边横条改高。整条贴在面板内沿——探出边界的话，
+/// 探出部分在 Stack 的命中测试区之外（边界点按不碎）。不与面板内容区的
+/// 手势（翻页横滑 / 清单纵滚）抢：那 12dp 是边缘背景区。
 class _PanelResizeEdge extends StatelessWidget {
   final Axis axis;
   final ValueChanged<double> onResize;

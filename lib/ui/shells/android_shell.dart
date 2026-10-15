@@ -197,7 +197,7 @@ class _AndroidShellState extends State<AndroidShell> {
     // 监听 Activity 前后台），所以应用内把手**始终显示**——每个场景恰好一个把手，
     // 不会出现"两个把手叠在一起"或"把手指着面板碍事"。
     children.add(_Handle(
-      dy: _handleDy.clamp(24, size.height - 120),
+      dy: _handleDy.clamp(24, size.height - _kHandleHeight - 32),
       onLeft: _panelOnLeft,
       onDrag: (dy) => setState(() => _handleDy = dy),
       onOpen: _openPanel,
@@ -233,6 +233,8 @@ class _AndroidShellState extends State<AndroidShell> {
         child: ResizablePanel(
           controller: widget.controller,
           dockLeft: _panelOnLeft,
+          // 面板垂直居中于把手（ui-interaction.md §6.0）：把手的中心即锚点。
+          anchorCenterY: _handleDy + _kHandleHeight / 2,
           child: SidePanel(
             controller: widget.controller,
             pageCtrl: _pageCtrl,
@@ -253,6 +255,10 @@ class _AndroidShellState extends State<AndroidShell> {
 // 与原生悬浮把手同一套参数——两个场景共用一个把手（决议 34），外观必须一致。
 // 外观改了，**能做的事一条没少**：竖向拖动换位置、横向拖出展开、点按展开、长按换边。
 // 点按是后补的：它同时是决议 41 的兜底入口（ROM 不认手势排除区时仍打得开）。
+
+/// 把手高度（dp）：[_Handle] 的外观与"面板居中于把手"的锚点计算共用这一个数。
+const double _kHandleHeight = 88;
+
 class _Handle extends StatelessWidget {
   final double dy;
   final bool onLeft;
@@ -285,7 +291,7 @@ class _Handle extends StatelessWidget {
         onLongPress: onDockSwitch, // 长按：停靠到另一侧
         child: Container(
           width: 10,
-          height: 88,
+          height: _kHandleHeight,
           decoration: BoxDecoration(
             color: Colors.white.withValues(alpha: 0.55),
             borderRadius: BorderRadius.horizontal(
