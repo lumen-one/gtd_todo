@@ -68,8 +68,9 @@ class _SidePanelState extends State<SidePanel> {
             // 翻页 = **左右横滑**（PageView 自己的物理，v0.15）：横方向与列表的
             // 纵向滚动正交，两边互不抢手，所以不再需要任何"重手势"。
             // 圆点是页序指示，同时是可点的跳转靶。
-            // 页名与翻页圆点合成一行（面板只有 240–360 dp 宽，圆点单独占
-            // 一行等于白扔 30 dp 的内容高度）；圆点仍是跳转靶。
+            // 页名与图标按钮一行；页序圆点回到自己独立的一行（v1.20 改回——
+            // 居中那三个圆点是面板的"我在第几页"标识，用户觉得它好看，
+            // 省高度不值得）。
             Padding(
               padding: const EdgeInsets.fromLTRB(10, 2, 4, 0),
               child: Row(
@@ -84,20 +85,9 @@ class _SidePanelState extends State<SidePanel> {
                           key: ValueKey(_pageNames[_currentPage]),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.titleSmall
-                              ?.copyWith(fontWeight: FontWeight.w700),
+                          style: theme.textTheme.titleMedium,
                         ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  AnimatedBuilder(
-                    animation: widget.pageCtrl,
-                    builder: (context, _) => Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        for (var i = 0; i < 3; i++) _pageDot(i, theme),
-                      ],
                     ),
                   ),
                   const Spacer(),
@@ -110,6 +100,19 @@ class _SidePanelState extends State<SidePanel> {
                         widget.onOpenSettings!),
                   _headButton(Icons.close, '关闭', widget.onClose),
                 ],
+              ),
+            ),
+            // 页序圆点：独立一行居中，点哪个跳哪页（§6.0）。
+            AnimatedBuilder(
+              animation: widget.pageCtrl,
+              builder: (context, _) => SizedBox(
+                height: 28,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    for (var i = 0; i < 3; i++) _pageDot(i, theme),
+                  ],
+                ),
               ),
             ),
             const Divider(height: 8),
@@ -138,23 +141,25 @@ class _SidePanelState extends State<SidePanel> {
     );
   }
 
-  /// 页序圆点：当前页拉成一条短横（形变过渡），点它直接跳页。
+  /// 页序圆点（v1.20 改回原本的形）：7dp 圆点、当前页强调色，切换时颜色
+  /// 渐变（v1.19 那版会把当前页拉成短横，用户想要回圆点）。每个圆点包
+  /// 36dp 宽的点击区，点哪个跳哪页。
   Widget _pageDot(int index, ThemeData theme) {
     final active = index == _currentPage;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => _pageTo(index),
       child: SizedBox(
-        width: 16,
+        width: 36,
         height: 28,
         child: Center(
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 220),
             curve: Curves.easeOutCubic,
-            width: active ? 14 : 6,
-            height: 6,
+            width: 7,
+            height: 7,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(999),
+              shape: BoxShape.circle,
               color: active
                   ? AppColors.accent
                   : theme.colorScheme.outlineVariant.withValues(alpha: 0.7),
