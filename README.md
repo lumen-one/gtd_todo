@@ -12,11 +12,39 @@ Markdown 数据是**双文档**：人写人看的 `tasks.md`，内核算的 `.gt
 ## 运行
 
 ```bash
-flutter run -d windows        # 桌面版
+flutter run -d windows        # 桌面版（调试）
+flutter run -d android        # 安卓版（调试）
 flutter test                  # 全部单元测试（算法不依赖 UI，可独立验证）
 dart run example/simulation.dart   # 控制台仿真：重放"创建→推迟→干活→临界"全流程
 dart run tool/seed_tasks.dart      # 生成示例任务数据（tasks.md + .gtd/<id>.md）
 ```
+
+Windows 版默认任务目录是相对路径 `tasks/`（相对进程工作目录，`flutter run` 时
+即项目根）。要指到别处：设环境变量 `GTD_TASKS_DIR=<目录>`，或在应用内设置页 →
+文件访问里改目录（写 `bootstrap.json`，重启生效）。
+
+**打包成脱离开发环境的独立软件**（发给别人或日常自用）：
+
+```bash
+flutter build windows --release
+```
+
+产物 = `build/windows/x64/runner/Release/` 整个文件夹（`gtd_todo.exe` +
+`flutter_windows.dll` + `data/` 等），原样拷到任何 Win10/11 即可双击运行，
+不需要装 Flutter。注意两点：目标机要有 VC++ 运行库（缺了报缺
+`vcruntime140.dll`，装 Visual C++ Redistributable）；任务数据不在这个文件夹里，
+把 `tasks/` 一起拷走，或在目标机设 `GTD_TASKS_DIR` 指过去。
+
+## 局域网同步（Windows ↔ 安卓）
+
+同一网络内两台设备同步任务数据：一台当**主机**（通常 Windows），其余当**从机**
+接入；双向同步，冲突由主机裁决——从机被覆盖的版本存档到 `.gtd/conflicts/`，
+不丢数据。设置页 → 同步：开主机 / 扫局域网发现 / 手输 IP / 立即同步 / 看上次
+同步时间与冲突提示。同步范围与冲突规则见 [docs/architecture.md](docs/architecture.md)
+§4.4。
+
+注意：Windows 首次开主机会弹防火墙对话框，需允许**专用网络**入站（HTTP 49872
++ UDP 49871）；路由器若禁了广播，用手输 IP 兜底。
 
 ## 任务数据（Obsidian 可直接编辑）
 
