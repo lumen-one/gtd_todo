@@ -246,7 +246,7 @@ void main() {
     expect(calls.map((c) => c.method), isNot(contains('collapse')));
   });
 
-  testWidgets('窄面板（240dp 下限）：三个页名都不被省略号截断', (tester) async {
+  testWidgets('窄面板（240dp 下限）：四个页名都不被省略号截断', (tester) async {
     final controller = makeController();
     final pageCtrl = PageController();
     // 用 SizedBox 卡宽而不是外层 MediaQuery：WidgetsApp 会按视图尺寸重建
@@ -269,9 +269,9 @@ void main() {
     await tester.pumpAndSettle();
 
     // 面板头可用宽 = 240 − 14（左右 padding）− 102（3×34dp 图标）= 124dp。
-    // 修复前 Flexible 与 Spacer 对半劈，页名只拿 62dp——三个页名全被截成
+    // 修复前 Flexible 与 Spacer 对半劈，页名只拿 62dp——页名全被截成
     // "任…"（2026-10-16 真机截图复现）。修复后页名独享 124dp。
-    const names = ['今日清单', '疑问笔记', '任务池'];
+    const names = ['今日清单', '疑问笔记', '任务池', '已完成'];
     for (var i = 0; i < names.length; i++) {
       pageCtrl.jumpToPage(i);
       await tester.pumpAndSettle();
