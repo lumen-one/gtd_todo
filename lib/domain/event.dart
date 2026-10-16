@@ -6,6 +6,7 @@ enum DomainEventType {
   taskCreated,
   taskUpdated,
   taskCompleted,
+  taskReopened,  // 恢复未完成（撤销一次完成；ui 文档 §6.7 已完成页）
   taskSnoozed,
   workLogged,
   taskDeleted,

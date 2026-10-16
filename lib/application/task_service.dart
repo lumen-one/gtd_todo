@@ -230,6 +230,32 @@ class TaskService {
     return updated;
   }
 
+  /// 恢复未完成（撤销一次完成，ui 文档 §6.7『已完成』页）：已完成任务的兜底动作。
+  ///
+  /// - **例行实例不能恢复**：实例是临时的，恢复一个往日实例它会从所有清单里
+  ///   消失（今日清单只收当天实例，池子不收实例）——要续节奏去编辑规则；
+  /// - status 回 active、清 `completedAt`：人类文档那行由 codec 从 `completedAt`
+  ///   驱动天然复原（`- [x] … 完成 <时刻>` → `- [ ]`），内核属性文档的
+  ///   `completed_at` 同步移除，不写行逻辑；
+  /// - `remainingWork` 回满到 `estimatedWork`（完成时被归零/干完）；'长期'任务
+  ///   没有预估可回，保持缺位（D18）；
+  /// - 没完成的任务调它是无操作（幂等，也防误触把已记的工时冲掉）。
+  Future<Task> reopenTask(String id,
+      {EventOrigin origin = EventOrigin.user}) async {
+    final cur = _require(id);
+    if (cur.type == TaskType.routine) {
+      throw ArgumentError('周期实例不能恢复（实例是临时的；要续节奏请编辑规则）');
+    }
+    if (!cur.isCompleted) return cur;
+    final updated = cur.copyWith(
+      status: TaskStatus.active,
+      clearCompletedAt: true,
+      remainingWork: cur.isLongTerm ? null : cur.estimatedWork,
+    );
+    await _persist(updated, origin, DomainEventType.taskReopened);
+    return updated;
+  }
+
   /// 推迟不是简单 Timer：改变任务状态后触发对整个任务集合的重新调度。
   /// D8 语义：[minutes] 为**自然时间**分钟（≤120 的短推）。
   Future<Task> snoozeTask(String id, {required int minutes,

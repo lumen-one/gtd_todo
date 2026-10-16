@@ -345,3 +345,80 @@ PoolView buildPoolView({
     rows: List.unmodifiable(rows),
   );
 }
+
+/// 已完成任务归档查询（ui-interaction.md §6.7，第 4 页）：
+/// 按完成日期分三组。这是查询不是渲染：UI 只消费结果，不含分组逻辑
+/// （与 [buildTodayView] / [buildPoolView] 同规则）。
+///
+/// 完成的任务不进今日清单与任务池（`isCompleted` 即排除），但那一行原样留在
+/// 人类文档里——这一页就是它在 App 里的落脚处。与调度模式三档无关：存档不参与
+/// 排序，`buildCompletedView` 不收 `scheduleMode`。
+class CompletedView {
+  /// 今天完成的（`completedAt` 与今天同一天），按完成时刻降序。
+  final List<Task> today;
+
+  /// 昨天完成的，按完成时刻降序。
+  final List<Task> yesterday;
+
+  /// 更早完成的，按完成时刻降序；**没有完成时刻的**（人在 Obsidian 里手打了勾）
+  /// 垫在末尾、按创建时间降序——完成日期属人写的那半边，内核不猜。
+  final List<Task> earlier;
+
+  const CompletedView({
+    this.today = const [],
+    this.yesterday = const [],
+    this.earlier = const [],
+  });
+
+  bool get isEmpty => today.isEmpty && yesterday.isEmpty && earlier.isEmpty;
+}
+
+/// 组内排序：有完成时刻的按时刻降序（最新完成的在上）；都无时刻的按创建时间
+/// 降序；两者混排时"有时刻的在前"（无时刻的是手勾的历史件，垫底）。
+int _compareCompleted(Task a, Task b) {
+  final ca = a.completedAt;
+  final cb = b.completedAt;
+  if (ca != null && cb != null) return cb.compareTo(ca);
+  if (ca != null) return -1;
+  if (cb != null) return 1;
+  return b.created.compareTo(a.created);
+}
+
+/// 聚合已完成任务（ui 文档 §6.7）。
+CompletedView buildCompletedView({
+  required List<Task> tasks,
+  required DateTime now,
+}) {
+  final today = DateTime(now.year, now.month, now.day);
+  final yesterday = today.subtract(const Duration(days: 1));
+  final todayDone = <Task>[];
+  final yesterdayDone = <Task>[];
+  final earlierDone = <Task>[];
+
+  for (final t in tasks) {
+    if (!t.isCompleted) continue;
+    final at = t.completedAt;
+    if (at == null) {
+      earlierDone.add(t); // 手勾无时刻：归『更早』末尾（排序器负责垫底）
+      continue;
+    }
+    final day = DateTime(at.year, at.month, at.day);
+    if (day == today) {
+      todayDone.add(t);
+    } else if (day == yesterday) {
+      yesterdayDone.add(t);
+    } else {
+      earlierDone.add(t);
+    }
+  }
+
+  for (final group in [todayDone, yesterdayDone, earlierDone]) {
+    group.sort(_compareCompleted);
+  }
+
+  return CompletedView(
+    today: List.unmodifiable(todayDone),
+    yesterday: List.unmodifiable(yesterdayDone),
+    earlier: List.unmodifiable(earlierDone),
+  );
+}
