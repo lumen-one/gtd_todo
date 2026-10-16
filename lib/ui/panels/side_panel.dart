@@ -170,16 +170,22 @@ class _SidePanelState extends State<SidePanel> {
     );
   }
 
-  /// 面板头的图标按钮：34 dp 见方。默认 40 的按钮在 240 dp 宽的面板上
-  /// 会把页名和圆点挤没。
+  /// 面板头的图标按钮：34 dp 见方。
+  ///
+  /// 用 SizedBox 包一层而不是传 `IconButton.constraints`——后者在当前
+  /// Flutter 版本上被 ButtonStyle 的默认 minimumSize 压回 48dp（实测确认，
+  /// 探测里 IconButton 的 RenderBox 仍是 48×48），包一层才作数。
   Widget _headButton(IconData icon, String tooltip, VoidCallback onPressed) =>
-      IconButton(
-        constraints: const BoxConstraints.tightFor(width: 34, height: 34),
-        padding: EdgeInsets.zero,
-        iconSize: 20,
-        tooltip: tooltip,
-        icon: Icon(icon),
-        onPressed: onPressed,
+      SizedBox(
+        width: 34,
+        height: 34,
+        child: IconButton(
+          padding: EdgeInsets.zero,
+          iconSize: 20,
+          tooltip: tooltip,
+          icon: Icon(icon),
+          onPressed: onPressed,
+        ),
       );
 
   /// 当前页序号（PageView 还没挂上时按第 1 页算）。

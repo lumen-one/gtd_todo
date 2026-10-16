@@ -147,9 +147,9 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    // 初始无锚点：贴顶。文本顶 = 面板顶 8 + 面板头 padding 6 + 12
-    // （页名 Text 与 48dp 图标按钮同处 Row，被 crossAxisAlignment.center 居中）
-    expect(tester.getTopLeft(find.text('今日清单')).dy, closeTo(26, 1));
+    // 初始无锚点：贴顶。文本顶 = 面板顶 8 + 面板头 padding 2 + 5
+    // （页名 Text 高 24，与 34dp 图标按钮同处 Row，被 crossAxisAlignment.center 居中）
+    expect(tester.getTopLeft(find.text('今日清单')).dy, closeTo(15, 1));
 
     // 模拟原生广播：展开 + 把手中心 Y = 300（800×600 测试屏）
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -165,8 +165,8 @@ void main() {
     await tester.pumpAndSettle();
 
     // 默认高 ≈ 0.85×(600−16) = 496.4 → 面板顶 ≈ 300−248.2 = 51.8，
-    // 文本顶 = 51.8 + 18 ≈ 69.8（比贴顶的 26 低出约 43.8 = 锚点−半高−8）
-    expect(tester.getTopLeft(find.text('今日清单')).dy, closeTo(69.8, 4));
+    // 文本顶 = 51.8 + 2 + 5 = 58.8（比贴顶的 15 低出约 43.8 = 锚点−半高−8）
+    expect(tester.getTopLeft(find.text('今日清单')).dy, closeTo(58.8, 1));
   });
 
   testWidgets('panelDrag：侧边栏跟着手指滑出（露多少跟多少）', (tester) async {
@@ -181,18 +181,18 @@ void main() {
     await tester.pumpAndSettle();
 
     // 800×600、默认宽 = min(0.8×800, 360) = 360；贴右停靠（6）：
-    // 文本 left = 800 − 6 − 360 + 8（面板头左 padding）= 442。
-    expect(tester.getTopLeft(find.text('今日清单')).dx, closeTo(442, 1));
+    // 文本 left = 800 − 6 − 360 + 10（面板头左 padding）= 444。
+    expect(tester.getTopLeft(find.text('今日清单')).dx, closeTo(444, 1));
 
     // 原生广播跟手进度：dx = 180 = 半个面板宽 → 右缘不动、左缘内收 180。
     sendOverlayCall(const MethodCall('panelDrag', {'dx': 180.0}));
     await tester.pumpAndSettle();
-    expect(tester.getTopLeft(find.text('今日清单')).dx, closeTo(622, 1));
+    expect(tester.getTopLeft(find.text('今日清单')).dx, closeTo(624, 1));
 
     // dx 超过面板宽 → 夹到全展开（拖不滑出头）。
     sendOverlayCall(const MethodCall('panelDrag', {'dx': 999.0}));
     await tester.pumpAndSettle();
-    expect(tester.getTopLeft(find.text('今日清单')).dx, closeTo(442, 1));
+    expect(tester.getTopLeft(find.text('今日清单')).dx, closeTo(444, 1));
   });
 
   testWidgets('panelDragEnd{open=false}：滑回屏外后才收起（调 collapse 摘窗口）',
@@ -241,7 +241,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // 补满后停在展开位，且没有顺手收起。
-    expect(tester.getTopLeft(find.text('今日清单')).dx, closeTo(442, 1));
+    expect(tester.getTopLeft(find.text('今日清单')).dx, closeTo(444, 1));
     expect(calls.map((c) => c.method), isNot(contains('collapse')));
   });
 }
