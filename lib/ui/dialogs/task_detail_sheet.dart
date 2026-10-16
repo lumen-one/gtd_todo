@@ -63,6 +63,7 @@ Widget _head(BuildContext context, Task task, TaskMenuKind kind) {
     TaskMenuKind.fixed => '固定时点',
     TaskMenuKind.picked => '被挑散件',
     TaskMenuKind.inProgress => '挂起中',
+    TaskMenuKind.completed => '已完成',
     TaskMenuKind.routine => '例行',
     TaskMenuKind.pool => task.type == TaskType.fixed
         ? '固定时点'

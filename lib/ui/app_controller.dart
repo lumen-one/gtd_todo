@@ -152,7 +152,7 @@ class AppController extends ChangeNotifier {
   /// 需要高亮定位的任务 id（消费后清空）。
   String? get focusedTaskId => _focusedTaskId;
 
-  /// 定位请求应翻到哪一页（0=今日，2=池子）。
+  /// 定位请求应翻到哪一页（0=今日，2=池子，3=已完成）。
   int get focusPage => _focusPage;
 
   /// 侧边栏打开请求计数器（增量为"请求打开"；把手拖出/点通知都走它）。
@@ -290,6 +290,13 @@ class AppController extends ChangeNotifier {
         now: DateTime.now(),
         routineOccurrences: upcomingOccurrences(),
         routineShowInPool: _settings.routineShowInPool,
+      );
+
+  /// 已完成归档（ui 文档 §6.7，第 4 页）：今天/昨天/更早三组。
+  /// 与调度模式无关（存档不参与排序），所以这里不传 scheduleMode。
+  CompletedView get completedView => buildCompletedView(
+        tasks: service.tasks,
+        now: DateTime.now(),
       );
 
   /// 计划段/日历要用的周期发生（决议 24/27）。
@@ -543,6 +550,9 @@ class AppController extends ChangeNotifier {
 
   Future<void> complete(String id) => service.completeTask(id);
 
+  /// 恢复未完成（撤销一次完成；已完成页与详情卡的兜底动作，ui 文档 §6.7）。
+  Future<void> reopenTask(String id) => service.reopenTask(id);
+
   Future<void> snooze(String id, {required int minutes}) =>
       service.snoozeTask(id, minutes: minutes);
 
@@ -667,14 +677,18 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 点通知正文 → 定位（§7.2 定位边界：今日高亮 / 池子高亮 / 已完成 toast /
+  /// 点通知正文 → 定位（§7.2 定位边界：今日高亮 / 池子高亮 / 已完成页高亮 /
   /// 已删除 toast）。
   void locateTask(String taskId) {
     final task = taskById(taskId);
     if (task == null) {
       _pendingNotice = '已删除，可在回收找回';
     } else if (task.isCompleted) {
-      _pendingNotice = '该任务已完成';
+      // 已完成 → 跳第 4 页定位高亮（§6.7）：不再是一句"该任务已完成"的死路 toast。
+      _focusedTaskId = taskId;
+      _focusPage = 3;
+      _panelOpenRequest++;
+      _pendingNotice = '已定位到「${task.title}」（已完成）';
     } else {
       final inToday = todayView;
       final inTodayList = [

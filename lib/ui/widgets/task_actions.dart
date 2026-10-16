@@ -27,6 +27,7 @@ Future<void> showTaskMenu(
       TaskMenuKind.fixed => '固定时点',
       TaskMenuKind.overdue => '逾期',
       TaskMenuKind.inProgress => '挂起中',
+      TaskMenuKind.completed => '已完成',
       _ => null,
     },
     entries: taskMenuEntries(context, controller, task, kind),
@@ -46,6 +47,7 @@ List<TaskMenuEntry> taskMenuEntries(
     switch (kind) {
       TaskMenuKind.routine => _routineEntries(context, controller, task),
       TaskMenuKind.pool => _poolEntries(context, controller, task),
+      TaskMenuKind.completed => _completedEntries(context, controller, task),
       _ => _todayEntries(context, controller, task, kind),
     };
 
@@ -217,7 +219,10 @@ Future<void> _showMenuSheet(
 /// 条目所在的位置：决定长按菜单与详情卡给哪些动作（决议 23/25/44）。
 /// [pool] = 任务池（计划段与散件段同款，决议 13）。
 /// [inProgress] = 今日页最顶的挂起组（决议 47：长期任务"正在做"）。
-enum TaskMenuKind { overdue, fixed, flex, picked, routine, pool, inProgress }
+/// [completed] = 已完成页（ui 文档 §6.7：只有恢复未完成 / 删除）。
+enum TaskMenuKind {
+  overdue, fixed, flex, picked, routine, pool, inProgress, completed
+}
 
 class _MenuTag extends StatelessWidget {
   final String label;
@@ -236,6 +241,27 @@ class _MenuTag extends StatelessWidget {
 }
 
 typedef TaskMenuEntry = (String, IconData, Future<void> Function());
+
+/// 已完成页条目（ui 文档 §6.7）：动作只有两个——恢复未完成 / 删除。
+/// **例行实例不给恢复**：实例是临时的，恢复一个往日实例它会从所有清单里消失
+/// （今日清单只收当天实例、池子不收实例）——要续节奏去设置页『编辑规则』。
+/// 恢复即撤销一次完成（误触兜底）：人类文档那行回 `- [ ]`，剩余工作量回满。
+List<TaskMenuEntry> _completedEntries(
+    BuildContext context, AppController controller, Task task) {
+  return [
+    if (task.type != TaskType.routine)
+      (
+        '恢复未完成',
+        Icons.undo,
+        () => controller.reopenTask(task.id)
+      ),
+    (
+      '删除',
+      Icons.delete_outline,
+      () => deleteTaskWithUndo(context, controller, task)
+    ),
+  ];
+}
 
 /// 任务池条目（决议 13：散件段与计划段同款）：
 /// 长期任务的『挂起进行』（v0.17，决议 47）/ 挑到今日（不转正，附今日尾部）/

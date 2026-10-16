@@ -6,6 +6,7 @@ import '../dialogs/create_task_dialog.dart';
 import '../dialogs/quick_dump_dialog.dart';
 import '../theme.dart';
 import 'notes_panel.dart';
+import 'completed_panel.dart';
 import 'pool_panel.dart';
 import 'today_panel.dart';
 
@@ -16,7 +17,7 @@ import 'today_panel.dart';
 /// - **系统级悬浮窗**（`overlay_main.dart`，跑在原生前台服务的第二个引擎里）：
 ///   在其他 App 上方就地展开同一个面板，日常操作不必离开当前 App。
 ///
-/// 三页左右横翻（今日清单 → 疑问笔记 → 任务池）、右下角添加区都在这里；
+/// 四页左右横翻（今日清单 → 疑问笔记 → 任务池 → 已完成）、右下角添加区都在这里；
 /// 翻页走 PageView 自己的横滑物理（v0.15），宿主只负责"摆哪儿、怎么进出"（滑入动画 / 悬浮窗口 / 抽屉）。
 class SidePanel extends StatefulWidget {
   final AppController controller;
@@ -48,7 +49,7 @@ class SidePanel extends StatefulWidget {
 }
 
 class _SidePanelState extends State<SidePanel> {
-  static const _pageNames = ['今日清单', '疑问笔记', '任务池'];
+  static const _pageNames = ['今日清单', '疑问笔记', '任务池', '已完成'];
 
   @override
   Widget build(BuildContext context) {
@@ -115,7 +116,7 @@ class _SidePanelState extends State<SidePanel> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    for (var i = 0; i < 3; i++) _pageDot(i, theme),
+                    for (var i = 0; i < 4; i++) _pageDot(i, theme),
                   ],
                 ),
               ),
@@ -130,6 +131,7 @@ class _SidePanelState extends State<SidePanel> {
                       TodayPanel(controller: controller),
                       NotesPanel(controller: controller),
                       PoolPanel(controller: controller),
+                      CompletedPanel(controller: controller),
                     ],
                   ),
                   // 每页都可添加待办与堆三无（§6.1）：右下角双钮
@@ -200,7 +202,7 @@ class _SidePanelState extends State<SidePanel> {
   /// 点圆点直接跳页（页序指示本身就是跳转靶）。
   void _pageTo(int page) {
     if (!widget.pageCtrl.hasClients) return;
-    widget.pageCtrl.animateToPage(page.clamp(0, 2),
+    widget.pageCtrl.animateToPage(page.clamp(0, 3),
         duration: const Duration(milliseconds: 260),
         curve: Curves.easeOutCubic);
   }
