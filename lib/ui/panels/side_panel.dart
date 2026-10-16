@@ -71,6 +71,12 @@ class _SidePanelState extends State<SidePanel> {
             // 页名与图标按钮一行；页序圆点回到自己独立的一行（v1.20 改回——
             // 居中那三个圆点是面板的"我在第几页"标识，用户觉得它好看，
             // 省高度不值得）。
+            // 页名是这一行唯一的 flex 子元素——**不放 Spacer**：Spacer 也是
+            // flex:1，会和 Flexible 对半劈掉图标按钮剩下的空间，窄面板
+            // （240dp 下限）上页名差 1dp 就被省略号截断（2026-10-16 实测，
+            // 回归用例见 overlay_panel_test）。也不能图省事改 Expanded：
+            // 标题外层的 AnimatedSwitcher 内部是默认居中的 Stack，紧约束下
+            // 短页名会离左缘 23dp。
             Padding(
               padding: const EdgeInsets.fromLTRB(10, 2, 4, 0),
               child: Row(
@@ -90,7 +96,6 @@ class _SidePanelState extends State<SidePanel> {
                       ),
                     ),
                   ),
-                  const Spacer(),
                   _headButton(Icons.calendar_month_outlined, '日历',
                       widget.onOpenCalendar),
                   _headButton(Icons.visibility_off_outlined, '隐私模式',

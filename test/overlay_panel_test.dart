@@ -7,6 +7,7 @@ import 'package:gtd_todo/overlay_main.dart';
 import 'package:gtd_todo/repository/memory_task_repository.dart';
 import 'package:gtd_todo/scheduler/slack_scheduler.dart';
 import 'package:gtd_todo/ui/app_controller.dart';
+import 'package:gtd_todo/ui/panels/side_panel.dart';
 
 /// 系统级悬浮面板宿主（overlay_main.dart）的契约测试：
 /// 展开时渲染同一套 panels；收起/进应用走 `gtd/overlay` 通道。
@@ -243,5 +244,48 @@ void main() {
     // 补满后停在展开位，且没有顺手收起。
     expect(tester.getTopLeft(find.text('今日清单')).dx, closeTo(444, 1));
     expect(calls.map((c) => c.method), isNot(contains('collapse')));
+  });
+
+  testWidgets('窄面板（240dp 下限）：三个页名都不被省略号截断', (tester) async {
+    final controller = makeController();
+    final pageCtrl = PageController();
+    // 用 SizedBox 卡宽而不是外层 MediaQuery：WidgetsApp 会按视图尺寸重建
+    // MediaQuery，外层 size 会被覆盖（实测面板仍是默认测试屏 800×600）。
+    await tester.pumpWidget(MaterialApp(
+      home: Center(
+        child: SizedBox(
+          width: 240,
+          height: 600,
+          child: SidePanel(
+            controller: controller,
+            pageCtrl: pageCtrl,
+            onClose: () {},
+            onPrivacy: () {},
+            onOpenCalendar: () {},
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    // 面板头可用宽 = 240 − 14（左右 padding）− 102（3×34dp 图标）= 124dp。
+    // 修复前 Flexible 与 Spacer 对半劈，页名只拿 62dp——三个页名全被截成
+    // "任…"（2026-10-16 真机截图复现）。修复后页名独享 124dp。
+    const names = ['今日清单', '疑问笔记', '任务池'];
+    for (var i = 0; i < names.length; i++) {
+      pageCtrl.jumpToPage(i);
+      await tester.pumpAndSettle();
+      // 不截断 ⟺ 渲染宽度 = 内容固有宽度；被省略号截断时会填满约束
+      // （修复前对半的 62.0，与固有宽度 48.45–64.6 对不上）。
+      final w = tester.getSize(find.text(names[i])).width;
+      final style = Theme.of(tester.element(find.text(names[i])))
+          .textTheme
+          .titleMedium!;
+      final tp = TextPainter(textDirection: TextDirection.ltr)
+        ..text = TextSpan(text: names[i], style: style);
+      tp.layout();
+      expect(w, closeTo(tp.width, 0.5));
+      tp.dispose();
+    }
   });
 }
