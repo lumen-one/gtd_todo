@@ -11,6 +11,7 @@ import 'domain/time_context.dart';
 import 'platform/android_adapters.dart';
 import 'platform/app_adapters.dart';
 import 'platform/desktop_adapters.dart';
+import 'platform/lan_sync.dart';
 import 'repository/markdown_routine_repository.dart';
 import 'repository/markdown_task_repository.dart';
 import 'scheduler/scheduler_registry.dart';
@@ -41,6 +42,11 @@ Future<void> main() async {
   final taskDir = resolved.taskDir;
   final bootstrap = resolved.bootstrap;
   final repo = MarkdownTaskRepository(taskDir);
+
+  // 局域网同步（§4.4）：纯 dart:io 实现，**只挂主引擎**（悬浮引擎没有写入
+  // 职责，主机服务也只需一份）。"上次握手清单"放应用支持目录——任务目录
+  // 本身是要同步的内容，不能把同步状态也同步过去。
+  final sync = LanSyncAdapter(taskDir: taskDir, stateDir: resolved.supportDir);
 
   // 具体算法在这里选择（application 不 import 具体实现，§2）。
   // v1.9：**默认 = 时间裕度优先**（`priority = risk × importance`）；旧 `slack.v1`
@@ -95,6 +101,8 @@ Future<void> main() async {
   // 疑问笔记路径随设置实时生效（对该文件零写入）。
   controller.notesReader =
       FileNotesReaderPort(() => controller.settings.notesPath);
+  // 局域网同步（§4.4）：本机名进 UDP 广播与冲突存档文件名。
+  controller.attachSync(sync, Platform.localHostname);
   // 系统级贴屏把手（安卓原生；桌面无此能力）。
   controller.overlayHandleControl =
       bridge == null ? null : (enabled) => bridge.setOverlayHandle(enabled);

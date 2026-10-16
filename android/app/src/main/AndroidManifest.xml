@@ -16,10 +16,14 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
     <!-- 任务目录选择：授予"所有文件访问"后 file_picker 才能取到真实路径 -->
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>
+    <!-- 局域网同步（architecture.md §4.4）：HTTP/UDP 都只在本机网络内，不连外网。
+         debug/profile 的 manifest 里那份是给 Flutter 工具用的，release 包没有。 -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="动态任务调度 Todo"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"

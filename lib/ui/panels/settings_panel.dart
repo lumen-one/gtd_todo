@@ -8,6 +8,7 @@ import '../dialogs/settings_windows_dialog.dart';
 import '../theme.dart';
 import 'settings_permissions.dart';
 import 'settings_routines.dart';
+import 'settings_sync.dart';
 
 String _mm(int minuteOfDay) {
   final h = (minuteOfDay ~/ 60).toString().padLeft(2, '0');
@@ -48,7 +49,8 @@ Widget _modeButton(AppController c, AppSettings s, ScheduleMode mode) {
 /// 1. 权限引导 + 任务目录 + 悬浮把手；2. 周期任务管理（routines.md）；
 /// 3. 提醒与排序（**调度模式三档：完整/标准/无排序** + 时间段多段式 + 闹钟模式）；
 /// 4. 定期挑；5. 疑问笔记路径；6. 周期任务在任务池的显示开关；
-/// 7. 主题（**明暗三选一：跟随系统/浅色/深黑** + 强调色预设）；8. 回收站。
+/// 7. 主题（**明暗三选一：跟随系统/浅色/深黑** + 强调色预设）；8. 回收站；
+/// 9. 同步（§4.4：主机/从机，局域网文件同步）。
 class SettingsPanel extends StatefulWidget {
   final AppController controller;
 
@@ -89,6 +91,8 @@ class _SettingsPanelState extends State<SettingsPanel> {
         _SectionCard('权限引导', [SettingsPermissionsSection(controller: _c)]),
 
         _SectionCard('任务目录', _taskDirSection(s)),
+
+        _SectionCard('同步', [SettingsSyncSection(controller: _c)]),
 
         _SectionCard('提醒与排序', _reminderSection(s)),
 

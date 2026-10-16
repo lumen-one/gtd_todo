@@ -9,6 +9,7 @@ import '../application/notification_window.dart';
 import '../application/notes_reader.dart';
 import '../application/routine_service.dart';
 import '../application/settings.dart';
+import '../application/sync.dart';
 import '../application/task_service.dart';
 import '../application/today_view.dart';
 import '../domain/event.dart';
@@ -49,6 +50,10 @@ class AppController extends ChangeNotifier {
   /// 目录选择插座（null = 平台不支持）。
   final FolderPickerPort? folderPicker;
 
+  /// 同步插座（§4.4；null = 未装配，设置页"同步"区显示未接入）。
+  SyncPort? _sync;
+  String _deviceName = '这台设备';
+
   /// 装配点注入的回调：通知时间段变化时同步给 ReminderDispatcher（§4.3）。
   final void Function(NotificationWindowRule rule)? onWindowsChanged;
 
@@ -87,6 +92,48 @@ class AppController extends ChangeNotifier {
   AppSettings get settings => _settings;
 
   bool get settingsLoaded => _settingsLoaded;
+
+  /// 同步状态（设置页"同步"区消费；未装配 = 未开启）。
+  SyncState get syncState => _sync?.state ?? const SyncState.idle();
+
+  /// 装配同步插座并订阅状态变化（main() 调；测试里不装）。
+  /// [deviceName] = 本机名（进 UDP 广播与冲突存档文件名，由装配点从 dart:io 取）。
+  void attachSync(SyncPort port, String deviceName) {
+    _sync = port;
+    _deviceName = deviceName;
+    port.changes.listen((_) => notifyListeners());
+  }
+
+  /// 当主机（设备名进 UDP 广播与冲突存档文件名）。
+  Future<void> startSyncHost() async {
+    await _sync?.startHost(_deviceName);
+    notifyListeners();
+  }
+
+  /// 扫局域网内的主机（设置页"同步"区的手动发现按钮）。
+  Future<List<SyncPeer>> discoverSyncHosts() =>
+      _sync?.discover() ?? Future.value(const []);
+
+  /// 接入主机并立即同步一轮。
+  Future<SyncOutcome> connectSyncHost(SyncPeer peer) async {
+    final out = await _sync?.connectTo(peer, _deviceName) ??
+        const SyncOutcome(error: '同步未装配');
+    notifyListeners();
+    return out;
+  }
+
+  /// 手动同步一轮（主机 = 无从机可推时是无操作；从机 = 拉 + 推）。
+  Future<SyncOutcome> syncNow() async {
+    final out = await _sync?.syncNow() ?? const SyncOutcome();
+    notifyListeners();
+    return out;
+  }
+
+  /// 停止同步（下播 / 断开）。
+  Future<void> stopSync() async {
+    await _sync?.stop();
+    notifyListeners();
+  }
 
   List<Task> get trashTasks => _trash;
 
@@ -158,6 +205,7 @@ class AppController extends ChangeNotifier {
     await refresh();
     await syncRoutineInstances();
     await refreshOverlayHandleState();
+    await syncNow(); // 回前台补一轮同步（§4.4；未接入主机时是无操作）
   }
 
   Future<void> _loadSettings() async {

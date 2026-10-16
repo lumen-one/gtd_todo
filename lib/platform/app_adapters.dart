@@ -12,7 +12,8 @@ import '../application/settings.dart';
 ///
 /// 悬浮窗跑在原生前台服务的第二个 Flutter 引擎里，必须和主引擎指向同一个目录，
 /// 否则两个引擎会各写各的文件。
-Future<({String taskDir, FileBootstrapPort bootstrap})> resolveTaskDir() async {
+Future<({String taskDir, String supportDir, FileBootstrapPort bootstrap})>
+    resolveTaskDir() async {
   final supportDir = (await getApplicationSupportDirectory()).path;
   final bootstrap = FileBootstrapPort(supportDir);
   final boot = await bootstrap.load();
@@ -23,7 +24,7 @@ Future<({String taskDir, FileBootstrapPort bootstrap})> resolveTaskDir() async {
             '${Platform.pathSeparator}tasks'
         : 'tasks';
   }
-  return (taskDir: taskDir, bootstrap: bootstrap);
+  return (taskDir: taskDir, supportDir: supportDir, bootstrap: bootstrap);
 }
 
 /// 设置落盘适配器：任务目录下 settings.json（人类可读，可手改）。
