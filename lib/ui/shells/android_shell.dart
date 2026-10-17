@@ -28,7 +28,8 @@ class AndroidShell extends StatefulWidget {
   State<AndroidShell> createState() => _AndroidShellState();
 }
 
-class _AndroidShellState extends State<AndroidShell> {
+class _AndroidShellState extends State<AndroidShell>
+    with SingleTickerProviderStateMixin {
   final PageController _pageCtrl = PageController();
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
@@ -36,6 +37,20 @@ class _AndroidShellState extends State<AndroidShell> {
   bool _privacy = false;
   bool _panelOnLeft = false; // 把手停靠侧
   double _handleDy = 180;
+
+  // ---- 尺寸固定后的跟手推出收起（§6.0）----
+
+  /// 面板被推出去的进度：0 = 展开位，1 = 完全滑出屏外。只在 [_panelSliding]
+  /// 期间作数，其余时候位置由 [_panelOpen] 决定。
+  double _panelSlide = 0;
+
+  /// true = 面板位置由 [_panelSlide] 实时决定（拖动中 / 松手补间中），走无动画
+  /// `Positioned` 才能跟手；false = 交回 `AnimatedPositioned` 归 [_panelOpen]。
+  bool _panelSliding = false;
+
+  /// 松手后的补间：把面板送到 1（缩回）或 0（回弹）。
+  late final AnimationController _slideCtrl;
+  bool _slideToClose = false;
 
   // 装配点/原生把手的请求（AppController 计数器）：打开面板、关面板、定位翻页
   int _seenPanelRequest = 0;
@@ -45,6 +60,10 @@ class _AndroidShellState extends State<AndroidShell> {
   @override
   void initState() {
     super.initState();
+    _slideCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 180))
+      ..addListener(_onSlideTick)
+      ..addStatusListener(_onSlideStatus);
     widget.controller.addListener(_onChange);
     _seenPanelRequest = widget.controller.panelOpenRequest;
     _seenCloseRequest = widget.controller.panelCloseRequest;
@@ -53,6 +72,7 @@ class _AndroidShellState extends State<AndroidShell> {
   @override
   void dispose() {
     widget.controller.removeListener(_onChange);
+    _slideCtrl.dispose();
     _pageCtrl.dispose();
     super.dispose();
   }
@@ -94,11 +114,61 @@ class _AndroidShellState extends State<AndroidShell> {
     setState(() {
       _privacy = false;
       _panelOpen = true;
+      _panelSliding = false;
+      _panelSlide = 0;
     });
     _maybeOnboard();
   }
 
-  void _closePanel() => setState(() => _panelOpen = false);
+  void _closePanel() => setState(() {
+        _panelOpen = false;
+        _panelSliding = false;
+        _panelSlide = 0;
+      });
+
+  // ---- 尺寸固定后的跟手推出收起（§6.0）----
+
+  /// 面板跟手推出：横移量 = 手指位移，一路推到屏外。手指定的是"推出去多少
+  /// dp"，这里换算成 0..1 的行程比例（行程 = 面板宽 + 18，与收起落点一致）。
+  void _onPanelCollapsePull(double pull) {
+    final width =
+        panelWidthFor(widget.controller.settings, MediaQuery.of(context).size.width);
+    setState(() {
+      _panelSliding = true;
+      _panelSlide = (pull / (width + 18)).clamp(0.0, 1.0);
+    });
+  }
+
+  /// 松手：判定缩回就送到 1（走 [`_closePanel`] 那条收起路），否则回弹到 0。
+  /// 剩余行程越多动得越久，与悬浮窗宿主同一档（60–220ms）。
+  void _onPanelCollapseRelease(bool close) {
+    _slideToClose = close;
+    _slideCtrl.value = _panelSlide;
+    final remain = close ? 1 - _panelSlide : _panelSlide;
+    _slideCtrl.duration =
+        Duration(milliseconds: (60 + 140 * remain).round().clamp(60, 220));
+    _slideCtrl.animateTo(close ? 1.0 : 0.0, curve: Curves.easeOutCubic);
+  }
+
+  void _onSlideTick() {
+    if (!mounted || !_slideCtrl.isAnimating) return;
+    setState(() => _panelSlide = _slideCtrl.value);
+  }
+
+  void _onSlideStatus(AnimationStatus status) {
+    if (status != AnimationStatus.completed) return;
+    // 两个终点都交给 _panelOpen / AnimatedPositioned 接着——交接处位置与遮罩
+    // 浓度都对齐（slide=1 与"屏外落点"是同一个位置，slide=0 就是展开位），
+    // 所以不闪。
+    if (_slideToClose) {
+      _closePanel();
+    } else {
+      setState(() {
+        _panelSliding = false;
+        _panelSlide = 0;
+      });
+    }
+  }
 
   void _enterPrivacy() => setState(() {
         _privacy = true;
@@ -183,6 +253,9 @@ class _AndroidShellState extends State<AndroidShell> {
     // 收起时滑出屏外的落点要按同一宽度算，这里取一次当前值——拖拽只发生
     // 在展开态，用不到它。
     final panelWidth = panelWidthFor(widget.controller.settings, size.width);
+    // 跟手推出期间面板的横移量（dp）：0 = 展开位，行程走满 = 收起落点
+    // （展开时离屏缘 6，落点在屏外 12，所以行程 = 面板宽 + 18）。
+    final slideOut = _panelSlide * (panelWidth + 18);
     final children = <Widget>[];
 
     // 把手：贴屏白条、上下拖动停靠；点按 / 横拖朝屏内 = 展开；长按 = 换边。
@@ -205,48 +278,66 @@ class _AndroidShellState extends State<AndroidShell> {
     }
 
     // 遮罩：跟着面板一起渐显渐隐（原来是硬切一层黑）。关着时不吃点击。
+    // 跟手推出期间面板走多少、遮罩就淡多少——所以那一档用无动画的 Container
+    // （AnimatedContainer 会滞后 240ms，跟手时看着像没跟上）。两个分支在交接
+    // 处的浓度一致（slide=1 → 0，slide=0 → 0.26），切过去不闪。
     children.add(Positioned.fill(
       child: IgnorePointer(
         ignoring: !_panelOpen,
         child: GestureDetector(
           onTap: _closePanel,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 240),
-            curve: Curves.easeOutCubic,
-            color: Colors.black.withValues(alpha: _panelOpen ? 0.26 : 0),
-          ),
+          child: _panelSliding
+              ? Container(
+                  color: Colors.black
+                      .withValues(alpha: 0.26 * (1 - _panelSlide)))
+              : AnimatedContainer(
+                  duration: const Duration(milliseconds: 240),
+                  curve: Curves.easeOutCubic,
+                  color: Colors.black.withValues(alpha: _panelOpen ? 0.26 : 0),
+                ),
         ),
       ),
     ));
 
     // 侧边栏面板：关 = 滑出屏外；开 = 滑入（宽高与拖拽语义都在
-    // ResizablePanel 里，两个宿主共用）。
-    children.add(AnimatedPositioned(
-      duration: const Duration(milliseconds: 240),
-      curve: Curves.easeOutCubic,
-      // 只锚顶：高度由 ResizablePanel 自持，底边随拖拽走。
-      top: MediaQuery.of(context).padding.top + 8,
-      left: _panelOnLeft ? (_panelOpen ? 6 : -panelWidth - 12) : null,
-      right: _panelOnLeft ? null : (_panelOpen ? 6 : -panelWidth - 12),
-      child: IgnorePointer(
-        ignoring: !_panelOpen,
-        child: ResizablePanel(
+    // ResizablePanel 里，两个宿主共用）。跟手推出期间位置由 _panelSlide
+    // 实时给（无动画），其余时候交给 AnimatedPositioned 做滑入滑出。
+    final panelContent = IgnorePointer(
+      ignoring: !_panelOpen,
+      child: ResizablePanel(
+        controller: widget.controller,
+        dockLeft: _panelOnLeft,
+        // 面板垂直居中于把手（ui-interaction.md §6.0）：把手的中心即锚点
+        // （热区中心 = 白条中心，白条在热区里竖直居中）。
+        anchorCenterY: _handleDy + _kHotHeight / 2,
+        onCollapsePull: _onPanelCollapsePull,
+        onCollapseRelease: _onPanelCollapseRelease,
+        child: SidePanel(
           controller: widget.controller,
-          dockLeft: _panelOnLeft,
-          // 面板垂直居中于把手（ui-interaction.md §6.0）：把手的中心即锚点
-          // （热区中心 = 白条中心，白条在热区里竖直居中）。
-          anchorCenterY: _handleDy + _kHotHeight / 2,
-          child: SidePanel(
-            controller: widget.controller,
-            pageCtrl: _pageCtrl,
-            onClose: _closePanel,
-            onPrivacy: _enterPrivacy,
-            onOpenCalendar: () =>
-                showCalendarDialog(context, widget.controller),
-          ),
+          pageCtrl: _pageCtrl,
+          onClose: _closePanel,
+          onPrivacy: _enterPrivacy,
+          onOpenCalendar: () => showCalendarDialog(context, widget.controller),
         ),
       ),
-    ));
+    );
+
+    children.add(_panelSliding
+        ? Positioned(
+            // 只锚顶：高度由 ResizablePanel 自持，底边随拖拽走。
+            top: MediaQuery.of(context).padding.top + 8,
+            left: _panelOnLeft ? 6 - slideOut : null,
+            right: _panelOnLeft ? null : 6 - slideOut,
+            child: panelContent,
+          )
+        : AnimatedPositioned(
+            duration: const Duration(milliseconds: 240),
+            curve: Curves.easeOutCubic,
+            top: MediaQuery.of(context).padding.top + 8,
+            left: _panelOnLeft ? (_panelOpen ? 6 : -panelWidth - 12) : null,
+            right: _panelOnLeft ? null : (_panelOpen ? 6 : -panelWidth - 12),
+            child: panelContent,
+          ));
 
     return children;
   }

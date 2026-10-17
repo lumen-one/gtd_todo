@@ -81,6 +81,17 @@ class AppSettings {
   /// （屏高 − 上下安全区 − 上下贴靠 inset）。
   final double? panelHeight;
 
+  /// 侧边栏尺寸是否**固定**（§6.0 / §9 第 11 条）。true = 两条改尺寸的把手
+  /// 撤掉（底边那条不渲染、内侧竖条换成跟手收起把手），宽高按 [panelWidth] /
+  /// [panelHeight] 的现值走，不再随屏宽/横竖屏按默认公式变。
+  ///
+  /// 落 settings.json 的 `panel_size_locked`，默认不锁。锁上时 UI 层会把此刻
+  /// 生效的宽高算成数字写进 [panelWidth] / [panelHeight]（"固定当前的"——
+  /// 之前没拖过的话就是把默认公式的结果冻住）；解锁只清这个开关，数值留着。
+  ///
+  /// 与 [handleLocked] 是两件事：一个锁**把手的竖向位置**，一个锁**面板宽高**。
+  final bool panelSizeLocked;
+
   /// 把手位置是否**上锁**（§6.0）。true = 把手钉在当前高度，竖向拖动不再改变它
   /// （长按换左右边、横拖拉开、点按展开都照旧）。默认不锁。
   ///
@@ -112,6 +123,7 @@ class AppSettings {
     this.themeMode = 'system',
     this.panelWidth,
     this.panelHeight,
+    this.panelSizeLocked = false,
     this.handleLocked = false,
     this.handleHotWidth = defaultHandleHotWidth,
   });
@@ -132,6 +144,7 @@ class AppSettings {
     String? themeMode,
     double? panelWidth,
     double? panelHeight,
+    bool? panelSizeLocked,
     bool? handleLocked,
     int? handleHotWidth,
     bool clearNotesPath = false,
@@ -154,6 +167,7 @@ class AppSettings {
       themeMode: themeMode ?? this.themeMode,
       panelWidth: clearPanelWidth ? null : (panelWidth ?? this.panelWidth),
       panelHeight: clearPanelHeight ? null : (panelHeight ?? this.panelHeight),
+      panelSizeLocked: panelSizeLocked ?? this.panelSizeLocked,
       handleLocked: handleLocked ?? this.handleLocked,
       handleHotWidth: handleHotWidth ?? this.handleHotWidth,
     );
@@ -173,6 +187,7 @@ class AppSettings {
         'theme_mode': themeMode,
         if (panelWidth != null) 'panel_width': panelWidth,
         if (panelHeight != null) 'panel_height': panelHeight,
+        'panel_size_locked': panelSizeLocked,
         'handle_locked': handleLocked,
         'handle_hot_width': handleHotWidth,
       };
@@ -200,6 +215,7 @@ class AppSettings {
       themeMode: (json['theme_mode'] as String?) ?? 'system',
       panelWidth: (json['panel_width'] as num?)?.toDouble(),
       panelHeight: (json['panel_height'] as num?)?.toDouble(),
+      panelSizeLocked: json['panel_size_locked'] == true,
       handleLocked: json['handle_locked'] == true,
       handleHotWidth: clampHandleHotWidth(json['handle_hot_width']),
     );

@@ -474,6 +474,22 @@ class AppController extends ChangeNotifier {
     await updateSettings(_settings.copyWith(handleLocked: locked));
   }
 
+  /// 固定侧边栏大小（§6.0 / §9 第 11 条）：把此刻生效的宽高冻成数字一起落盘。
+  ///
+  /// 宽高由 UI 层算好传进来——只有它知道当前屏宽与可用高度，冻的才是"此刻
+  /// 看到的那块"；锁上后换屏宽、横竖屏都不再按默认公式变。纯 Dart 侧的事：
+  /// 悬浮窗是全屏透明窗口、面板尺寸由 [ResizablePanel] 自持，不必过通道。
+  Future<void> lockPanelSize({required double width, required double height}) =>
+      updateSettings(_settings.copyWith(
+        panelWidth: width,
+        panelHeight: height,
+        panelSizeLocked: true,
+      ));
+
+  /// 解锁面板尺寸：只清开关，冻住的数值留着——解锁后还能从那个尺寸接着拖。
+  Future<void> unlockPanelSize() =>
+      updateSettings(_settings.copyWith(panelSizeLocked: false));
+
   /// 装配点注入：把手热区宽度（安卓原生；桌面无此能力 = null）。
   Future<bool> Function(int widthDp)? handleHotWidthControl;
 

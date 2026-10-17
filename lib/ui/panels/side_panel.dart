@@ -375,6 +375,14 @@ const double _kDefaultWidthFraction = 0.80;
 const double _kDefaultWidthCap = 360;
 const double _kDefaultHeightFraction = 0.85;
 
+/// 尺寸固定后收起把手的判定阈值：**面板宽的一半**（§6.0）。
+///
+/// 只看距离不看速度——与"拉开"侧（72dp 或快甩）刻意不对称：推回去是"看完了"
+/// 的确认动作，宁可慢一点，不能甩一下就把面板关了；跟手走完半程本身已经是
+/// 明确意图。用面板宽而不是固定 dp，是因为宽窄屏上面板差一倍，固定的 180dp
+/// 在 240dp 宽的面板上等于"几乎拖到底"。
+const double panelCollapseRatio = 0.5;
+
 /// 面板可用高度（屏高减上下安全区、减上下贴靠 inset）。
 double panelAvailableHeight(BuildContext context) {
   final mq = MediaQuery.of(context);
@@ -429,6 +437,12 @@ double clampPanelTop(double top, double min, double max) {
 /// 改宽、底边横条把手竖拖改高，拖动中**实时**改（只 setState），松手把尺寸
 /// 写进 `settings.panelWidth` / `panelHeight` 一笔落盘。
 ///
+/// **尺寸固定后**（`settings.panelSizeLocked`）两条把手一起撤掉：底边那条不
+/// 渲染，内侧竖条就地换成**收起把手**——朝停靠侧横拖即把面板跟手推出去
+/// （[onCollapsePull] 实时上报累计位移），松手上报考判定（[onCollapseRelease]，
+/// 过 [panelCollapseRatio] × 面板宽 = 缩回）。面板自己不动：跟手位移由宿主
+/// 施加，因为它才知道面板该往哪个方向滑多远。
+///
 /// **尺寸只有一个来源**：拖拽中 = 本地 `_dragWidth` / `_dragHeight`，其余
 /// 时候 = settings（或默认公式）。两个宿主（应用内壳 / 系统级悬浮窗）共用
 /// 这一个组件，拖拽语义与持久化行为完全一致；宿主只负责"摆哪儿"
@@ -449,12 +463,22 @@ class ResizablePanel extends StatefulWidget {
   /// 区内 Padding 到居中位——宽高状态不离开本组件，宿主不必知道尺寸。
   final double? anchorCenterY;
 
+  /// 尺寸固定时的收起把手：拖动中实时上报朝停靠侧推的累计位移（dp，正 = 往
+  /// 屏外）。宿主按它画跟手位移。null = 不接（逻辑上等于把手只是个装饰）。
+  final ValueChanged<double>? onCollapsePull;
+
+  /// 收起把手松手：`true` = 判定缩回（拖过 [panelCollapseRatio] × 面板宽），
+  /// `false` = 回弹。宿主负责把面板送到底或送回原位。
+  final ValueChanged<bool>? onCollapseRelease;
+
   const ResizablePanel({
     super.key,
     required this.controller,
     required this.dockLeft,
     required this.child,
     this.anchorCenterY,
+    this.onCollapsePull,
+    this.onCollapseRelease,
   });
 
   @override
@@ -522,42 +546,118 @@ class _ResizablePanelState extends State<ResizablePanel> {
         ? slotTop
         : clampPanelTop(widget.anchorCenterY! - height / 2, slotTop,
             slotBottom - height);
+    final sizeLocked = widget.controller.settings.panelSizeLocked;
     return Padding(
       // 宿主把面板放在可用区顶，这里在区内落到锚点居中位。
       padding: EdgeInsets.only(top: top - slotTop),
       child: SizedBox(
         width: width,
         height: height,
-        // 两个把手都贴在面板内沿（不探出边界——探出部分落在 Stack 的命中
+        // 把手贴在面板内沿（不探出边界——探出部分落在 Stack 的命中
         // 测试区之外，边界点按不碎；贴内沿整条都在可命中范围内）。
         child: Stack(
           clipBehavior: Clip.none,
           children: [
             widget.child,
-            // 宽把手：内侧边缘竖条（停左贴右缘内沿、停右贴左缘内沿）。
+            // 竖把手：内侧边缘整条（停左贴右缘内沿、停右贴左缘内沿）。
+            // 尺寸固定后它不再改宽，改成把面板跟手推出去收起。
             Positioned(
               top: 0,
               bottom: 0,
               left: widget.dockLeft ? width - _kEdgeGrab : null,
               right: widget.dockLeft ? null : width - _kEdgeGrab,
-              child: _PanelResizeEdge(
-                axis: Axis.horizontal,
-                onResize: (dx) => _onResizeWidth(widget.dockLeft ? dx : -dx),
-                onResizeEnd: _onResizeEnd,
-              ),
+              child: sizeLocked
+                  ? _PanelCollapseEdge(
+                      dockLeft: widget.dockLeft,
+                      threshold: width * panelCollapseRatio,
+                      onPull: widget.onCollapsePull ?? (_) {},
+                      onRelease: widget.onCollapseRelease ?? (_) {},
+                    )
+                  : _PanelResizeEdge(
+                      axis: Axis.horizontal,
+                      onResize: (dx) => _onResizeWidth(widget.dockLeft ? dx : -dx),
+                      onResizeEnd: _onResizeEnd,
+                    ),
             ),
-            // 高把手：底边横条（贴底边内沿）。
-            Positioned(
-              left: 0,
-              right: 0,
-              top: height - _kEdgeGrab,
-              child: _PanelResizeEdge(
-                axis: Axis.vertical,
-                onResize: _onResizeHeight,
-                onResizeEnd: _onResizeEnd,
+            // 高把手：底边横条（贴底边内沿）；尺寸固定后没有可改的，不渲染。
+            if (!sizeLocked)
+              Positioned(
+                left: 0,
+                right: 0,
+                top: height - _kEdgeGrab,
+                child: _PanelResizeEdge(
+                  axis: Axis.vertical,
+                  onResize: _onResizeHeight,
+                  onResizeEnd: _onResizeEnd,
+                ),
               ),
-            ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 面板内侧的**收起把手**（§6.0：尺寸固定后接管原本改宽那条竖条的位置）：
+/// 朝停靠侧横拖即把面板跟手推出去——拖动中实时上抛累计位移，松手按
+/// [threshold]（面板宽的一半）判定缩回还是回弹。
+///
+/// 判定只看累计距离、不看速度：推回去是"看完了"的确认动作，宁可慢一点。
+/// 反向拖（往屏内）不减计数到负数——手指来回蹭不会攒出负位移。
+class _PanelCollapseEdge extends StatefulWidget {
+  /// true = 面板停左（往左推 = 推回屏外）；false = 停右（往右推）。
+  final bool dockLeft;
+
+  /// 判定缩回的距离（dp）。
+  final double threshold;
+
+  final ValueChanged<double> onPull;
+  final ValueChanged<bool> onRelease;
+
+  const _PanelCollapseEdge({
+    required this.dockLeft,
+    required this.threshold,
+    required this.onPull,
+    required this.onRelease,
+  });
+
+  @override
+  State<_PanelCollapseEdge> createState() => _PanelCollapseEdgeState();
+}
+
+class _PanelCollapseEdgeState extends State<_PanelCollapseEdge> {
+  /// 本次拖动朝停靠侧的累计位移（dp）。
+  double _pull = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.grab,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onHorizontalDragStart: (_) => _pull = 0,
+        onHorizontalDragUpdate: (d) {
+          final delta = widget.dockLeft ? -d.delta.dx : d.delta.dx;
+          final next = _pull + delta;
+          _pull = next < 0 ? 0 : next;
+          widget.onPull(_pull);
+        },
+        onHorizontalDragEnd: (_) {
+          widget.onRelease(_pull >= widget.threshold);
+          _pull = 0;
+        },
+        child: SizedBox(
+          width: _kEdgeGrab,
+          child: Center(
+            child: Container(
+              width: 4,
+              height: 36,
+              decoration: BoxDecoration(
+                color: AppColors.accent.withValues(alpha: 0.55),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -624,6 +724,11 @@ class FloatingPanel extends StatelessWidget {
   final VoidCallback onOpenCalendar;
   final VoidCallback onOpenSettings;
 
+  /// 尺寸固定时收起把手的回调：透传给 [ResizablePanel] 的同名参数（§6.0）。
+  /// 悬浮窗侧的跟手位移就是 [progress]，所以这两条由宿主换算后回填。
+  final ValueChanged<double>? onCollapsePull;
+  final ValueChanged<bool>? onCollapseRelease;
+
   /// true = 贴左侧展开（把手停靠在左边时的自然姿势）。
   final bool dockLeft;
 
@@ -649,6 +754,8 @@ class FloatingPanel extends StatelessWidget {
     this.dockLeft = false,
     this.anchorCenterY,
     this.progress = 1,
+    this.onCollapsePull,
+    this.onCollapseRelease,
   });
 
   @override
@@ -694,6 +801,8 @@ class FloatingPanel extends StatelessWidget {
             controller: controller,
             dockLeft: dockLeft,
             anchorCenterY: anchorCenterY,
+            onCollapsePull: onCollapsePull,
+            onCollapseRelease: onCollapseRelease,
             child: SidePanel(
               controller: controller,
               pageCtrl: pageCtrl,

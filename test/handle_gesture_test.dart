@@ -14,6 +14,38 @@ import 'package:gtd_todo/ui/shells/android_shell.dart';
 ///
 /// v1.21 的口径：**展开只认拖动**——点按（含"蹭一下"）不再展开，朝屏内拖过
 /// 72dp（或快甩）才展开；热区宽度是设置项，两处把手共用同一个值。
+/// 面板左边缘：展开时落在屏内（x=6），收起时整块滑出屏外（右或左，看停靠侧）。
+double panelLeft(WidgetTester tester) =>
+    tester.getRect(find.byType(ResizablePanel)).left;
+
+/// 装一次安卓壳（把手里唯一会走真实 IO 的是设置装载，这里给的是内存 port）。
+Future<AppController> pumpShell(WidgetTester tester,
+    {bool panelSizeLocked = false}) async {
+  final svc = TaskService(
+    repo: MemoryTaskRepository(),
+    scheduler: const SlackScheduler(),
+    workRule: WorkTimeRule.standard,
+    clock: () => DateTime(2026, 10, 7, 10, 0),
+  );
+  final controller = AppController(
+    service: svc,
+    taskDir: 'ignored',
+    settingsPort: _MemorySettingsPort(
+      // guideSeen：否则首次展开会弹引导对话框，干扰几何断言。
+      AppSettings.defaults.copyWith(
+          guideSeen: true, panelSizeLocked: panelSizeLocked),
+    ),
+  );
+  // 固定一块 400×800 的逻辑屏面：把手的几何（热区 200dp 高、白条竖直居中）
+  // 由此推出，断言才好写死。
+  await tester.binding.setSurfaceSize(const Size(400, 800));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
+  await tester.runAsync(controller.bootstrap);
+  await tester.pumpWidget(MaterialApp(home: AndroidShell(controller: controller)));
+  await tester.pumpAndSettle();
+  return controller;
+}
+
 void main() {
   group('把手热区宽度设置', () {
     test('缺省 12dp；三档值与夹取范围一致', () {
@@ -37,36 +69,6 @@ void main() {
   });
 
   group('应用内把手手势', () {
-    /// 装一次安卓壳（把手里唯一会走真实 IO 的是设置装载，这里给的是内存 port）。
-    Future<AppController> pumpShell(WidgetTester tester) async {
-      final svc = TaskService(
-        repo: MemoryTaskRepository(),
-        scheduler: const SlackScheduler(),
-        workRule: WorkTimeRule.standard,
-        clock: () => DateTime(2026, 10, 7, 10, 0),
-      );
-      final controller = AppController(
-        service: svc,
-        taskDir: 'ignored',
-        settingsPort: _MemorySettingsPort(
-          // guideSeen：否则首次展开会弹引导对话框，干扰几何断言。
-          AppSettings.defaults.copyWith(guideSeen: true),
-        ),
-      );
-      // 固定一块 400×800 的逻辑屏面：把手的几何（热区 200dp 高、白条竖直居中）
-      // 由此推出，断言才好写死。
-      await tester.binding.setSurfaceSize(const Size(400, 800));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-      await tester.runAsync(controller.bootstrap);
-      await tester.pumpWidget(MaterialApp(home: AndroidShell(controller: controller)));
-      await tester.pumpAndSettle();
-      return controller;
-    }
-
-    /// 面板左边缘：展开时落在屏内，收起时整块滑出屏外（右或左，看停靠侧）。
-    double panelLeft(WidgetTester tester) =>
-        tester.getRect(find.byType(ResizablePanel)).left;
-
     /// 把手白条上的一点（右边停靠：贴着屏右缘；热区 200dp 高、白条竖直居中）。
     const barCenter = Offset(400 - 3, 180 + 100);
 
@@ -121,6 +123,59 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(panelLeft(tester), lessThan(0), reason: '换边后收起态滑到屏外左侧');
+    });
+  });
+
+  group('尺寸固定后面板跟手推出收起', () {
+    /// 面板内侧竖把手（12dp 宽那条）：固定后它不再改宽，改管收起。
+    ///
+    /// 屏缘那条把手的热区（12×200）与长按靶（12×92）也是 12dp 宽，所以
+    /// 用"高度不设"把它俩排除掉——只有面板内这条是贴着面板高的。
+    Finder innerGrip() => find.byWidgetPredicate(
+        (w) => w is SizedBox && w.width == 12 && w.height == null);
+
+    /// 展开面板，返回展开位的左缘——测试环境里屏面逻辑尺寸不听
+    /// `setSurfaceSize` 的，所以断言只认相对位移（跟既有几条一致）。
+    Future<double> pumpOpen(WidgetTester tester) async {
+      final controller = await pumpShell(tester, panelSizeLocked: true);
+      controller.requestOpenPanel();
+      await tester.pumpAndSettle();
+      final open = panelLeft(tester);
+      expect(open, greaterThan(0), reason: '先确认已经展开（左缘落在屏内）');
+      return open;
+    }
+
+    testWidgets('拖过面板宽的一半：松手滑出屏外收起', (tester) async {
+      final open = await pumpOpen(tester);
+
+      // 判定只看距离：朝屏外推过面板宽的一半即缩回（推 300dp，扣掉触摸
+      // slop 也远过一半）。停靠右侧 = 往右推出去，所以左缘是往大走。
+      await tester.drag(innerGrip(), const Offset(300, 0));
+      await tester.pumpAndSettle();
+
+      expect(panelLeft(tester), greaterThan(open), reason: '面板被推出屏外');
+    });
+
+    testWidgets('没过半：松手回弹到展开位', (tester) async {
+      final open = await pumpOpen(tester);
+
+      await tester.drag(innerGrip(), const Offset(40, 0));
+      await tester.pumpAndSettle();
+
+      expect(panelLeft(tester), closeTo(open, 0.5), reason: '不够一半，原地弹回');
+    });
+
+    testWidgets('回弹后还能接着拖（把手仍在原位）', (tester) async {
+      final open = await pumpOpen(tester);
+
+      await tester.drag(innerGrip(), const Offset(40, 0));
+      await tester.pumpAndSettle();
+      expect(panelLeft(tester), closeTo(open, 0.5));
+
+      // 第二次拖够距离：面板照旧收起——第一次回弹没把状态留在半路。
+      await tester.drag(innerGrip(), const Offset(300, 0));
+      await tester.pumpAndSettle();
+      expect(panelLeft(tester), greaterThan(open));
     });
   });
 }

@@ -100,6 +100,18 @@ class _OverlayPanelShellState extends State<OverlayPanelShell>
     }
   }
 
+  /// 尺寸固定后面板内侧把手的**跟手收起**（§6.0）：与上面那条拉开共用同一条
+  /// 进度轴——面板滑出量就是 [pull]，所以 progress = 1 − pull/面板宽。
+  void _onPanelCollapsePull(double pull) {
+    final width =
+        panelWidthFor(_c.settings, MediaQuery.of(context).size.width);
+    if (width <= 0) return;
+    setState(() => _dragProgress = (1 - pull / width).clamp(0.0, 1.0));
+  }
+
+  /// 松手：判定缩回就走"滑回"那条路（动画到 0 → 原生摘窗口），否则补满。
+  void _onPanelCollapseRelease(bool close) => _settle(!close);
+
   /// 手指进度 → 面板滑出比例：露多少 = dx / 面板宽（夹 0..1，拖不滑出头）。
   double _progressFor(double dxLogical) {
     final width =
@@ -190,6 +202,8 @@ class _OverlayPanelShellState extends State<OverlayPanelShell>
           anchorCenterY: _handleCenterY,
           // 跟手拖动中 = 部分展开；其余 = 全展开。
           progress: _dragProgress ?? 1,
+          onCollapsePull: _onPanelCollapsePull,
+          onCollapseRelease: _onPanelCollapseRelease,
         ),
       ),
     );

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gtd_todo/application/settings.dart';
 import 'package:gtd_todo/application/task_service.dart';
 import 'package:gtd_todo/domain/time_context.dart';
 import 'package:gtd_todo/overlay_main.dart';
@@ -29,14 +30,18 @@ void main() {
         .setMockMethodCallHandler(OverlayBridge.channel, null);
   });
 
-  AppController makeController() {
+  AppController makeController({AppSettings? settings}) {
     final svc = TaskService(
       repo: MemoryTaskRepository(),
       scheduler: const SlackScheduler(),
       workRule: WorkTimeRule.standard,
       clock: () => DateTime(2026, 10, 8, 9, 0),
     );
-    return AppController(service: svc, taskDir: '/tmp/tasks');
+    return AppController(
+      service: svc,
+      taskDir: '/tmp/tasks',
+      settingsPort: settings == null ? null : _MemorySettingsPort(settings),
+    );
   }
 
   /// 原生 → Dart 的通道消息（state / panelDrag / panelDragEnd 都走这条）。
@@ -246,6 +251,56 @@ void main() {
     expect(calls.map((c) => c.method), isNot(contains('collapse')));
   });
 
+  testWidgets('尺寸固定后拖面板内把手：过半即缩回（走 collapse 摘窗口）',
+      (tester) async {
+    final controller = makeController(
+        settings: AppSettings.defaults.copyWith(panelSizeLocked: true));
+    await tester.runAsync(controller.bootstrap);
+    await tester.pumpWidget(MediaQuery(
+      data: const MediaQueryData(size: Size(800, 600)),
+      child: MaterialApp(
+        home:
+            OverlayPanelShell(controller: controller, bridge: OverlayBridge()),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    // 全展开位：贴右停靠（6）、面板宽 360 → 页名 left = 800 − 6 − 360 + 10。
+    expect(tester.getTopLeft(find.text('今日清单')).dx, closeTo(444, 1));
+
+    final grip = find.byWidgetPredicate(
+        (w) => w is SizedBox && w.width == 12 && w.height == null);
+    // 朝屏外（右）推 300dp：扣掉触摸 slop 也远过面板宽的一半（180dp）。
+    await tester.drag(grip, const Offset(300, 0));
+    await tester.pumpAndSettle();
+
+    // 过半 → 走"滑回"那条路，动画播完才让原生摘窗口（与上面 panelDragEnd
+    // 那条同一条路）。
+    expect(calls.map((c) => c.method), contains('collapse'));
+  });
+
+  testWidgets('尺寸固定后拖面板内把手：没过半则补满回展开位', (tester) async {
+    final controller = makeController(
+        settings: AppSettings.defaults.copyWith(panelSizeLocked: true));
+    await tester.runAsync(controller.bootstrap);
+    await tester.pumpWidget(MediaQuery(
+      data: const MediaQueryData(size: Size(800, 600)),
+      child: MaterialApp(
+        home:
+            OverlayPanelShell(controller: controller, bridge: OverlayBridge()),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    final grip = find.byWidgetPredicate(
+        (w) => w is SizedBox && w.width == 12 && w.height == null);
+    await tester.drag(grip, const Offset(40, 0));
+    await tester.pumpAndSettle();
+
+    expect(tester.getTopLeft(find.text('今日清单')).dx, closeTo(444, 1));
+    expect(calls.map((c) => c.method), isNot(contains('collapse')));
+  });
+
   testWidgets('窄面板（240dp 下限）：四个页名都不被省略号截断', (tester) async {
     final controller = makeController();
     final pageCtrl = PageController();
@@ -288,4 +343,19 @@ void main() {
       tp.dispose();
     }
   });
+}
+
+/// 内存版 SettingsPort：测试里不碰磁盘（bootstrap 只用它读一次）。
+class _MemorySettingsPort implements SettingsPort {
+  AppSettings current;
+
+  _MemorySettingsPort(this.current);
+
+  @override
+  Future<AppSettings> load() async => current;
+
+  @override
+  Future<void> save(AppSettings settings) async {
+    current = settings;
+  }
 }

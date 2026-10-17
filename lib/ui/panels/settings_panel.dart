@@ -9,6 +9,9 @@ import '../theme.dart';
 import 'settings_permissions.dart';
 import 'settings_routines.dart';
 import 'settings_sync.dart';
+// panelWidthFor / panelAvailableHeight：固定尺寸时要用它们把"此刻生效"的宽高
+// 算成数字（§6.0）。
+import 'side_panel.dart';
 
 String _mm(int minuteOfDay) {
   final h = (minuteOfDay ~/ 60).toString().padLeft(2, '0');
@@ -175,6 +178,14 @@ class _SettingsPanelState extends State<SettingsPanel> {
           value: s.handleLocked,
           onChanged: (v) => _c.setHandleLocked(v),
         ),
+        SwitchListTile(
+          secondary: const Icon(Icons.lock_reset),
+          title: const Text('固定侧边栏大小'),
+          subtitle: const Text(
+              '按当前宽高锁住，不再能拖动改；改宽那条把手改成跟手推出收起'),
+          value: s.panelSizeLocked,
+          onChanged: (v) => v ? _lockPanelSize(context) : _c.unlockPanelSize(),
+        ),
         ListTile(
           leading: const Icon(Icons.swipe_right_alt),
           title: const Text('把手热区宽度'),
@@ -310,6 +321,19 @@ class _SettingsPanelState extends State<SettingsPanel> {
         subtitle: const Text('删除的任务先进回收站，可捞回'),
         onTap: _c.trashTasks.isEmpty ? null : () => _purgeTrash(context),
       );
+
+  // ---------- 面板尺寸固定（§6.0 / §9 第 11 条）----------
+
+  /// 固定 = 把**此刻生效**的宽高冻成数字：设置页拿得到屏宽与可用高度，冻的
+  /// 才是用户眼下看到的那块（没拖过 = 冻住默认公式的结果）。之后换屏宽、
+  /// 横竖屏都不再自适应——这正是"固定"要的意思。
+  Future<void> _lockPanelSize(BuildContext context) async {
+    final mq = MediaQuery.of(context);
+    await _c.lockPanelSize(
+      width: panelWidthFor(_c.settings, mq.size.width),
+      height: panelHeightFor(_c.settings, panelAvailableHeight(context)),
+    );
+  }
 
   // ---------- 对话框 ----------
 
