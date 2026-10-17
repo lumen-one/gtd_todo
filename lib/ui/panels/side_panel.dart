@@ -327,7 +327,7 @@ class PanelOnboardDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     // 每条一句：首次引导只教"手往哪放"，细枝末节留给实际用一次。
     const steps = [
-      (Icons.swipe_left_alt, '拖出展开', '点边缘细条即开，或朝屏内拖；长按换边'),
+      (Icons.swipe_left_alt, '拖出展开', '朝屏内拖边缘那条细线即开；长按换边'),
       (Icons.swap_horiz, '横滑翻页', '今日 / 疑问 / 池子，左右横拖切换'),
       (Icons.add_circle_outline, '右下角添加', '「+」完整创建，「～」两秒堆三无'),
     ];

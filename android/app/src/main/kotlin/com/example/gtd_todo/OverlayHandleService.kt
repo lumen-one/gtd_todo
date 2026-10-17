@@ -50,8 +50,10 @@ import kotlin.math.min
  *   面板窗口就地挂上、Dart 侧露多少跟多少；松手拖过 [PULL_OPEN_DP]（或快甩过
  *   [FLING_THRESHOLD_DP]）补满全开，否则滑回屏外。引擎 / Dart 还没就绪时降级为
  *   "只有把手跟手"，松手仍走 [expandPanel] 老路；
- * - 点按 → [expandPanel] 直接全开（不再跳应用）；只有引擎或视图创建失败才回退到
- *   原来的 `startActivity(MainActivity, openPanel=true)`，保证永远有可用入口；
+ * - **点按什么都不做**（v1.21 / §6.0）：原先"点按 → [expandPanel] 直接全开"已删
+ *   （它同时是 ROM 不认手势排除区时的兜底入口，删除的代价登记在文档里）。展开
+ *   只剩拖动一条路；引擎或视图创建失败时 [expandPanel] 仍会回退到
+ *   `startActivity(MainActivity, openPanel=true)`，保证永远有可用入口；
  * - 展开时把手隐藏，收起后按宿主前后台状态决定是否重新显示；
  * - 宿主在前台（[notifyHostForeground] true）→ 收起面板 + 隐藏把手（有应用内把手）；
  * - [setEnabled] false → 销毁引擎、移除面板与把手、停服务；
@@ -97,12 +99,20 @@ class OverlayHandleService : Service() {
         /**
          * 把手位置是否**上锁**（v1.11 / ui-interaction.md §6.0）。
          *
-         * true = 竖向拖动不再改变 y，把手钉在当前高度；长按换左右边、横拖拉开、点按
-         * 展开都照旧。锁定意图存在 `settings.json` 的 `handle_locked`（UI 层的用户
+         * true = 竖向拖动不再改变 y，把手钉在当前高度；长按换左右边、横拖拉开都照旧
+         * （点按本就不是入口）。锁定意图存在 `settings.json` 的 `handle_locked`（UI 层的用户
          * 设置），这里只是执行侧的一份镜像：原生自己管把手位置，服务可能被拉起时
          * Dart 还没起来，不能依赖通道补投。
          */
         private const val KEY_LOCKED = "locked"
+
+        /**
+         * 热区宽度（dp）：`settings.json` 的 `handle_hot_width` 在原生侧的一份镜像。
+         *
+         * 同 [KEY_LOCKED] 的理由：原生自己管把手窗口，服务被拉起时 Dart 可能还没
+         * 起来，不能依赖通道补投。
+         */
+        private const val KEY_HOT_WIDTH = "hot_width"
 
         /**
          * **可见**白条的尺寸（dp）：**贴在边缘的一段半透明白条**（v1.10 / 决议 40，
@@ -110,7 +120,8 @@ class OverlayHandleService : Service() {
          *
          * 沿革：26×72 的橙色圆角块 → 10×88 的白色细条 → 现在 6×72。故意做窄做淡——
          * 日常它就该是"几乎看不见"的，只在用户主动去找时才注意到。**它能缩到这么小，
-         * 靠的是下面那块热区**：抓握精度由 [HOT_ZONE_WIDTH_DP] / [HOT_ZONE_HEIGHT_DP]
+         * 靠的是下面那块热区**：抓握精度由热区宽（设置项，见
+         * [HOT_ZONE_WIDTH_DEFAULT_DP]）/ [HOT_ZONE_HEIGHT_DP]
          * 承担，白条只负责"让人知道它在哪"。
          */
         private const val BAR_WIDTH_DP = 6
@@ -120,10 +131,19 @@ class OverlayHandleService : Service() {
          * **热区**（可起手的触摸窗口，dp）：窗口本身这么大，白条只是里面贴边居中的一条。
          *
          * 高度取 200 是硬上限：系统"每边最多兑现 200dp 的返回手势排除"，再多不认
-         * （超出部分会被丢回给系统返回手势）。宽度 28 是手感与"抢走多少屏边"的折中——
-         * 热区是 overlay 窗口，它盖住的触摸归把手，底下 App 收不到。
+         * （超出部分会被丢回给系统返回手势）。**竖向不开放调节**——调小只是自损
+         * 竖拖起手的容错。
+         *
+         * 宽度是**设置项**（`settings.json` 的 `handle_hot_width`，三档
+         * 8 / 12 / 20；与 Dart 侧 `handleHotWidthOptions` 一一对应）：热区是
+         * overlay 窗口，它盖住的触摸归把手，底下 App 收不到，而这层做不到
+         * "点按透过、拖动照旧"（Android 按**手势**挑窗口：一次 DOWN…UP 要么整个
+         * 归把手、要么整个归底下的 App），能调的只有面积。原先写死 28dp，
+         * v1.21 起默认 12dp 并交成设置项。
          */
-        private const val HOT_ZONE_WIDTH_DP = 28
+        private const val HOT_ZONE_WIDTH_MIN_DP = 8
+        private const val HOT_ZONE_WIDTH_DEFAULT_DP = 12
+        private const val HOT_ZONE_WIDTH_MAX_DP = 20
         private const val HOT_ZONE_HEIGHT_DP = 200
 
         /** 白条的不透明度（0–255 的 alpha）：35% ≈ 89。 */
@@ -133,11 +153,12 @@ class OverlayHandleService : Service() {
         private const val BAR_STROKE = "#14000000"
 
         /**
-         * 点按/长按的靶 = **白条外扩这么多 dp**（不是整块热区）。
+         * 长按的靶 = **白条外扩这么多 dp**（不是整块热区）。
          *
-         * 热区放大是为了"拖动起手不必精准"，但点按若也跟着占满 28×200dp，用户在别的
-         * App 边缘随手一摁就会弹出面板。白条只有 6dp 宽，直接当靶太薄，于是外扩 10dp
-         * 凑出一个 26×92dp 的靶——比热区小一个数量级，又够手指摁。
+         * 热区放大是为了"拖动起手不必精准"，但"随手一摁就触发"若也跟着占满整块
+         * 热区，用户在别的 App 边缘一碰就会中招。白条只有 6dp 宽，直接当靶太薄，
+         * 于是外扩 10dp 凑出一个 26×92dp 的靶——比热区小一个数量级，又够手指摁。
+         * v1.21 起这个靶只服务于**长按**（换边），点按已无靶。
          */
         private const val BAR_TAP_PADDING_DP = 10
 
@@ -267,6 +288,19 @@ class OverlayHandleService : Service() {
             instance?.applyLocked(locked)
         }
 
+        /**
+         * 热区宽度（[NativeBridge] 转 settings.json 的 `handle_hot_width`）。
+         *
+         * 服务活着就直接改窗口宽度（手势排除区跟着重声明一次）；没活着也没关系——
+         * 值已落 prefs，下次 onCreate 会读到。
+         */
+        fun setHotZoneWidth(context: Context, dp: Int) {
+            val app = context.applicationContext
+            val width = dp.coerceIn(HOT_ZONE_WIDTH_MIN_DP, HOT_ZONE_WIDTH_MAX_DP)
+            prefs(app).edit().putInt(KEY_HOT_WIDTH, width).apply()
+            instance?.applyHotZoneWidth(width)
+        }
+
         private fun canDrawOverlays(context: Context): Boolean = try {
             Settings.canDrawOverlays(context)
         } catch (_: Throwable) {
@@ -303,6 +337,12 @@ class OverlayHandleService : Service() {
 
     /** 把手竖向位置是否上锁（[KEY_LOCKED]）：锁上时拖拽不再改 y。 */
     private var handleLocked = false
+
+    /**
+     * 热区宽度（dp，[KEY_HOT_WIDTH]）：设置项（`handle_hot_width`），
+     * 两处把手共用同一个值。窗口宽度与手势排除区都由它算。
+     */
+    private var hotZoneWidthDp = HOT_ZONE_WIDTH_DEFAULT_DP
 
     /** 面板是否展开（展开时把手隐藏，二次展开不重复挂窗口）。 */
     private var panelExpanded = false
@@ -361,6 +401,8 @@ class OverlayHandleService : Service() {
         prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE).also {
             dockedRight = it.getBoolean(KEY_DOCKED_RIGHT, true)
             handleLocked = it.getBoolean(KEY_LOCKED, false)
+            hotZoneWidthDp = it.getInt(KEY_HOT_WIDTH, HOT_ZONE_WIDTH_DEFAULT_DP)
+                .coerceIn(HOT_ZONE_WIDTH_MIN_DP, HOT_ZONE_WIDTH_MAX_DP)
         }
         startForegroundSafely()
     }
@@ -605,9 +647,10 @@ class OverlayHandleService : Service() {
      * - **坐标是视图自身坐标系**（`Rect(0,0,w,h)`），ViewRootImpl 会按视图在窗口里的位置
      *   叠加偏移，不需要自己换算成窗口坐标。
      *
-     * 声明的是**整块热区**（v1.11 起是 28×200dp），不是那条白条——用户正是从热区
-     * 里起手的。200dp 是系统"每边最多兑现 200dp 排除"的配额上限，正好用满：再多系统
-     * 不认，超出的部分会被丢回给返回手势。
+     * 声明的是**整块热区**（宽 = 设置项 `handle_hot_width`，默认 12dp；高 200dp），
+     * 不是那条白条——用户正是从热区里起手的。200dp 是系统"每边最多兑现 200dp 排除"
+     * 的配额上限，正好用满：再多系统不认，超出的部分会被丢回给返回手势。宽度收窄
+     * 时系统会少扣一条边，这也是把宽度交成设置项的附带好处。
      *
      * 面板是**全屏**窗口，**不给**它声明——
      * 那里的横向返回已经等同于收起面板，加了反而丢掉"边缘 = 返回"这个自然退出口
@@ -650,7 +693,8 @@ class OverlayHandleService : Service() {
             /**
              * 这次 DOWN 是否落在**白条的靶**上（[BAR_TAP_PADDING_DP] 外扩范围内）。
              *
-             * 只有它是 true 才认点按与长按——热区是给"拖动起手"用的，不是给点按用的。
+             * 只有它是 true 才认**长按**（换边）——热区是给"拖动起手"用的，不是给
+             * 点按用的；点按自 v1.21 起什么都不做（§6.0）。
              */
             private var downOnBar = false
             private val longPressRunnable = Runnable {
@@ -673,7 +717,7 @@ class OverlayHandleService : Service() {
                         downOnBar = isOnBar(v, event.x, event.y)
                         velocityTracker?.recycle()
                         velocityTracker = VelocityTracker.obtain()
-                        // 长按（换边）与点按同一个靶：热区里随手摁一下不该换边。
+                        // 长按（换边）的靶是白条：热区里随手摁一下不该换边。
                         if (downOnBar) mainHandler.postDelayed(longPressRunnable, 500L)
                         return true
                     }
@@ -715,8 +759,6 @@ class OverlayHandleService : Service() {
                     MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                         mainHandler.removeCallbacks(longPressRunnable)
                         val dx = event.rawX - downX
-                        val dy = event.rawY - downY
-                        val moved = abs(dx) > slop || abs(dy) > slop
                         if (pulling) {
                             // 松手定去留：拖过 72dp / 快甩过 24dp = 展开，否则滑回。
                             endPull(shouldOpenPull(dx) && !longPressed)
@@ -725,12 +767,13 @@ class OverlayHandleService : Service() {
                             return true
                         }
                         // 松手后回到贴边位置并把 y 夹回屏内（落盘，重启保留）。
+                        //
+                        // **点按什么都不做**（v1.21 / §6.0）：原先这里有"没移动且落在
+                        // 白条靶上 → expandPanel"，是决议 41 的兜底入口（ROM 不认手势
+                        // 排除区时仍打得开）。删它的理由：贴边那一竖条是拇指的常驻
+                        // 落点，点一下就弹面板既误触，又让底下那一竖条变成"点了也不
+                        // 知道点给谁"的死区。代价已登记在 ui-interaction.md §6.0。
                         relayout()
-                        // 点按的靶是白条，不是整块热区（[BAR_TAP_PADDING_DP]）。
-                        if (!longPressed && !moved && downOnBar) {
-                            // 单次点按：展开面板
-                            expandPanel()
-                        }
                         velocityTracker?.recycle()
                         velocityTracker = null
                         dragging = false
@@ -1230,6 +1273,22 @@ class OverlayHandleService : Service() {
     }
 
     /**
+     * 热区宽度变化（[setHotZoneWidth]）：改窗口宽度 → 重新贴边 → 重声明排除区
+     * （排除区就是热区整块，宽度变了必须重发，否则系统与实际的边对不上）。
+     */
+    private fun applyHotZoneWidth(widthDp: Int) {
+        hotZoneWidthDp = widthDp.coerceIn(HOT_ZONE_WIDTH_MIN_DP, HOT_ZONE_WIDTH_MAX_DP)
+        val wm = windowManager ?: return
+        val view = handleView ?: return
+        val params = layoutParams ?: return
+        params.width = hotZoneWidthPx()
+        params.x = edgeX(wm)
+        updateView(view, params)
+        declareGestureExclusion(view)
+        Log.i(TAG, "overlay handle hot zone width=${hotZoneWidthDp}dp")
+    }
+
+    /**
      * `notifyReady` 之后立即发一次状态。
      *
      * 直投 MethodChannel 是异步的：没有 Dart 侧 handler 时 `invokeMethod` 会静默失败
@@ -1286,7 +1345,7 @@ class OverlayHandleService : Service() {
         }
 
     /** 热区宽度的像素值（窗口尺寸 = 可起手的范围）。 */
-    private fun hotZoneWidthPx(): Int = (HOT_ZONE_WIDTH_DP * density).toInt()
+    private fun hotZoneWidthPx(): Int = (hotZoneWidthDp * density).toInt()
 
     private fun hotZoneHeightPx(): Int = (HOT_ZONE_HEIGHT_DP * density).toInt()
 

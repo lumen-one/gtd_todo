@@ -193,6 +193,7 @@ class _AndroidShellState extends State<AndroidShell> {
       dy: _handleDy.clamp(24, size.height - _kHotHeight - 32),
       onLeft: _panelOnLeft,
       locked: widget.controller.settings.handleLocked,
+      hotWidth: widget.controller.settings.handleHotWidth.toDouble(),
       onDrag: (dy) => setState(() => _handleDy = dy),
       onOpen: _openPanel,
       onDockSwitch: () => setState(() => _panelOnLeft = !_panelOnLeft),
@@ -254,27 +255,42 @@ class _AndroidShellState extends State<AndroidShell> {
 // 把手（v1.10 / 决议 40，v1.11 再缩淡一档）：贴在边缘的一段半透明白条，
 // **6×72dp、白色 35% 不透明**，与原生悬浮把手同一套参数——两个场景共用一个把手
 // （决议 34），外观必须一致。
-// 外观改了，**能做的事一条没少**：竖向拖动换位置、横向拖出展开、点按展开、长按换边
+// 能做的事：竖向拖动换位置、横向拖着走拉开（拖过 72dp 或快甩）、长按换边
 // （位置可上锁，锁上后竖向拖动不改高度）。
-// 点按是后补的：它同时是决议 41 的兜底入口（ROM 不认手势排除区时仍打得开）。
+// **点按不做任何事**（v1.21 修订，§6.0）：那一下落回下层界面。它原先还是决议 41
+// 的兜底入口（ROM 不认手势排除区时仍打得开），删掉的代价已登记在文档里——这类
+// ROM 上的退路是 App 内的『侧边栏』按钮与抽屉。
 
 /// 白条尺寸（dp）：与原生 `OverlayHandleService` 的 BAR_* 一致。
 const double _kBarWidth = 6;
 const double _kBarHeight = 72;
 
-/// 可起手的热区（dp）：白条缩细之后没有它就摁不准。
-///
-/// **竖向与原生一致（200dp）**，横向只有 12dp——这是应用内壳特有的取舍：
-/// 热区在**我们自己的**设置页之上，再宽就会吃掉卡片边缘的点击（设置页左右留白
-/// 恰好 12dp）。系统级把手浮在别人的 App 上，吃掉的边不是我们的内容，所以那里
-/// 敢开到 28dp；这里不行。
-const double _kHotWidth = 12;
+/// 可起手的热区**高度**（dp）：与原生一致（200dp）= 系统"每边最多兑现 200dp
+/// 返回手势排除"的配额上限。**竖向不是设置项**（§6.0：调小只是自损竖拖起手的
+/// 容错）。
 const double _kHotHeight = 200;
 
-class _Handle extends StatelessWidget {
+/// 热区**宽度**（dp）不是这里的常量：走设置项 `handle_hot_width`
+/// （细 8 / 标准 12 / 宽 20，两处把手共用同一个值，见 [_Handle.hotWidth]）。
+/// 这里的取舍与系统级把手相反：热区压在**我们自己的**设置页之上，再宽就会吃掉
+/// 卡片边缘的点击（设置页左右留白恰好 12dp），所以默认只给 12dp。
+///
+/// 热区高度见 [_kHotHeight]。
+
+/// 横拖拉开判"展开"的最小位移（dp，§6.0）：与系统级把手同一套阈值。点按
+/// （含"蹭一下"）不算——v1.21 起点按不触发任何事。
+const double _kPullOpenDp = 72;
+
+/// 快甩判"展开"的横向速度（逻辑像素/秒）：与原生把手同口径。
+const double _kFlingVelocity = 500;
+
+class _Handle extends StatefulWidget {
   final double dy;
   final bool onLeft;
   final bool locked;
+
+  /// 热区宽度（dp）：设置项 `handle_hot_width`，与系统级把手同一个值。
+  final double hotWidth;
   final ValueChanged<double> onDrag;
   final VoidCallback onOpen;
   final VoidCallback onDockSwitch;
@@ -283,13 +299,25 @@ class _Handle extends StatelessWidget {
     required this.dy,
     required this.onLeft,
     required this.locked,
+    required this.hotWidth,
     required this.onDrag,
     required this.onOpen,
     required this.onDockSwitch,
   });
 
   @override
+  State<_Handle> createState() => _HandleState();
+}
+
+class _HandleState extends State<_Handle> {
+  /// 本次横拖**朝屏内**的净位移（dp）：松手时够 [_kPullOpenDp] 才展开（§6.0）。
+  double _pullDx = 0;
+
+  @override
   Widget build(BuildContext context) {
+    final dy = widget.dy;
+    final onLeft = widget.onLeft;
+    final hotWidth = widget.hotWidth;
     return Positioned(
       top: dy,
       left: onLeft ? 0 : null,
@@ -297,26 +325,32 @@ class _Handle extends StatelessWidget {
       child: GestureDetector(
         // 外层：整块热区只吃**拖动**（竖拖移位 / 横拖拉开），不挂 onTap——
         // 只有拖拽回调的探测器不会吞掉下层卡片的点击（实测确认）。
-        // 上锁后竖向拖动不再改高度，横拖拉开与点按照旧。
-        onVerticalDragUpdate: locked ? null : (d) => onDrag(dy + d.delta.dy),
+        // 上锁后竖向拖动不再改高度，横拖拉开照旧。
+        onVerticalDragUpdate:
+            widget.locked ? null : (d) => widget.onDrag(dy + d.delta.dy),
+        onHorizontalDragStart: (_) => _pullDx = 0,
+        onHorizontalDragUpdate: (d) => _pullDx += d.delta.dx,
         onHorizontalDragEnd: (d) {
           final v = d.velocity.pixelsPerSecond.dx;
-          final towardCenter = onLeft ? v > 500 : v < -500;
-          if (towardCenter) onOpen();
+          final flingToCenter = onLeft ? v > _kFlingVelocity : v < -_kFlingVelocity;
+          // 朝屏内为正：左边停靠往右拖、右边停靠往左拖。
+          final pulled = (onLeft ? _pullDx : -_pullDx) >= _kPullOpenDp;
+          _pullDx = 0;
+          if (pulled || flingToCenter) widget.onOpen();
         },
         child: SizedBox(
-          width: _kHotWidth,
+          width: hotWidth,
           height: _kHotHeight,
           child: Align(
             // 白条贴在**屏幕边缘**那一侧、竖直居中（与原生同口径）。
             alignment: onLeft ? Alignment.centerLeft : Alignment.centerRight,
             child: GestureDetector(
-              // 内层：点按与长按的靶是**白条本身**（上下各留 10dp 好摁），
-              // 不是整块热区——热区是给"拖动起手"用的。
-              onTap: onOpen,
-              onLongPress: onDockSwitch, // 长按：停靠到另一侧
+              // 内层：**长按**（换边）的靶是白条本身（上下各留 10dp 好摁），
+              // 不是整块热区——热区是给"拖动起手"用的。点按没有靶：v1.21 起
+              // 点按不展开（§6.0），那一下落回下层界面。
+              onLongPress: widget.onDockSwitch, // 长按：停靠到另一侧
               child: SizedBox(
-                width: _kHotWidth,
+                width: hotWidth,
                 height: _kBarHeight + 20,
                 // 用 Align 而不是 Center：白条要**贴住屏幕边缘**那一侧，
                 // 居中会让它离边 3dp，看起来就不像"贴边"了。

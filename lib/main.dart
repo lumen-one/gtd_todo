@@ -111,6 +111,9 @@ Future<void> main() async {
   // 把手位置上锁（§6.0）：桌面无系统级把手 = null，设置项只落 settings.json。
   controller.handleLockControl =
       bridge == null ? null : (locked) => bridge.setHandleLocked(locked);
+  // 把手热区宽度（§6.0 / §9 第 10 条）：同上，桌面 = null。
+  controller.handleHotWidthControl =
+      bridge == null ? null : (dp) => bridge.setHandleHotWidth(dp);
 
   dispatcher = ReminderDispatcher(
     service: service,

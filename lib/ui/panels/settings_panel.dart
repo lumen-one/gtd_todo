@@ -45,6 +45,31 @@ Widget _modeButton(AppController c, AppSettings s, ScheduleMode mode) {
   );
 }
 
+/// 热区宽度的取舍一句话（§6.0）：白条只有 6dp 宽，能起手靠的是外面这块透明热区；
+/// 选的是"好抓"与"不挡路"的折中点——热区盖住的触摸归把手，底下的界面收不到。
+String _hotWidthHint(int dp) => switch (dp) {
+      minHandleHotWidth => '细（${minHandleHotWidth}dp）：最不挡路，起手要贴边',
+      defaultHandleHotWidth =>
+        '标准（${defaultHandleHotWidth}dp）：好抓与不挡路的折中',
+      _ => '宽（${maxHandleHotWidth}dp）：最好抓，边上那一竖条更挡路',
+    };
+
+/// 三选一按钮（同 [_modeButton]：选中=实心，其余=描边）。
+Widget _hotWidthButton(AppController c, AppSettings s, int dp) {
+  final label = switch (dp) {
+    minHandleHotWidth => '细',
+    defaultHandleHotWidth => '标准',
+    _ => '宽',
+  };
+  final onPressed = () => c.setHandleHotWidth(dp);
+  return Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 4),
+    child: s.handleHotWidth == dp
+        ? FilledButton(onPressed: onPressed, child: Text(label))
+        : OutlinedButton(onPressed: onPressed, child: Text(label)),
+  );
+}
+
 /// 设置页（ui-interaction.md §9，暂定 App 唯一主体页面）：
 /// 1. 权限引导 + 任务目录 + 悬浮把手；2. 周期任务管理（routines.md）；
 /// 3. 提醒与排序（**调度模式三档：完整/标准/无排序** + 时间段多段式 + 闹钟模式）；
@@ -149,6 +174,21 @@ class _SettingsPanelState extends State<SettingsPanel> {
           subtitle: const Text('上锁后把手不再跟着拖动上下移动；长按换边仍可用'),
           value: s.handleLocked,
           onChanged: (v) => _c.setHandleLocked(v),
+        ),
+        ListTile(
+          leading: const Icon(Icons.swipe_right_alt),
+          title: const Text('把手热区宽度'),
+          subtitle: Text(_hotWidthHint(s.handleHotWidth)),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
+          child: Row(
+            children: [
+              // 三档由窄到宽：越宽越好抓，边上那一竖条也越挡路（§6.0）。
+              for (final dp in handleHotWidthOptions)
+                Expanded(child: _hotWidthButton(_c, s, dp)),
+            ],
+          ),
         ),
         ListTile(
           leading: const Icon(Icons.info_outline),

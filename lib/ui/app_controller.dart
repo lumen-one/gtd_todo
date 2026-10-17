@@ -474,6 +474,17 @@ class AppController extends ChangeNotifier {
     await updateSettings(_settings.copyWith(handleLocked: locked));
   }
 
+  /// 装配点注入：把手热区宽度（安卓原生；桌面无此能力 = null）。
+  Future<bool> Function(int widthDp)? handleHotWidthControl;
+
+  /// 把手热区宽度（§6.0 / §9 第 10 条）：与 [setHandleLocked] 同一套路——先推给
+  /// 原生（系统级把手的窗口宽度和手势排除区都要跟着改），再落 settings.json。
+  /// 应用内把手不需要通道：它就在这个 isolate 里读设置重建。
+  Future<void> setHandleHotWidth(int widthDp) async {
+    await handleHotWidthControl?.call(widthDp);
+    await updateSettings(_settings.copyWith(handleHotWidth: widthDp));
+  }
+
   /// 装配点注入：查询把手真实状态（安卓原生；桌面无此能力 = null）。
   Future<bool> Function()? overlayHandleState;
 

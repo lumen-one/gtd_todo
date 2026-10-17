@@ -112,6 +112,11 @@ class AndroidNativeBridge {
   Future<bool> setHandleLocked(bool locked) =>
       _invoke('setHandleLocked', {'locked': locked});
 
+  /// 把手热区宽度（dp，§6.0 / §9 第 10 条）：原生侧改的是把手窗口宽度与
+  /// 系统手势排除区，服务没在跑也没关系——值落 prefs，下次 onCreate 会读到。
+  Future<bool> setHandleHotWidth(int widthDp) =>
+      _invoke('setHandleHotWidth', {'widthDp': widthDp});
+
   Future<bool> isIgnoringBatteryOptimizations() =>
       _invoke('isIgnoringBatteryOptimizations');
 

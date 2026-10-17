@@ -2,6 +2,26 @@ import 'dart:convert';
 
 import '../domain/schedule.dart';
 
+/// 把手热区宽度的取值区间（dp，§6.0 / §9 第 10 条）：手改 settings.json 改坏了
+/// 也不越界，读进来一律夹到区间里。
+const int minHandleHotWidth = 8;
+const int defaultHandleHotWidth = 12;
+const int maxHandleHotWidth = 20;
+
+/// 把手热区宽度的**三档值**（细 / 标准 / 宽），设置页按这个顺序摆。
+/// 档位怎么呈现是 UI 层的事，application 只认夹过界的数字。
+const List<int> handleHotWidthOptions = [
+  minHandleHotWidth,
+  defaultHandleHotWidth,
+  maxHandleHotWidth,
+];
+
+/// 把手热区宽度：缺字段 / 手改坏了都回默认，其余夹进区间。
+int clampHandleHotWidth(Object? raw) {
+  if (raw is! num) return defaultHandleHotWidth;
+  return raw.toInt().clamp(minHandleHotWidth, maxHandleHotWidth).toInt();
+}
+
 /// 应用设置（ui-interaction.md §9）：调度模式、提醒时间段、定期挑、疑问笔记路径等。
 /// application 只定义形状与缺省值；落盘走 [SettingsPort]（组装点装配，
 /// 本期实现 = 任务目录下 settings.json，Obsidian 目录里多一个文件可接受）。
@@ -67,6 +87,17 @@ class AppSettings {
   /// 落 settings.json 的 `handle_locked`；系统级把手与应用内把手一起锁。
   final bool handleLocked;
 
+  /// **把手热区宽度**（dp，§6.0 / §9 第 10 条）：白条只有 6dp 宽，能起手靠的是
+  /// 外面这块透明热区。选的就是"好抓"与"不挡路"的折中点——热区是 overlay 窗口
+  /// （系统级）或设置页留白上的一层（应用内），它盖住的触摸归把手，越宽越好抓、
+  /// 越挡路。两处把手共用同一个值。
+  ///
+  /// 落 settings.json 的 `handle_hot_width`；缺省 [defaultHandleHotWidth]，
+  /// 读取时夹在 [minHandleHotWidth, maxHandleHotWidth] 之间（手改坏了也不越界）。
+  /// **高度不是设置项**：200dp 是系统"每边最多兑现 200dp 手势排除"的配额上限，
+  /// 调小只是自损竖拖起手的容错。
+  final int handleHotWidth;
+
   const AppSettings({
     this.notificationWindows = const [[9 * 60, 21 * 60]],
     this.scheduleMode = ScheduleMode.standard,
@@ -82,6 +113,7 @@ class AppSettings {
     this.panelWidth,
     this.panelHeight,
     this.handleLocked = false,
+    this.handleHotWidth = defaultHandleHotWidth,
   });
 
   static const AppSettings defaults = AppSettings();
@@ -101,6 +133,7 @@ class AppSettings {
     double? panelWidth,
     double? panelHeight,
     bool? handleLocked,
+    int? handleHotWidth,
     bool clearNotesPath = false,
     bool clearLastPickDate = false,
     bool clearPanelWidth = false,
@@ -122,6 +155,7 @@ class AppSettings {
       panelWidth: clearPanelWidth ? null : (panelWidth ?? this.panelWidth),
       panelHeight: clearPanelHeight ? null : (panelHeight ?? this.panelHeight),
       handleLocked: handleLocked ?? this.handleLocked,
+      handleHotWidth: handleHotWidth ?? this.handleHotWidth,
     );
   }
 
@@ -140,6 +174,7 @@ class AppSettings {
         if (panelWidth != null) 'panel_width': panelWidth,
         if (panelHeight != null) 'panel_height': panelHeight,
         'handle_locked': handleLocked,
+        'handle_hot_width': handleHotWidth,
       };
 
   factory AppSettings.fromJson(Map<String, Object?> json) {
@@ -166,6 +201,7 @@ class AppSettings {
       panelWidth: (json['panel_width'] as num?)?.toDouble(),
       panelHeight: (json['panel_height'] as num?)?.toDouble(),
       handleLocked: json['handle_locked'] == true,
+      handleHotWidth: clampHandleHotWidth(json['handle_hot_width']),
     );
   }
 }

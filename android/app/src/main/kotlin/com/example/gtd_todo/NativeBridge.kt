@@ -157,6 +157,7 @@ class NativeBridge(
                 "setOverlayHandle" -> result.success(setOverlayHandle(call))
                 "isOverlayHandleEnabled" -> result.success(isOverlayHandleEnabled())
                 "setHandleLocked" -> result.success(setHandleLocked(call))
+                "setHandleHotWidth" -> result.success(setHandleHotWidth(call))
                 "isIgnoringBatteryOptimizations" -> result.success(isIgnoringBatteryOptimizations())
                 "notifyReady" -> {
                     dartReady = true
@@ -303,6 +304,18 @@ class NativeBridge(
     private fun setHandleLocked(call: MethodCall): Boolean {
         val locked = call.argument<Boolean>("locked") ?: false
         OverlayHandleService.setLocked(activity, locked)
+        return true
+    }
+
+    /**
+     * 把手热区宽度（settings.json 的 `handle_hot_width` 的执行侧）。
+     *
+     * 改的是把手窗口宽度与它声明的手势排除区；服务没在跑也没关系——
+     * 值已落原生 prefs，下次服务 onCreate 会读到。
+     */
+    private fun setHandleHotWidth(call: MethodCall): Boolean {
+        val dp = call.argument<Number>("widthDp")?.toInt() ?: return false
+        OverlayHandleService.setHotZoneWidth(activity, dp)
         return true
     }
 
