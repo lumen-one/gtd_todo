@@ -32,6 +32,15 @@ class _OverlayPanelShellState extends State<OverlayPanelShell>
   bool _dockedRight = true;
   bool _privacy = false;
 
+  /// 快记态（§6.8）：原生已把把手换成跟手方块，面板让位（淡出、不摘窗口）。
+  bool _quickDrag = false;
+
+  /// 快记松手后的落点：非 null = 输入条阶段（方块已交给 [QuickNoteLayer]）。
+  Offset? _quickOrigin;
+
+  /// 上一次上报给原生的面板宽（逻辑像素）：变了才上报，别每帧刷通道。
+  double? _reportedPanelWidth;
+
   /// 原生把手的中心 Y（逻辑像素）：面板垂直居中于它（§6.0）；null = 贴顶。
   double? _handleCenterY;
 
@@ -59,11 +68,19 @@ class _OverlayPanelShellState extends State<OverlayPanelShell>
         _expanded = s.expanded;
         _dockedRight = s.dockedRight;
         _handleCenterY = s.handleCenterY;
-        if (!s.expanded) _privacy = false;
+        if (!s.expanded) {
+          _privacy = false;
+          // 收起 = 跟手/快记都结束（原生已经摘窗口，别留着残影）。
+          _quickDrag = false;
+          _quickOrigin = null;
+          _dragProgress = null;
+        }
       });
       if (s.expanded) _maybeOnboard();
     });
     _dragSub = widget.bridge.drags.listen(_onDrag);
+    // 原生"继续拖到面板宽"那条上限要用面板宽（§6.8）：首帧与设置变化时上报。
+    WidgetsBinding.instance.addPostFrameCallback((_) => _reportPanelWidth());
   }
 
   @override
@@ -77,13 +94,28 @@ class _OverlayPanelShellState extends State<OverlayPanelShell>
   }
 
   void _onChange() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    setState(() {});
+    // 放到帧后：设置变化可能来自 build 之外的回调，别在那儿读 MediaQuery。
+    WidgetsBinding.instance.addPostFrameCallback((_) => _reportPanelWidth());
+  }
+
+  /// 面板宽报给原生（逻辑像素）：只在变化时发，拖宽度/换屏/锁尺寸都会触发。
+  void _reportPanelWidth() {
+    if (!mounted) return;
+    final width =
+        panelWidthFor(_c.settings, MediaQuery.of(context).size.width);
+    if (width == _reportedPanelWidth) return;
+    _reportedPanelWidth = width;
+    widget.bridge.notifyPanelWidth(width);
   }
 
   Future<void> _collapse() async {
     setState(() {
       _expanded = false;
       _privacy = false;
+      _quickDrag = false;
+      _quickOrigin = null;
     });
     await widget.bridge.collapse();
   }
@@ -97,7 +129,28 @@ class _OverlayPanelShellState extends State<OverlayPanelShell>
       setState(() => _dragProgress = _progressFor(e.dx));
     } else if (e is PanelDragEnd) {
       _settle(e.open);
+    } else if (e is QuickNoteStart) {
+      // 面板不摘窗口，只淡出：回拖取消时能原地恢复跟手（§6.8）。
+      setState(() => _quickDrag = true);
+    } else if (e is QuickNoteCancel) {
+      setState(() => _quickDrag = false);
+    } else if (e is QuickNoteOpen) {
+      // 松手：方块交给 Dart，从落点飞向屏幕中央再展开成输入条。
+      setState(() {
+        _quickDrag = false;
+        _quickOrigin = e.position;
+      });
     }
+  }
+
+  /// 快记提交：三无入池，与隐私条（§6.5）同一条命令。
+  Future<void> _quickSubmit(String title) => _c.createTask(title: title);
+
+  /// 收输入条：摘面板窗口（原生顺手让把手回来）。
+  Future<void> _closeQuickNote() async {
+    if (_quickOrigin == null) return;
+    setState(() => _quickOrigin = null);
+    await widget.bridge.collapse();
   }
 
   /// 尺寸固定后面板内侧把手的**跟手收起**（§6.0）：与上面那条拉开共用同一条
@@ -177,9 +230,29 @@ class _OverlayPanelShellState extends State<OverlayPanelShell>
 
   @override
   Widget build(BuildContext context) {
+    // 快记输入条阶段（§6.8）：只剩方块 → 输入条，面板被它替代。
+    final quickOrigin = _quickOrigin;
+    if (quickOrigin != null) {
+      return PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) _closeQuickNote();
+        },
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
+          body: QuickNoteLayer(
+            origin: quickOrigin,
+            onSubmit: _quickSubmit,
+            onClose: _closeQuickNote,
+          ),
+        ),
+      );
+    }
     // 跟手拖动中（_dragProgress != null）也要渲染面板——那是"露多少跟多少"
-    // 的部分展开态（§6.0）。
-    if (!_expanded && _dragProgress == null) return const SizedBox.shrink();
+    // 的部分展开态（§6.0）；快记态下面板淡出但**不摘窗口**（§6.8）。
+    if (!_expanded && _dragProgress == null && !_quickDrag) {
+      return const SizedBox.shrink();
+    }
     // 透明 Scaffold：SnackBar / 对话框有宿主，背景仍是"下面的 App"。
     // PopScope：面板是全屏窗口，系统返回键应该"收起面板"而不是穿透到下面的 App。
     return PopScope(
@@ -189,21 +262,28 @@ class _OverlayPanelShellState extends State<OverlayPanelShell>
       },
       child: Scaffold(
         backgroundColor: Colors.transparent,
-        body: FloatingPanel(
-          controller: _c,
-          pageCtrl: _pageCtrl,
-          onCollapse: _collapse,
-          onPrivacy: () => setState(() => _privacy = true),
-          privacy: _privacy,
-          onPrivacySubmit: _privacySubmit,
-          onOpenCalendar: () => showCalendarDialog(context, _c),
-          onOpenSettings: () => widget.bridge.openApp(target: 'settings'),
-          dockLeft: !_dockedRight,
-          anchorCenterY: _handleCenterY,
-          // 跟手拖动中 = 部分展开；其余 = 全展开。
-          progress: _dragProgress ?? 1,
-          onCollapsePull: _onPanelCollapsePull,
-          onCollapseRelease: _onPanelCollapseRelease,
+        body: IgnorePointer(
+          ignoring: _quickDrag,
+          child: AnimatedOpacity(
+            opacity: _quickDrag ? 0 : 1,
+            duration: const Duration(milliseconds: 160),
+            child: FloatingPanel(
+              controller: _c,
+              pageCtrl: _pageCtrl,
+              onCollapse: _collapse,
+              onPrivacy: () => setState(() => _privacy = true),
+              privacy: _privacy,
+              onPrivacySubmit: _privacySubmit,
+              onOpenCalendar: () => showCalendarDialog(context, _c),
+              onOpenSettings: () => widget.bridge.openApp(target: 'settings'),
+              dockLeft: !_dockedRight,
+              anchorCenterY: _handleCenterY,
+              // 跟手拖动中 = 部分展开；其余 = 全展开。
+              progress: _dragProgress ?? 1,
+              onCollapsePull: _onPanelCollapsePull,
+              onCollapseRelease: _onPanelCollapseRelease,
+            ),
+          ),
         ),
       ),
     );

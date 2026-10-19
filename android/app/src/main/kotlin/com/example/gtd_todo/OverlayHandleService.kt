@@ -16,12 +16,15 @@ import android.os.IBinder
 import android.os.Looper
 import android.provider.Settings
 import android.util.Log
+import android.util.TypedValue
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.VelocityTracker
 import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
+import android.widget.TextView
 import io.flutter.FlutterInjector
 import io.flutter.embedding.android.FlutterSurfaceView
 import io.flutter.embedding.android.FlutterView
@@ -174,8 +177,31 @@ class OverlayHandleService : Service() {
          */
         private const val PULL_OPEN_DP = 72
 
-        /** 把手横移上限（占屏宽的比例）：别让它越过屏幕中线。 */
+        /** 把手横移上限（占屏宽的比例）：**分岔点**，不是终点（§6.8）。 */
         private const val PULL_MAX_FRACTION = 0.45f
+
+        /**
+         * 拖过分岔点后判方向的阈值（dp）：竖向偏移要过这么大、且大于横向超出量的
+         * [QUICK_TURN_RATIO] 倍，才算"拐弯"——进快记态（ui-interaction.md §6.8）。
+         *
+         * 两个条件缺一不可：只看竖向偏移会把"斜着往屏内拖"误判成拐弯；
+         * 只看比例会在横向几乎不动时被手指抖动触发。
+         */
+        private const val QUICK_TURN_DP = 24
+        private const val QUICK_TURN_RATIO = 0.8f
+
+        /** 快记方块（dp）：边长，以及方块中心相对指尖的竖向抬升（免得被手指盖住）。 */
+        private const val QUICK_BOX_DP = 52
+        private const val QUICK_BOX_LIFT_DP = 28
+
+        /**
+         * 快记态窗口边长（dp）：比方块大一圈，**让指尖始终落在窗口内**。
+         *
+         * 窗口缩小到方块大小的话，指尖（方块下沿之外）就压在窗口外了；系统对
+         * "拖动中窗口缩小"的处理各家不一，轻则不再投递 MOVE，重则直接 cancel。
+         * 留出 34dp 的余量最省事——透明区域的触摸本来就归这次按住的拖动。
+         */
+        private const val QUICK_ZONE_DP = 120
 
         /** 快甩判"展开"的横向速度（逻辑像素/秒，与应用内壳把手同口径）。 */
         private const val FLING_VELOCITY = 500f
@@ -358,6 +384,31 @@ class OverlayHandleService : Service() {
     /** 当前朝屏内的拖动距离（px，≥0）。 */
     private var pullDx = 0f
 
+    // ------------------------------------------------------- 快记（§6.8）
+
+    /** 已过 [PULL_MAX_FRACTION] 分岔点（本次手势内）。 */
+    private var pastSplit = false
+
+    /** 过了分岔点、判为"想要面板"：上限放宽到面板宽（本次手势内不回收）。 */
+    private var pastSplitPanel = false
+
+    /** 快记态：把手窗口已变成跟手方块。 */
+    private var quickNote = false
+
+    /** 输入条占着面板窗口期间把手保持隐藏；收起（collapse）后恢复。 */
+    private var quickNoteShowing = false
+
+    /** 方块视图：热区里那块 52dp 的圆角白方块（默认 GONE，只在快记态显示）。 */
+    private var quickBoxView: View? = null
+
+    /**
+     * Dart 上报的面板宽（逻辑像素，`panelWidth` 上行）。
+     *
+     * 原生不知道 `settings.panel_width`，但"继续拖到面板宽"这条上限要用它；
+     * 0 = 还没报过 → 按默认公式 min(0.8 × 屏宽, 360dp) 估。
+     */
+    private var panelWidthDp = 0f
+
     /** 松手判快甩用的速度跟踪（一次手势一个：DOWN obtain、UP 回收）。 */
     private var velocityTracker: VelocityTracker? = null
 
@@ -437,6 +488,10 @@ class OverlayHandleService : Service() {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         // 旋屏/分屏：面板是全屏窗口，跟随系统即可；把手需要重新贴边并夹紧 y。
+        // 快记态下手势被打断（窗口正跟着指尖走），直接退回把手，按上次落盘的高度落位。
+        windowManager?.let { wm ->
+            if (quickNote) exitQuickNote(restoredY(wm).toFloat(), notifyDart = true)
+        }
         relayout()
         // 面板窗口参数与屏幕尺寸无关（MATCH_PARENT），但保险起见重新贴一次。
         if (panelExpanded) {
@@ -491,9 +546,14 @@ class OverlayHandleService : Service() {
         }
         // 根视图是整块透明的热区：能起手的面积远大于白条，用户不必精确摁到那条线上。
         // 代价写在这里：热区盖住的触摸归把手，底下的 App 收不到。
+        //
+        // 快记方块（§6.8）是同一窗口里的第二个子 View（默认 GONE）：进快记态时白条
+        // 让位、窗口缩成 52dp 跟手指走——不新开窗口，也就没有通道延迟。
+        val box = buildQuickBox()
         val view = FrameLayout(this).apply {
             setBackgroundColor(Color.TRANSPARENT)
             addView(bar, barLayoutParams())
+            addView(box, quickBoxLayoutParams())
         }
 
         val params = WindowManager.LayoutParams(
@@ -515,6 +575,7 @@ class OverlayHandleService : Service() {
 
         handleView = view
         barView = bar
+        quickBoxView = box
         layoutParams = params
         try {
             wm.addView(view, params)
@@ -535,7 +596,10 @@ class OverlayHandleService : Service() {
         val view = handleView
         handleView = null
         barView = null
+        quickBoxView = null
         layoutParams = null
+        quickNote = false
+        quickNoteShowing = false
         try {
             if (view != null) windowManager?.removeView(view)
         } catch (t: Throwable) {
@@ -552,7 +616,7 @@ class OverlayHandleService : Service() {
      */
     private fun applyVisibility() {
         val view = handleView ?: return
-        val hide = hostForeground || panelExpanded
+        val hide = hostForeground || panelExpanded || quickNote || quickNoteShowing
         val target = if (hide) View.GONE else View.VISIBLE
         if (view.visibility != target) view.visibility = target
         // 隐藏一轮之后再显示，排除区可能被丢掉：重新声明一次（幂等）。
@@ -566,7 +630,10 @@ class OverlayHandleService : Service() {
             return
         }
         hostForeground = foreground
-        if (foreground && panelExpanded) collapsePanel(notifyDart = true)
+        // 进前台要收起面板；快记（方块态或输入条）同样不能留着——用户已经进应用了。
+        if (foreground && (panelExpanded || quickNote || quickNoteShowing)) {
+            collapsePanel(notifyDart = true)
+        }
         applyVisibility()
         if (!foreground) {
             // 退到后台就预热第二个引擎：用户接下来多半要拉把手，而跟手拉开要求
@@ -697,6 +764,16 @@ class OverlayHandleService : Service() {
              * 点按用的；点按自 v1.21 起什么都不做（§6.0）。
              */
             private var downOnBar = false
+
+            /**
+             * 过 [PULL_MAX_FRACTION] 分岔点那一刻的竖向偏移：拐弯判定的**基线**（§6.8）。
+             *
+             * 用"相对基线的增量"而不是绝对 dy：取消快记、退回面板跟手之后，手指
+             * 仍在原来的高度上，用绝对 dy 会立刻再次判定、来回跳；用增量则必须
+             * 从取消点再拐 24dp 才会重进。
+             */
+            private var splitDy = 0f
+
             private val longPressRunnable = Runnable {
                 longPressed = true
                 toggleDock()
@@ -713,6 +790,9 @@ class OverlayHandleService : Service() {
                         downY = event.rawY
                         dragging = false
                         longPressed = false
+                        pastSplit = false
+                        pastSplitPanel = false
+                        splitDy = 0f
                         // event.x/y 是**视图自身坐标系**：白条在热区里的位置按它算。
                         downOnBar = isOnBar(v, event.x, event.y)
                         velocityTracker?.recycle()
@@ -734,10 +814,52 @@ class OverlayHandleService : Service() {
                             startPull()
                         }
                         if (pulling) {
+                            val inward = if (dockedRight) -dx else dx
+                            if (quickNote) {
+                                // 方块跟指尖（二维）：进入时已经在窗口上设好尺寸。
+                                moveQuickBox(wm, event.rawX, event.rawY)
+                                if (inward >= pullSplitPx(wm).toFloat()) return true
+                                // 回拖到分岔点以内 = 取消：方块缩回白条、面板恢复跟手。
+                                exitQuickNote(startY, notifyDart = true)
+                                splitDy = dy
+                            }
+                            // 过 0.45 分岔点后才判方向（§6.8）：拐离水平 = 快记；
+                            // 继续近似水平 = 想要面板，上限放宽到面板宽。
+                            if (!pastSplit && inward >= pullSplitPx(wm).toFloat()) {
+                                pastSplit = true
+                                splitDy = dy
+                            }
+                            if (pastSplit) {
+                                val split = pullSplitPx(wm).toFloat()
+                                val limit = if (pastSplitPanel) {
+                                    max(split, panelWidthPx(wm).toFloat())
+                                } else {
+                                    split
+                                }
+                                // 横向"还在推进的量"：没顶死时算过分岔点之后的增量
+                                // （横着走得多就不算拐弯）；顶死后只剩空推量 ≈ 0。
+                                val horizontal = if (inward < limit) {
+                                    max(0f, inward - split)
+                                } else {
+                                    max(0f, inward - limit)
+                                }
+                                val turn = abs(dy - splitDy)
+                                if (turn >= QUICK_TURN_DP * density &&
+                                    turn > QUICK_TURN_RATIO * horizontal &&
+                                    enterQuickNote(wm, event.rawX, event.rawY)
+                                ) {
+                                    return true
+                                }
+                                if (!pastSplitPanel) pastSplitPanel = true
+                            }
                             // 把手跟着手指横移（y 冻结：拉开是横手势，面板的
                             // 垂直锚点不跟着晃）。
-                            val inward = if (dockedRight) -dx else dx
-                            pullDx = inward.coerceIn(0f, pullMaxPx(wm).toFloat())
+                            val cap = if (pastSplitPanel) {
+                                max(pullSplitPx(wm).toFloat(), panelWidthPx(wm).toFloat())
+                            } else {
+                                pullSplitPx(wm).toFloat()
+                            }
+                            pullDx = inward.coerceIn(0f, cap)
                             if (wm != null) {
                                 params.x = edgeX(wm) +
                                     (if (dockedRight) -pullDx else pullDx).toInt()
@@ -759,6 +881,20 @@ class OverlayHandleService : Service() {
                     MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                         mainHandler.removeCallbacks(longPressRunnable)
                         val dx = event.rawX - downX
+                        if (quickNote) {
+                            // 松手 = 确认记一条：把落点交给 Dart（方块由它接管、飞向
+                            // 屏幕中央），原生窗口复原并藏起来，输入条收起前不再露把手。
+                            quickNoteShowing = true
+                            sendQuickNoteOpen(event.rawX, event.rawY)
+                            exitQuickNote(startY, notifyDart = false)
+                            pulling = false
+                            pullTracking = false
+                            dragging = false
+                            velocityTracker?.recycle()
+                            velocityTracker = null
+                            applyVisibility()
+                            return true
+                        }
                         if (pulling) {
                             // 松手定去留：拖过 72dp / 快甩过 24dp = 展开，否则滑回。
                             endPull(shouldOpenPull(dx) && !longPressed)
@@ -855,11 +991,186 @@ class OverlayHandleService : Service() {
         }
     }
 
-    /** 把手横移上限：别越过屏幕中线（贴右 = 往左、贴左 = 往右）。 */
-    private fun pullMaxPx(wm: WindowManager?): Int {
+    // ------------------------------------------------------------ 快记（§6.8）
+
+    /** 快记方块在窗口里居中：窗口中心 = 方块中心（窗口比方块大一圈，见 [QUICK_ZONE_DP]）。 */
+    private fun quickBoxLayoutParams(): FrameLayout.LayoutParams {
+        val size = (QUICK_BOX_DP * density).toInt()
+        return FrameLayout.LayoutParams(size, size, Gravity.CENTER)
+    }
+
+    /**
+     * 方块视图：热区窗口里的第二个子 View（默认 GONE）。
+     *
+     * 白底 + 细描边 + 中心一个加号，是为了在任何壁纸/任何 App 上都看得清，且
+     * **不带任何任务文字**——旁边人看到的只是一块空白小方块（§6.8）。
+     */
+    private fun buildQuickBox(): View {
+        val plus = TextView(this).apply {
+            text = "+"
+            setTextColor(Color.parseColor("#8A000000"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 24f)
+            gravity = Gravity.CENTER
+            includeFontPadding = false
+        }
+        return FrameLayout(this).apply {
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = 16f * density
+                setColor(Color.argb(246, 255, 255, 255))
+                setStroke(max(1, (1 * density).toInt()), Color.parseColor("#33000000"))
+            }
+            elevation = 10f * density
+            addView(
+                plus,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                ),
+            )
+            visibility = View.GONE
+        }
+    }
+
+    /**
+     * 在"热区"与"方块"两种窗口形态之间切换（只改参数，不提交布局）。
+     *
+     * 尺寸必须跟着改：方块要是 52dp 的方窗口，否则圆角白底会被 12×200 的热区
+     * 裁成一条。第一次提交由 [moveQuickBox] 或 [exitQuickNote] 做，避免闪一下旧位置。
+     */
+    private fun applyQuickBox(on: Boolean) {
+        val params = layoutParams ?: return
+        val wm = windowManager
+        if (on) {
+            val zone = (QUICK_ZONE_DP * density).toInt()
+            params.width = zone
+            params.height = zone
+            barView?.visibility = View.GONE
+            quickBoxView?.visibility = View.VISIBLE
+        } else {
+            params.width = hotZoneWidthPx()
+            params.height = hotZoneHeightPx()
+            if (wm != null) params.x = edgeX(wm)
+            barView?.visibility = View.VISIBLE
+            quickBoxView?.visibility = View.GONE
+        }
+    }
+
+    /** 方块跟指尖（二维）：窗口中心抬到指尖上方 [QUICK_BOX_LIFT_DP]，免得被手指盖住。 */
+    private fun moveQuickBox(wm: WindowManager?, rawX: Float, rawY: Float) {
+        val view = handleView ?: return
+        val params = layoutParams ?: return
+        val zone = (QUICK_ZONE_DP * density).toInt()
+        val half = zone / 2f
+        val lift = QUICK_BOX_LIFT_DP * density
+        val screenW = wm?.let { screenWidth(it) }
+            ?: resources.displayMetrics.widthPixels
+        val screenH = wm?.let { screenHeight(it) }
+            ?: resources.displayMetrics.heightPixels
+        params.width = zone
+        params.height = zone
+        params.x = (rawX - half).toInt().coerceIn(0, max(0, screenW - zone))
+        params.y = (rawY - lift - half).toInt().coerceIn(0, max(0, screenH - zone))
+        updateView(view, params)
+    }
+
+    /**
+     * 进快记态：把手窗口变方块，面板退场（Dart 侧淡出，不摘窗口）。
+     *
+     * @return false = 第二个引擎没就绪，**不进**快记（手势保持原样，继续当面板拖）——
+     *         方块出来了却写不了字比没有这个功能更糟。
+     */
+    private fun enterQuickNote(wm: WindowManager?, rawX: Float, rawY: Float): Boolean {
+        if (!overlayReady) return false
+        if (!ensureOverlayEngine()) return false
+        if (!addPanelView()) return false
+        quickNote = true
+        handleView?.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+        applyQuickBox(true)
+        moveQuickBox(wm, rawX, rawY)
+        sendQuickNoteEvent("quickNoteStart")
+        return true
+    }
+
+    /**
+     * 退出快记态：窗口复原成贴边热区，y 回到本次拖动前的高度。
+     *
+     * @param notifyDart true = 回拖取消（面板恢复跟手）；false = 松手进输入条
+     *                   （由 [quickNoteShowing] 接手隐藏把手）。
+     */
+    private fun exitQuickNote(restoreY: Float, notifyDart: Boolean) {
+        val was = quickNote
+        quickNote = false
+        applyQuickBox(false)
+        val view = handleView
+        val params = layoutParams
+        val wm = windowManager
+        if (view != null && params != null && wm != null) {
+            params.x = edgeX(wm)
+            params.y = clampY(restoreY.toInt())
+            updateView(view, params)
+            persistPosition(params.y)
+        }
+        // 取消必须在复原之后发：Dart 收到后会按跟手进度重新画面板，那时
+        // 面板窗口已经就位，不会停在 opacity 0 上。
+        if (was && notifyDart) sendQuickNoteEvent("quickNoteCancel")
+        applyVisibility()
+    }
+
+    /** 原生 → Dart：快记态的开始 / 取消（`quickNoteOpen` 另走 [sendQuickNoteOpen]）。 */
+    private fun sendQuickNoteEvent(method: String) {
+        try {
+            overlayChannel?.invokeMethod(method, null)
+        } catch (t: Throwable) {
+            Log.w(TAG, "$method delivery failed: ${t.message}")
+        }
+    }
+
+    /** 松手：把落点（逻辑像素）交给 Dart，方块由它接管飞向屏幕中央。 */
+    private fun sendQuickNoteOpen(rawX: Float, rawY: Float) {
+        try {
+            overlayChannel?.invokeMethod(
+                "quickNoteOpen",
+                mapOf(
+                    "x" to (rawX / density).toDouble(),
+                    "y" to (rawY / density).toDouble(),
+                ),
+            )
+        } catch (t: Throwable) {
+            Log.w(TAG, "quickNoteOpen delivery failed: ${t.message}")
+        }
+    }
+
+    /**
+     * **分岔点**：把手横移到屏宽的 0.45 倍（贴右 = 往左、贴左 = 往右）。
+     *
+     * 原先它就是横移上限；v1.23 起变成"判方向"的点——过线之后继续近似水平走会把
+     * 上限放宽到面板宽（[panelWidthPx]），拐离水平则进快记（ui-interaction.md §6.8）。
+     * 保留 0.45 是因为它是"正常拉开"与"第二档"之间唯一稳定的分界，再往上挪会把
+     * 面板全开前的每一帧都变成可判定的区间。
+     */
+    private fun pullSplitPx(wm: WindowManager?): Int {
         val width = wm?.let { screenWidth(it) }
             ?: resources.displayMetrics.widthPixels
         return (width * PULL_MAX_FRACTION).toInt()
+    }
+
+    /**
+     * 面板宽（px）：Dart 用 `panelWidth` 上行报过来的 `panel_width`。
+     *
+     * 没报过（服务刚拉起、Dart 还没起来）时按默认公式 min(0.8 × 屏宽, 360dp) 估，
+     * 与 `side_panel.dart` 的 `panelWidthFor` 一致；估偏了只影响"多推一点才顶死"，
+     * 不会把面板挡在半开。
+     */
+    private fun panelWidthPx(wm: WindowManager?): Int {
+        val screen = wm?.let { screenWidth(it) }
+            ?: resources.displayMetrics.widthPixels
+        val dp = if (panelWidthDp > 0f) {
+            panelWidthDp
+        } else {
+            min(screen / density * 0.8f, 360f)
+        }
+        return (dp * density).toInt().coerceIn(0, max(0, screen - 24))
     }
 
     /**
@@ -925,10 +1236,17 @@ class OverlayHandleService : Service() {
         // 跟手拉开"滑回"走这条路摘窗口：兜底 Runnable 可以退了。
         mainHandler.removeCallbacks(pullCloseFallback)
         if (!panelExpanded && panelView == null) {
+            // 窗口本来就不在：也要把快记的"暂隐把手"收回来，否则把手再也不显示。
+            quickNoteShowing = false
+            quickNote = false
+            applyVisibility()
             if (notifyDart) notifyOverlayState()
             return
         }
         panelExpanded = false
+        // 输入条收起：把手重新出现（快记态若还挂着也不能留方块）。
+        quickNoteShowing = false
+        quickNote = false
         removePanel()
         applyVisibility()
         if (notifyDart) notifyOverlayState()
@@ -1192,6 +1510,13 @@ class OverlayHandleService : Service() {
                     val target = call.argument<String>("target") ?: ""
                     val routineId = call.argument<String>("routineId")
                     result.success(openApp(target, routineId))
+                }
+                // 面板宽（逻辑像素）：快记"继续拖到面板宽"那条上限要用它，
+                // 原生读不到 settings.json 的 panel_width（§6.8）。
+                "panelWidth" -> {
+                    val dp = call.argument<Double>("dp")
+                    if (dp != null && dp > 0) panelWidthDp = dp.toFloat()
+                    result.success(true)
                 }
                 else -> result.notImplemented()
             }

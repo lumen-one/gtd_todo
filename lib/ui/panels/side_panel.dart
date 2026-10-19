@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../application/settings.dart';
@@ -319,7 +322,185 @@ class _PanelPrivacyBarState extends State<PanelPrivacyBar> {
   }
 }
 
-/// 首次拖出引导（决议 21）：一次性三步气泡——展开 / 翻页 / 添加。
+/// 拖出头快记（§6.8）：方块从松手处滑到屏幕正中，再展开成一条输入框。
+///
+/// 只在系统级悬浮面板里用（宿主 `OverlayPanelShell`）。**没有遮罩**——底下的 App
+/// 照常可见，但整层吞掉触摸（点外部即收起），否则旁边一点就跑到别的 App 里去了。
+/// 提交走 [onSubmit]，落地与隐私条同一条命令（三无入池）。
+class QuickNoteLayer extends StatefulWidget {
+  /// 松手落点（逻辑像素，屏幕坐标）——原生方块交出来的位置。
+  final Offset origin;
+
+  final Future<void> Function(String) onSubmit;
+  final VoidCallback onClose;
+
+  const QuickNoteLayer({
+    super.key,
+    required this.origin,
+    required this.onSubmit,
+    required this.onClose,
+  });
+
+  @override
+  State<QuickNoteLayer> createState() => _QuickNoteLayerState();
+}
+
+class _QuickNoteLayerState extends State<QuickNoteLayer>
+    with SingleTickerProviderStateMixin {
+  /// 方块 52dp；展开后是这条胶囊输入框。
+  static const double _box = 52;
+  static const double _maxBarWidth = 360;
+
+  late final AnimationController _ctrl;
+  final TextEditingController _text = TextEditingController();
+  final FocusNode _focus = FocusNode();
+
+  /// 动画放完才把 TextField 挂上：宽度还在插值中间时挂上，焦点会落在
+  /// 一个尺寸还在变的输入框上，IME 有时不弹。
+  bool _expanded = false;
+  bool _justSent = false;
+  Timer? _checkTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 360),
+    )
+      ..addStatusListener((status) {
+        if (status != AnimationStatus.completed || !mounted) return;
+        setState(() => _expanded = true);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _focus.requestFocus();
+        });
+      })
+      ..forward();
+  }
+
+  @override
+  void dispose() {
+    _checkTimer?.cancel();
+    _ctrl.dispose();
+    _text.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final title = _text.text.trim();
+    if (title.isEmpty) return;
+    _text.clear();
+    await widget.onSubmit(title);
+    if (!mounted) return;
+    setState(() => _justSent = true);
+    _checkTimer?.cancel();
+    _checkTimer = Timer(const Duration(milliseconds: 1200), () {
+      if (mounted) setState(() => _justSent = false);
+    });
+    // 连记：焦点留在输入框里，键盘不落。
+    _focus.requestFocus();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final mq = MediaQuery.of(context);
+    // 键盘弹出时窗口被 ADJUST_RESIZE 缩小，这里的中心自然落到"键盘上方那块"的
+    // 中间——小屏上也不会被键盘压住。
+    final center = Offset(mq.size.width / 2, mq.size.height / 2);
+    final barWidth =
+        math.min(_maxBarWidth, math.max(_box, mq.size.width - 48));
+
+    return Stack(
+      children: [
+        // 点外部 = 丢弃草稿收起。behavior.opaque 让它吞掉整层触摸。
+        Positioned.fill(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: widget.onClose,
+            child: const SizedBox.expand(),
+          ),
+        ),
+        AnimatedBuilder(
+          animation: _ctrl,
+          builder: (context, _) {
+            final t = _ctrl.value;
+            // 前 60% 走位，后 40% 展开——两段都缓出，接缝处速度接近 0。
+            final moveT = Curves.easeOutCubic.transform((t / 0.6).clamp(0.0, 1.0));
+            final growT =
+                Curves.easeOutCubic.transform(((t - 0.6) / 0.4).clamp(0.0, 1.0));
+            final pos = Offset.lerp(widget.origin, center, moveT)!;
+            final width = _box + (barWidth - _box) * growT;
+            return Positioned(
+              left: pos.dx - width / 2,
+              top: pos.dy - _box / 2,
+              width: width,
+              height: _box,
+              child: GestureDetector(
+                // 点在自己身上不该关（否则一碰就走了）。
+                onTap: () {},
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).cardTheme.color,
+                    borderRadius: BorderRadius.circular(_box / 2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.28),
+                        blurRadius: 18,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  child: _expanded ? _buildField() : _buildBlock(),
+                ),
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  /// 方块阶段：一个加号。空心、无字——旁边人看不出这是在用清单。
+  Widget _buildBlock() => const Center(
+        child: Icon(Icons.add, size: 26, color: Color(0x8A000000)),
+      );
+
+  Widget _buildField() {
+    return Row(
+      children: [
+        const SizedBox(width: 16),
+        Expanded(
+          child: TextField(
+            controller: _text,
+            focusNode: _focus,
+            autofocus: true,
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) => _submit(),
+            decoration: const InputDecoration(
+              hintText: '记一条，回车入池',
+              border: InputBorder.none,
+              isDense: true,
+            ),
+          ),
+        ),
+        _justSent
+            ? IconButton(
+                icon: Icon(Icons.check_circle_outline,
+                    color: AppColors.accent),
+                onPressed: null,
+              )
+            : IconButton(
+                icon: Icon(Icons.arrow_upward, color: AppColors.accent),
+                onPressed: _submit,
+              ),
+        const SizedBox(width: 4),
+      ],
+    );
+  }
+}
+
+/// 首次拖出引导（决议 21）：一次性四步气泡——展开 / 翻页 / 添加 / 快记。
 class PanelOnboardDialog extends StatelessWidget {
   const PanelOnboardDialog({super.key});
 
@@ -330,9 +511,10 @@ class PanelOnboardDialog extends StatelessWidget {
       (Icons.swipe_left_alt, '拖出展开', '朝屏内拖边缘那条细线即开；长按换边'),
       (Icons.swap_horiz, '横滑翻页', '今日 / 疑问 / 池子，左右横拖切换'),
       (Icons.add_circle_outline, '右下角两个钮', '「+」新建任务，「日历」看月历'),
+      (Icons.edit_note, '拖到顶再拐个弯', '不开面板，直接记一条（悬浮把手上）'),
     ];
     return AlertDialog(
-      title: const Text('三步上手'),
+      title: const Text('四步上手'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [

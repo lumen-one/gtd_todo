@@ -41,6 +41,17 @@ class OverlayBridge {
         final m = Map<String, Object?>.from(call.arguments as Map);
         _drags.add(PanelDragEnd(m['open'] == true));
       }
+      // 快记（§6.8）：进方块态 / 回拖取消。
+      if (call.method == 'quickNoteStart') _drags.add(const QuickNoteStart());
+      if (call.method == 'quickNoteCancel') _drags.add(const QuickNoteCancel());
+      // 松手：落点（逻辑像素）交给 Dart，方块由这里接管飞向屏幕中央。
+      if (call.method == 'quickNoteOpen' && call.arguments is Map) {
+        final m = Map<String, Object?>.from(call.arguments as Map);
+        _drags.add(QuickNoteOpen(Offset(
+          (m['x'] as num?)?.toDouble() ?? 0,
+          (m['y'] as num?)?.toDouble() ?? 0,
+        )));
+      }
       return null;
     });
   }
@@ -48,6 +59,11 @@ class OverlayBridge {
   /// 告知原生"面板侧已就绪"（之后原生才会投递状态）。
   Future<void> notifyReady() async {
     await _invoke('notifyReady');
+  }
+
+  /// 上报面板宽（逻辑像素）：原生"继续拖到面板宽"那条上限要用它（§6.8）。
+  Future<void> notifyPanelWidth(double dp) async {
+    await _invoke('panelWidth', {'dp': dp});
   }
 
   /// 收起悬浮面板（窗口隐藏，把手重新出现）。
@@ -102,6 +118,23 @@ class PanelDragEnd extends OverlayDragEvent {
   final bool open;
 
   const PanelDragEnd(this.open);
+}
+
+/// 进了快记态：把手窗口已变成跟手方块，面板要让位（ui-interaction.md §6.8）。
+class QuickNoteStart extends OverlayDragEvent {
+  const QuickNoteStart();
+}
+
+/// 快记被回拖取消：方块缩回白条，面板恢复跟手。
+class QuickNoteCancel extends OverlayDragEvent {
+  const QuickNoteCancel();
+}
+
+/// 快记松手：[position] = 落点（逻辑像素，屏幕坐标），方块由这里接管。
+class QuickNoteOpen extends OverlayDragEvent {
+  final Offset position;
+
+  const QuickNoteOpen(this.position);
 }
 
 /// 悬浮面板里点『编辑规则』时：把用户带进应用的设置页并定位该规则
