@@ -708,7 +708,7 @@ lib/ui/
 ├── dialogs/      创建对话框（**类型+日期档位按钮、默认三无**）/
 │                 编辑表单 / 推迟档位 / 日历 /
 │                 task_detail_sheet.dart（详情卡，只读展示件）/
-│                 quick_dump_dialog.dart（堆三无）/ routine_edit_dialog.dart（周期规则）/
+│                 routine_edit_dialog.dart（周期规则）/
 │                 settings_windows_dialog.dart / settings_notes_path_dialog.dart（设置页弹窗）
 │                 ← §5.1 shells 之下，panels 与共享 widgets 的辅助件，平台无关
 ├── overlay/      overlay_bridge.dart（悬浮引擎的原生通道桥）/
