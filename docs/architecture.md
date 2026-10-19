@@ -700,10 +700,11 @@ lib/ui/
 ├── shells/       android_shell.dart / desktop_shell.dart
 │                 ← 抽屉、返回键、状态栏、窗口标题栏……平台差异全在这
 ├── panels/       task_list_panel.dart / today_panel.dart / notes_panel.dart /
-│                 pool_panel.dart / completed_panel.dart（第 4 页：已完成）/
+│                 pool_panel.dart / completed_panel.dart（已完成页）/
 │                 settings_panel.dart（设置页壳；权限节与周期节在
 │                 settings_permissions.dart / settings_routines.dart）/
-│                 side_panel.dart（应用内壳与悬浮面板共用同一份）
+│                 side_panel.dart（应用内壳与悬浮面板共用同一份）/
+│                 panel_pages.dart（页序 / 页名 / 默认页的唯一来源）
 │                 ← 功能面板，平台无关，只被 shell 摆放
 ├── dialogs/      创建对话框（**类型+日期档位按钮、默认三无**）/
 │                 编辑表单 / 推迟档位 / 日历 /
@@ -720,7 +721,7 @@ lib/ui/
 ```
 
 安卓壳（应用内形态）：设置页为主体 + 贴屏把手/拖出面板 + **四页左右横翻**
-+ **隐私过头（显式入口）** + Drawer 兜底（同一套 panels）。**系统级悬浮面板** = 原生
++ Drawer 兜底（同一套 panels）。**系统级悬浮面板** = 原生
 `OverlayHandleService`（SYSTEM_ALERT_WINDOW + 前台服务 + 第二个 Flutter 引擎）：
 把手拖出 → **同一个面板就地在当前 App 上方展开**（透明 overlay 窗口），
 只有『设置 / 编辑规则』才把用户送进应用（详见 §4.2 的边界表）。
