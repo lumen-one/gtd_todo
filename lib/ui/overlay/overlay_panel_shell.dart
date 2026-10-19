@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../app_controller.dart';
 import '../dialogs/calendar_dialog.dart';
+import '../panel_pages.dart';
 import '../panels/side_panel.dart';
 import 'overlay_bridge.dart';
 
@@ -24,13 +25,14 @@ class OverlayPanelShell extends StatefulWidget {
 
 class _OverlayPanelShellState extends State<OverlayPanelShell>
     with SingleTickerProviderStateMixin {
-  final PageController _pageCtrl = PageController();
+  /// 起手页 = 设置里的默认页（§9 第 12 条）。装配点在装配完核心（含设置）之后
+  /// 才建这个宿主，所以构造时读到的就是真值，没有"先落今日再跳走"的闪。
+  late final PageController _pageCtrl;
   StreamSubscription<OverlayWindowState>? _stateSub;
   StreamSubscription<OverlayDragEvent>? _dragSub;
 
   bool _expanded = true; // 原生 notifyReady 后会立刻纠正
   bool _dockedRight = true;
-  bool _privacy = false;
 
   /// 快记态（§6.8）：原生已把把手换成跟手方块，面板让位（淡出、不摘窗口）。
   bool _quickDrag = false;
@@ -57,6 +59,7 @@ class _OverlayPanelShellState extends State<OverlayPanelShell>
   @override
   void initState() {
     super.initState();
+    _pageCtrl = PageController(initialPage: defaultPanelPageIndex(_c.settings));
     _c.addListener(_onChange);
     _settleCtrl = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 180))
@@ -64,18 +67,21 @@ class _OverlayPanelShellState extends State<OverlayPanelShell>
       ..addStatusListener(_onSettleStatus);
     _stateSub = widget.bridge.states.listen((s) {
       if (!mounted) return;
+      final wasExpanded = _expanded;
       setState(() {
         _expanded = s.expanded;
         _dockedRight = s.dockedRight;
         _handleCenterY = s.handleCenterY;
         if (!s.expanded) {
-          _privacy = false;
           // 收起 = 跟手/快记都结束（原生已经摘窗口，别留着残影）。
           _quickDrag = false;
           _quickOrigin = null;
           _dragProgress = null;
         }
       });
+      // 每次展开都落一遍默认页：收起时 PageView 被拆掉，再挂上会恢复上一次
+      // 停的那页——不落一次，设置里选的默认页只在第一次生效。
+      if (s.expanded && !wasExpanded) _landOnDefaultPage();
       if (s.expanded) _maybeOnboard();
     });
     _dragSub = widget.bridge.drags.listen(_onDrag);
@@ -110,10 +116,18 @@ class _OverlayPanelShellState extends State<OverlayPanelShell>
     widget.bridge.notifyPanelWidth(width);
   }
 
+  /// 落到设置里选的默认页（§9 第 12 条）：用 `jumpToPage`——面板正在跟手/补满，
+  /// 再来一道横扫就是两段动作。
+  void _landOnDefaultPage() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_pageCtrl.hasClients) return;
+      _pageCtrl.jumpToPage(defaultPanelPageIndex(_c.settings));
+    });
+  }
+
   Future<void> _collapse() async {
     setState(() {
       _expanded = false;
-      _privacy = false;
       _quickDrag = false;
       _quickOrigin = null;
     });
@@ -216,18 +230,6 @@ class _OverlayPanelShellState extends State<OverlayPanelShell>
     });
   }
 
-  Future<void> _privacySubmit(String text) async {
-    final title = text.trim();
-    if (title.isEmpty) return;
-    await _c.createTask(title: title);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('已静默入池'),
-        duration: Duration(seconds: 2),
-      ));
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     // 快记输入条阶段（§6.8）：只剩方块 → 输入条，面板被它替代。
@@ -271,9 +273,6 @@ class _OverlayPanelShellState extends State<OverlayPanelShell>
               controller: _c,
               pageCtrl: _pageCtrl,
               onCollapse: _collapse,
-              onPrivacy: () => setState(() => _privacy = true),
-              privacy: _privacy,
-              onPrivacySubmit: _privacySubmit,
               onOpenCalendar: () => showCalendarDialog(context, _c),
               onOpenSettings: () => widget.bridge.openApp(target: 'settings'),
               dockLeft: !_dockedRight,

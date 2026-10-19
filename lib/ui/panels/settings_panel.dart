@@ -5,6 +5,7 @@ import '../../domain/schedule.dart';
 import '../app_controller.dart';
 import '../dialogs/settings_notes_path_dialog.dart';
 import '../dialogs/settings_windows_dialog.dart';
+import '../panel_pages.dart';
 import '../theme.dart';
 import 'settings_permissions.dart';
 import 'settings_routines.dart';
@@ -74,11 +75,12 @@ Widget _hotWidthButton(AppController c, AppSettings s, int dp) {
 }
 
 /// 设置页（ui-interaction.md §9，暂定 App 唯一主体页面）：
-/// 1. 权限引导 + 任务目录 + 悬浮把手；2. 周期任务管理（routines.md）；
-/// 3. 提醒与排序（**调度模式三档：完整/标准/无排序** + 时间段多段式 + 闹钟模式）；
-/// 4. 定期挑；5. 疑问笔记路径；6. 周期任务在任务池的显示开关；
-/// 7. 主题（**明暗三选一：跟随系统/浅色/深黑** + 强调色预设）；8. 回收站；
-/// 9. 同步（§4.4：主机/从机，局域网文件同步）。
+/// 1. 权限引导；2. 任务目录；3. 侧边栏（**展开后默认页面** / 系统级贴屏把手 /
+/// 固定把手位置 / 固定侧边栏大小 / 把手热区宽度 / 重看首次引导）；
+/// 4. 周期任务管理（routines.md）；5. 提醒与排序（**调度模式三档：完整/标准/
+/// 无排序** + 时间段多段式 + 闹钟模式）；6. 定期挑；7. 疑问笔记路径；
+/// 8. 周期任务在任务池的显示开关；9. 主题（**明暗三选一：跟随系统/浅色/深黑**
+/// + 强调色预设）；10. 回收站；11. 同步（§4.4：主机/从机，局域网文件同步）。
 class SettingsPanel extends StatefulWidget {
   final AppController controller;
 
@@ -120,6 +122,8 @@ class _SettingsPanelState extends State<SettingsPanel> {
 
         _SectionCard('任务目录', _taskDirSection(s)),
 
+        _SectionCard('侧边栏', _panelSection(s)),
+
         _SectionCard('同步', [SettingsSyncSection(controller: _c)]),
 
         _SectionCard('提醒与排序', _reminderSection(s)),
@@ -156,6 +160,36 @@ class _SettingsPanelState extends State<SettingsPanel> {
           subtitle: Text(_c.taskDir),
           trailing: const Icon(Icons.edit_outlined),
           onTap: () => _editTaskDir(context),
+        ),
+      ];
+
+  /// 侧边栏区：默认页面 + 把手与尺寸（都只改"面板长什么样、停在哪儿"，
+  /// 不动任何任务数据）。
+  List<Widget> _panelSection(AppSettings s) => [
+        // 四选一（§9 第 12 条）。四个标签都是三到四个字，面板最窄 240dp 的
+        // 四等分按钮会把"已完成"挤成省略号，所以用可换行的 chip。
+        ListTile(
+          leading: const Icon(Icons.tab_unselected_outlined),
+          title: const Text('展开后默认页面'),
+          subtitle: const Text('拖动把手展开时落在这一页；点通知定位时按定位目标走'),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                for (final page in PanelPage.values)
+                  ChoiceChip(
+                    label: Text(page.label),
+                    selected: _c.defaultPanelPage == page,
+                    onSelected: (_) => _c.setDefaultPage(page),
+                  ),
+              ],
+            ),
+          ),
         ),
         SwitchListTile(
           secondary: const Icon(Icons.view_sidebar_outlined),

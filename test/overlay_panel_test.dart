@@ -65,18 +65,64 @@ void main() {
     expect(find.text('今天没有会响的事'), findsOneWidget);
   });
 
-  testWidgets('收起：面板消失（只剩原生把手）', (tester) async {
+  testWidgets('收起：点遮罩收起（面板头不再有关闭键，v1.24）', (tester) async {
     final controller = makeController();
     await tester.pumpWidget(MaterialApp(
       home: OverlayPanelShell(controller: controller, bridge: OverlayBridge()),
     ));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byIcon(Icons.close));
+    // 面板停右、宽 360（测试屏 800）：左边那一大片是遮罩。
+    await tester.tapAt(const Offset(60, 300));
     await tester.pumpAndSettle();
 
     expect(find.text('今日清单'), findsNothing);
     expect(calls.map((c) => c.method), contains('collapse'));
+  });
+
+  testWidgets('默认页面：设置里选了任务池，展开就落在任务池', (tester) async {
+    final controller = makeController(
+        settings: AppSettings.defaults.copyWith(defaultPage: 'pool'));
+    await tester.runAsync(controller.bootstrap);
+    await tester.pumpWidget(MaterialApp(
+      home: OverlayPanelShell(controller: controller, bridge: OverlayBridge()),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('任务池'), findsOneWidget);
+    expect(find.text('池干水清'), findsOneWidget);
+    expect(find.text('今日清单'), findsNothing);
+  });
+
+  testWidgets('默认页面：翻到别的页再收起，重新展开仍回默认页', (tester) async {
+    final controller = makeController(
+        settings: AppSettings.defaults.copyWith(defaultPage: 'pool'));
+    await tester.runAsync(controller.bootstrap);
+    await tester.pumpWidget(MaterialApp(
+      home: OverlayPanelShell(controller: controller, bridge: OverlayBridge()),
+    ));
+    await tester.pumpAndSettle();
+
+    // 往右拖 = 上一页（任务池 → 今日清单），临时看一眼别的页。
+    await tester.drag(find.byType(PageView), const Offset(400, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('今日清单'), findsOneWidget);
+
+    // 收起 → 再展开：落在设置里的默认页，而不是上次停的那一页。
+    sendOverlayCall(const MethodCall('state', {
+      'expanded': false,
+      'dockedRight': true,
+      'handle_center_y': 300,
+    }));
+    await tester.pumpAndSettle();
+    sendOverlayCall(const MethodCall('state', {
+      'expanded': true,
+      'dockedRight': true,
+      'handle_center_y': 300,
+    }));
+    await tester.pumpAndSettle();
+
+    expect(find.text('任务池'), findsOneWidget);
   });
 
   testWidgets('顶部齿轮 = 进应用（打开设置页）', (tester) async {
@@ -314,19 +360,21 @@ void main() {
           child: SidePanel(
             controller: controller,
             pageCtrl: pageCtrl,
-            onClose: () {},
-            onPrivacy: () {},
             onOpenCalendar: () {},
+            // 与悬浮窗宿主一致：面板头有且只有一颗图标（右端『设置』）。
+            onOpenSettings: () {},
           ),
         ),
       ),
     ));
     await tester.pumpAndSettle();
 
-    // 面板头可用宽 = 240 − 14（左右 padding）− 102（3×34dp 图标）= 124dp。
-    // 修复前 Flexible 与 Spacer 对半劈，页名只拿 62dp——页名全被截成
-    // "任…"（2026-10-16 真机截图复现）。修复后页名独享 124dp。
-    const names = ['今日清单', '疑问笔记', '任务池', '已完成'];
+    // 面板头可用宽 = 240 − 14（左右 padding）− 34（1×34dp 图标）= 192dp。
+    // 修复前（v1.24 之前有三颗图标，且 Flexible 与 Spacer 对半劈）页名只拿
+    // 62dp——页名全被截成 "任…"（2026-10-16 真机截图复现）。v1.24 撤掉两颗
+    // 图标之后，这里留着的意义是防回归：页名与右侧图标之间的空间只能由
+    // Flexible 吃，不能再引入第二个 flex:1 的子元素。
+    const names = ['疑问笔记', '今日清单', '任务池', '已完成'];
     for (var i = 0; i < names.length; i++) {
       pageCtrl.jumpToPage(i);
       await tester.pumpAndSettle();

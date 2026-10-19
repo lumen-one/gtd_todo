@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../app_controller.dart';
 import '../dialogs/calendar_dialog.dart';
+import '../panel_pages.dart';
+import '../panels/completed_panel.dart';
 import '../panels/notes_panel.dart';
-import '../panels/side_panel.dart';
 import '../panels/pool_panel.dart';
+import '../panels/side_panel.dart';
 import '../panels/settings_panel.dart';
 import '../panels/today_panel.dart';
 import '../theme.dart';
@@ -14,10 +16,9 @@ import '../widgets/reminder_listener.dart';
 /// - App 主体 = 设置页（"App 主体几乎不开"）；
 /// - 悬浮侧边栏 = 应用内实现的贴屏把手 + 拖出展开（系统级悬浮窗的
 ///   PermissionPort/原生服务在设备阶段接入，交互协议与本文档一致）；
-/// - 三页**左右横滑**：今日清单 → 疑问笔记 → 任务池；横方向与列表的纵向滚动
-///   正交，互不抢手（v0.15；原先的"竖翻 + 面板头重手势"已删）；
-/// - 隐私过头：点面板头的『隐私』按钮 → 隐藏全部清单内容，只留一条极简输入框
-///   （v0.15：原先"面板拖拽过头"那道横滑手势已删，它和翻页抢横方向）；
+/// - 四页**左右横滑**（页序见 `ui/panel_pages.dart`）：疑问笔记 / 今日清单 / 任务池 /
+///   已完成；横方向与列表的纵向滚动正交，互不抢手（v0.15；原先的"竖翻 + 面板头重手势"
+///   已删）；
 /// - 抽屉兜底（§11）：同一套 panels，App 内左侧滑呼出。
 class AndroidShell extends StatefulWidget {
   final AppController controller;
@@ -34,7 +35,6 @@ class _AndroidShellState extends State<AndroidShell>
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   bool _panelOpen = false;
-  bool _privacy = false;
   bool _panelOnLeft = false; // 把手停靠侧
   double _handleDy = 180;
 
@@ -90,7 +90,10 @@ class _AndroidShellState extends State<AndroidShell>
     if (c.panelOpenRequest != _seenPanelRequest) {
       _seenPanelRequest = c.panelOpenRequest;
       _openPanel();
-      _jumpToPage(c.focusPage);
+      // 只有"点通知定位"才带着目标页；把手拖出 / 原生降级打开都落默认页
+      // （§6.0）——曾经无条件跳 `focusPage`，它的 0 号默认值在旧页序里恰好
+      // 是今日清单，页序一换就变成了疑问笔记。
+      if (c.focusedTaskId != null) _jumpToPage(c.focusPage);
     }
     final notice = c.consumeNotice();
     if (notice != null) {
@@ -102,21 +105,32 @@ class _AndroidShellState extends State<AndroidShell>
     }
   }
 
-  void _jumpToPage(int page) {
+  /// 翻到第 [page] 页。默认页用 `jumpToPage`（无横滑动画：面板本来就在滑入，
+  /// 再来一道横扫就成了两段动作）；通知定位用 `animateToPage`（用户看得见"跳到
+  /// 哪了"）。上界由页表给——曾经写死 `clamp(0, 2)`，把已完成页的定位挡在了池子。
+  void _jumpToPage(int page, {bool animate = true}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_pageCtrl.hasClients) return;
-      _pageCtrl.animateToPage(page.clamp(0, 2),
+      final target = page.clamp(0, PanelPage.values.length - 1);
+      if (!animate) {
+        _pageCtrl.jumpToPage(target);
+        return;
+      }
+      _pageCtrl.animateToPage(target,
           duration: const Duration(milliseconds: 260), curve: Curves.easeOutCubic);
     });
   }
 
   void _openPanel() {
     setState(() {
-      _privacy = false;
       _panelOpen = true;
       _panelSliding = false;
       _panelSlide = 0;
     });
+    // 展开即落设置里选的那一页（§9 第 12 条）。点通知定位时调用方紧接着再
+    // `_jumpToPage(focusPage)`，两帧后同批执行，后者生效——定位优先于默认值。
+    _jumpToPage(defaultPanelPageIndex(widget.controller.settings),
+        animate: false);
     _maybeOnboard();
   }
 
@@ -170,11 +184,6 @@ class _AndroidShellState extends State<AndroidShell>
     }
   }
 
-  void _enterPrivacy() => setState(() {
-        _privacy = true;
-        _panelOpen = false;
-      });
-
   void _maybeOnboard() {
     if (widget.controller.settings.guideSeen) return;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -187,34 +196,15 @@ class _AndroidShellState extends State<AndroidShell>
 
   // ---- 翻页（左右横滑由 PageView 自己接管，v0.15；这里只管点通知后的定位）----
 
-  // ---- 隐私输入（三无入池，决议 22；入口是面板头的『隐私』按钮，v0.15）----
-
-  Future<void> _privacySubmit(String text) async {
-    final title = text.trim();
-    if (title.isEmpty) return;
-    await widget.controller.createTask(title: title);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('已静默入池'),
-        duration: Duration(seconds: 2),
-      ));
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final controller = widget.controller;
     return ReminderListener(
       controller: controller,
       child: PopScope(
-        canPop: !_panelOpen && !_privacy,
+        canPop: !_panelOpen,
         onPopInvokedWithResult: (didPop, _) {
-          if (didPop) return;
-          if (_privacy) {
-            setState(() => _privacy = false);
-          } else {
-            _closePanel();
-          }
+          if (!didPop) _closePanel();
         },
         child: Stack(
           clipBehavior: Clip.hardEdge,
@@ -272,11 +262,6 @@ class _AndroidShellState extends State<AndroidShell>
       onDockSwitch: () => setState(() => _panelOnLeft = !_panelOnLeft),
     ));
 
-    // 隐私过头：只留一条极简输入框（不渲染任何任务数据，§11）
-    if (_privacy) {
-      children.add(PanelPrivacyBar(onSubmit: _privacySubmit));
-    }
-
     // 遮罩：跟着面板一起渐显渐隐（原来是硬切一层黑）。关着时不吃点击。
     // 跟手推出期间面板走多少、遮罩就淡多少——所以那一档用无动画的 Container
     // （AnimatedContainer 会滞后 240ms，跟手时看着像没跟上）。两个分支在交接
@@ -315,8 +300,6 @@ class _AndroidShellState extends State<AndroidShell>
         child: SidePanel(
           controller: widget.controller,
           pageCtrl: _pageCtrl,
-          onClose: _closePanel,
-          onPrivacy: _enterPrivacy,
           onOpenCalendar: () => showCalendarDialog(context, widget.controller),
         ),
       ),
@@ -487,46 +470,50 @@ class _DrawerFallback extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 四页与侧边栏同序同源（`ui/panel_pages.dart`），起手页 = 设置的默认页
+    // （§9 第 12 条）：抽屉是"悬浮窗被拒"的兜底形态，落点不该和面板不一样。
+    final pages = PanelPage.values;
     return Drawer(
       // 与悬浮侧边栏同一个宽度设置（没拖过 = 默认公式）
       width: panelWidthFor(
           controller.settings, MediaQuery.of(context).size.width),
       child: DefaultTabController(
-        length: 3,
+        length: pages.length,
+        initialIndex: defaultPanelPageIndex(controller.settings),
         child: Scaffold(
           appBar: TabBar(
-            tabs: const [
-              Tab(text: '今日'),
-              Tab(text: '笔记'),
-              Tab(text: '池子'),
-            ],
+            // 四页都是三到四个字，抽屉最窄可到 240dp：不滚动会让标签互相挤。
+            isScrollable: true,
+            tabs: [for (final page in pages) Tab(text: page.label)],
             labelColor: AppColors.accent,
           ),
           body: TabBarView(
             children: [
-              Stack(children: [
-                TodayPanel(controller: controller),
-                PanelActions(
-                  controller: controller,
-                  onOpenCalendar: () =>
-                      showCalendarDialog(context, controller),
-                  heroTagPrefix: 'drawer',
-                ),
-              ]),
-              NotesPanel(controller: controller),
-              Stack(children: [
-                PoolPanel(controller: controller),
-                PanelActions(
-                  controller: controller,
-                  onOpenCalendar: () =>
-                      showCalendarDialog(context, controller),
-                  heroTagPrefix: 'drawer',
-                ),
-              ]),
+              for (final page in pages)
+                _withActions(context, page, switch (page) {
+                  PanelPage.notes => NotesPanel(controller: controller),
+                  PanelPage.today => TodayPanel(controller: controller),
+                  PanelPage.pool => PoolPanel(controller: controller),
+                  PanelPage.completed => CompletedPanel(controller: controller),
+                }),
             ],
           ),
         ),
       ),
     );
   }
+
+  /// 右下角双钮（每页都有，§6.1）：抽屉里也照摆一份。
+  ///
+  /// Hero 标签带上页名——四页同时在 widget 树里（TabBarView 会保留相邻页），
+  /// 同一棵树里不能有两个同标签的 Hero。
+  Widget _withActions(BuildContext context, PanelPage page, Widget body) =>
+      Stack(children: [
+        body,
+        PanelActions(
+          controller: controller,
+          onOpenCalendar: () => showCalendarDialog(context, controller),
+          heroTagPrefix: 'drawer-${page.name}',
+        ),
+      ]);
 }

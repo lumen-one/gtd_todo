@@ -4,7 +4,7 @@ import '../../application/notes_reader.dart';
 import '../app_controller.dart';
 import '../theme.dart';
 
-/// 第 2 页：疑问笔记（ui-interaction.md §6.2）。
+/// 疑问笔记页（ui-interaction.md §6.2；页序见 `ui/panel_pages.dart`）。
 /// 数据源 = 用户在 Obsidian 维护的指定 Markdown（路径在设置里配）。
 /// App 只读，编辑去 Obsidian；frontmatter 一个字符都不动（零写入）。
 /// 显示 frontmatter 闭合后到下一个 --- 之间的正文段；含 [[ 的整行屏蔽。
@@ -22,7 +22,12 @@ class _NotesPanelState extends State<NotesPanel> {
   void initState() {
     super.initState();
     widget.controller.addListener(_onChange);
-    _load();
+    // 读到**帧后**再读笔记：本页是第一页，面板展开时就是在这里首次挂载，
+    // 直接在 initState 里读会同步 notifyListeners → 祖先宿主 setState，
+    // 框架报 "setState() called during build"（v1.24 页序一换就撞上了）。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _load();
+    });
   }
 
   @override

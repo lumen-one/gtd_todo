@@ -9,7 +9,7 @@ import '../theme.dart';
 import '../widgets/task_actions.dart';
 import '../widgets/task_tile.dart';
 
-/// 第 3 页：任务池（ui-interaction.md §6.3）。
+/// 任务池页（ui-interaction.md §6.3；页序见 `ui/panel_pages.dart`）。
 /// 一条横线分两段：横线前 = 计划段（未来任务 + 周期规则条目），横线后 =
 /// 散件段（三无）。拖拽仅为整理位置（无调度含义），顺序持久化（记 metadata，
 /// 重启保留）；新建任务进对应组末尾。空状态："池干水清"。

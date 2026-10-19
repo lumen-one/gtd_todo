@@ -10,7 +10,7 @@ import '../theme.dart';
 import '../widgets/task_actions.dart';
 import '../widgets/task_tile.dart';
 
-/// 第 1 页：今日清单（ui-interaction.md §6.1）。
+/// 今日清单页（ui-interaction.md §6.1；页序见 `ui/panel_pages.dart`）。
 /// 分组连续编号：⓿ 挂起进行（无编号、最顶，决议 47）→ ① 逾期（无编号）→
 /// ② 固定时点 → ③ 可推（插队件栈式压顶 + 调度序）→ ④ 例行（未落地恒空）→
 /// ⑤ 被挑散件（无编号、弱化）。

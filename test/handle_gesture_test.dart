@@ -20,7 +20,7 @@ double panelLeft(WidgetTester tester) =>
 
 /// 装一次安卓壳（把手里唯一会走真实 IO 的是设置装载，这里给的是内存 port）。
 Future<AppController> pumpShell(WidgetTester tester,
-    {bool panelSizeLocked = false}) async {
+    {bool panelSizeLocked = false, String? defaultPage}) async {
   final svc = TaskService(
     repo: MemoryTaskRepository(),
     scheduler: const SlackScheduler(),
@@ -33,7 +33,9 @@ Future<AppController> pumpShell(WidgetTester tester,
     settingsPort: _MemorySettingsPort(
       // guideSeen：否则首次展开会弹引导对话框，干扰几何断言。
       AppSettings.defaults.copyWith(
-          guideSeen: true, panelSizeLocked: panelSizeLocked),
+          guideSeen: true,
+          panelSizeLocked: panelSizeLocked,
+          defaultPage: defaultPage),
     ),
   );
   // 固定一块 400×800 的逻辑屏面：把手的几何（热区 200dp 高、白条竖直居中）
@@ -123,6 +125,30 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(panelLeft(tester), lessThan(0), reason: '换边后收起态滑到屏外左侧');
+    });
+  });
+
+  group('展开后默认页面（§9 第 12 条）', () {
+    /// 面板头里的页名（设置页的 chip 也叫这个名字，得限定在面板内找）。
+    Finder headerIn(String label) => find.descendant(
+        of: find.byType(SidePanel), matching: find.text(label));
+
+    testWidgets('默认今日清单：展开落在今日清单', (tester) async {
+      final controller = await pumpShell(tester);
+      controller.requestOpenPanel();
+      await tester.pumpAndSettle();
+
+      expect(headerIn('今日清单'), findsOneWidget);
+      expect(find.text('今天没有会响的事'), findsOneWidget);
+    });
+
+    testWidgets('设成已完成：展开就直接落在已完成页', (tester) async {
+      final controller = await pumpShell(tester, defaultPage: 'completed');
+      controller.requestOpenPanel();
+      await tester.pumpAndSettle();
+
+      expect(headerIn('已完成'), findsOneWidget);
+      expect(find.text('还没有完成的事'), findsOneWidget);
     });
   });
 

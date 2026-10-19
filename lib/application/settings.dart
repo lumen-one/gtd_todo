@@ -98,6 +98,13 @@ class AppSettings {
   /// 落 settings.json 的 `handle_locked`；系统级把手与应用内把手一起锁。
   final bool handleLocked;
 
+  /// 侧边栏展开后默认停在哪一页（§6.0 / §9 第 12 条）。默认今日清单。
+  ///
+  /// 存页的**稳定 id**（`today` / `notes` / `pool` / `completed`），与页序无关
+  /// ——页序再调一次，旧设置仍指向同一页。application 只存字符串，认不出这个
+  /// id 时由 UI 层回落今日清单（同 [themePreset] / [themeMode] 的老规矩）。
+  final String defaultPage;
+
   /// **把手热区宽度**（dp，§6.0 / §9 第 10 条）：白条只有 6dp 宽，能起手靠的是
   /// 外面这块透明热区。选的就是"好抓"与"不挡路"的折中点——热区是 overlay 窗口
   /// （系统级）或设置页留白上的一层（应用内），它盖住的触摸归把手，越宽越好抓、
@@ -125,6 +132,7 @@ class AppSettings {
     this.panelHeight,
     this.panelSizeLocked = false,
     this.handleLocked = false,
+    this.defaultPage = 'today',
     this.handleHotWidth = defaultHandleHotWidth,
   });
 
@@ -146,6 +154,7 @@ class AppSettings {
     double? panelHeight,
     bool? panelSizeLocked,
     bool? handleLocked,
+    String? defaultPage,
     int? handleHotWidth,
     bool clearNotesPath = false,
     bool clearLastPickDate = false,
@@ -169,6 +178,7 @@ class AppSettings {
       panelHeight: clearPanelHeight ? null : (panelHeight ?? this.panelHeight),
       panelSizeLocked: panelSizeLocked ?? this.panelSizeLocked,
       handleLocked: handleLocked ?? this.handleLocked,
+      defaultPage: defaultPage ?? this.defaultPage,
       handleHotWidth: handleHotWidth ?? this.handleHotWidth,
     );
   }
@@ -189,6 +199,7 @@ class AppSettings {
         if (panelHeight != null) 'panel_height': panelHeight,
         'panel_size_locked': panelSizeLocked,
         'handle_locked': handleLocked,
+        'default_page': defaultPage,
         'handle_hot_width': handleHotWidth,
       };
 
@@ -217,6 +228,7 @@ class AppSettings {
       panelHeight: (json['panel_height'] as num?)?.toDouble(),
       panelSizeLocked: json['panel_size_locked'] == true,
       handleLocked: json['handle_locked'] == true,
+      defaultPage: (json['default_page'] as String?) ?? 'today',
       handleHotWidth: clampHandleHotWidth(json['handle_hot_width']),
     );
   }

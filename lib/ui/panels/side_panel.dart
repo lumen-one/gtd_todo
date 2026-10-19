@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../application/settings.dart';
 import '../app_controller.dart';
 import '../dialogs/create_task_dialog.dart';
+import '../panel_pages.dart';
 import '../theme.dart';
 import 'notes_panel.dart';
 import 'completed_panel.dart';
@@ -19,17 +20,19 @@ import 'today_panel.dart';
 /// - **系统级悬浮窗**（`overlay_main.dart`，跑在原生前台服务的第二个引擎里）：
 ///   在其他 App 上方就地展开同一个面板，日常操作不必离开当前 App。
 ///
-/// 四页左右横翻（今日清单 → 疑问笔记 → 任务池 → 已完成）、右下角添加区都在这里；
-/// 翻页走 PageView 自己的横滑物理（v0.15），宿主只负责"摆哪儿、怎么进出"（滑入动画 / 悬浮窗口 / 抽屉）。
+/// 四页左右横翻（页序见 [PanelPage]，**只有那一处定义**）、右下角添加区都在这里；
+/// 展开后落在哪一页由设置项 `default_page` 决定（§9 第 12 条），宿主负责"摆哪儿、
+/// 怎么进出"（滑入动画 / 悬浮窗口 / 抽屉）与"开面板时落到哪一页"。
 class SidePanel extends StatefulWidget {
   final AppController controller;
   final PageController pageCtrl;
 
-  final VoidCallback onClose;
-  final VoidCallback onPrivacy;
   final VoidCallback onOpenCalendar;
 
   /// 悬浮窗宿主的"进应用"入口（打开设置页）；null = 不显示该按钮。
+  ///
+  /// 面板头只有这一个图标按钮（右端）——关面板靠点遮罩 / 返回键 / 收起把手，
+  /// 隐私那套已由快记取代（v1.24，§6.5 / §6.8）。
   final VoidCallback? onOpenSettings;
 
   /// Hero 标签前缀：同一棵树里放两份面板时要区分（抽屉兜底 / 悬浮窗）。
@@ -39,8 +42,6 @@ class SidePanel extends StatefulWidget {
     super.key,
     required this.controller,
     required this.pageCtrl,
-    required this.onClose,
-    required this.onPrivacy,
     required this.onOpenCalendar,
     this.onOpenSettings,
     this.heroTagPrefix = 'panel',
@@ -51,7 +52,9 @@ class SidePanel extends StatefulWidget {
 }
 
 class _SidePanelState extends State<SidePanel> {
-  static const _pageNames = ['今日清单', '疑问笔记', '任务池', '已完成'];
+  /// 页名表：与 [PanelPage] 同序，圆点与 PageView 也按它摆。
+  static final List<String> _pageNames =
+      [for (final page in PanelPage.values) page.label];
 
   @override
   Widget build(BuildContext context) {
@@ -67,22 +70,24 @@ class _SidePanelState extends State<SidePanel> {
         bottom: false,
         child: Column(
           children: [
-            // 面板头：页名 + 翻页点 + 隐私 / 设置? / 关闭（日历在右下角，v1.22）。
+            // 面板头：页名 + 翻页点 + 右端『设置』?（v1.24：隐私 / 关闭两颗
+            // 图标撤掉，见 §6.0）。
             // 翻页 = **左右横滑**（PageView 自己的物理，v0.15）：横方向与列表的
             // 纵向滚动正交，两边互不抢手，所以不再需要任何"重手势"。
             // 圆点是页序指示，同时是可点的跳转靶。
             // 页名与图标按钮一行；页序圆点回到自己独立的一行（v1.20 改回——
-            // 居中那三个圆点是面板的"我在第几页"标识，用户觉得它好看，
+            // 居中那排圆点是面板的"我在第几页"标识，用户觉得它好看，
             // 省高度不值得）。
-            // 页名是这一行唯一的 flex 子元素——**不放 Spacer**：Spacer 也是
-            // flex:1，会和 Flexible 对半劈掉图标按钮剩下的空间，窄面板
-            // （240dp 下限）上页名差 1dp 就被省略号截断（2026-10-16 实测，
-            // 回归用例见 overlay_panel_test）。也不能图省事改 Expanded：
-            // 标题外层的 AnimatedSwitcher 内部是默认居中的 Stack，紧约束下
-            // 短页名会离左缘 23dp。
+            // 布局：`spaceBetween` 让页名贴左、设置贴右——**不用 Spacer**：
+            // Spacer 也是 flex:1，会和 Flexible 对半劈掉页名那份空间，窄面板
+            // （240dp 下限）上差 1dp 就被省略号截断（2026-10-16 实测，回归用例
+            // 见 overlay_panel_test）。也不能图省事改 Expanded：标题外层的
+            // AnimatedSwitcher 内部是默认居中的 Stack，紧约束下短页名会离左缘
+            // 23dp。
             Padding(
               padding: const EdgeInsets.fromLTRB(10, 2, 4, 0),
               child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Flexible(
                     child: AnimatedBuilder(
@@ -99,12 +104,9 @@ class _SidePanelState extends State<SidePanel> {
                       ),
                     ),
                   ),
-                  _headButton(Icons.visibility_off_outlined, '隐私模式',
-                      widget.onPrivacy),
                   if (widget.onOpenSettings != null)
                     _headButton(Icons.settings_outlined, '设置',
                         widget.onOpenSettings!),
-                  _headButton(Icons.close, '关闭', widget.onClose),
                 ],
               ),
             ),
@@ -116,7 +118,8 @@ class _SidePanelState extends State<SidePanel> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    for (var i = 0; i < 4; i++) _pageDot(i, theme),
+                    for (var i = 0; i < PanelPage.values.length; i++)
+                      _pageDot(i, theme),
                   ],
                 ),
               ),
@@ -128,10 +131,8 @@ class _SidePanelState extends State<SidePanel> {
                   PageView(
                     controller: widget.pageCtrl,
                     children: [
-                      TodayPanel(controller: controller),
-                      NotesPanel(controller: controller),
-                      PoolPanel(controller: controller),
-                      CompletedPanel(controller: controller),
+                      for (final page in PanelPage.values)
+                        _pageBody(page, controller),
                     ],
                   ),
                   // 每页都可添加待办与开日历（§6.1）：右下角双钮
@@ -148,6 +149,14 @@ class _SidePanelState extends State<SidePanel> {
       ),
     );
   }
+
+  /// 页 → 页面本体：页序由 [PanelPage] 决定，这里只做"哪一页放哪个面板"。
+  Widget _pageBody(PanelPage page, AppController controller) => switch (page) {
+        PanelPage.notes => NotesPanel(controller: controller),
+        PanelPage.today => TodayPanel(controller: controller),
+        PanelPage.pool => PoolPanel(controller: controller),
+        PanelPage.completed => CompletedPanel(controller: controller),
+      };
 
   /// 页序圆点（v1.20 改回原本的形）：7dp 圆点、当前页强调色，切换时颜色
   /// 渐变（v1.19 那版会把当前页拉成短横，用户想要回圆点）。每个圆点包
@@ -196,14 +205,23 @@ class _SidePanelState extends State<SidePanel> {
         ),
       );
 
-  /// 当前页序号（PageView 还没挂上时按第 1 页算）。
-  int get _currentPage =>
-      (widget.pageCtrl.hasClients ? (widget.pageCtrl.page ?? 0) : 0).round();
+  /// 当前页序号。
+  ///
+  /// PageView 还没挂上时 `page` 是 null——此时按 `initialPage` 算，别按第一页：
+  /// 起始页现在可以是任意一页（默认页设置 / 通知定位），报第一页会让标题先写成
+  /// 疑问笔记再被改掉，看着像闪了一下（v1.24 换页序后实测）。
+  int get _currentPage {
+    final ctrl = widget.pageCtrl;
+    final page = ctrl.hasClients
+        ? (ctrl.page ?? ctrl.initialPage.toDouble())
+        : ctrl.initialPage.toDouble();
+    return page.round().clamp(0, PanelPage.values.length - 1);
+  }
 
   /// 点圆点直接跳页（页序指示本身就是跳转靶）。
   void _pageTo(int page) {
     if (!widget.pageCtrl.hasClients) return;
-    widget.pageCtrl.animateToPage(page.clamp(0, 3),
+    widget.pageCtrl.animateToPage(page.clamp(0, PanelPage.values.length - 1),
         duration: const Duration(milliseconds: 260),
         curve: Curves.easeOutCubic);
   }
@@ -245,75 +263,6 @@ class PanelActions extends StatelessWidget {
               tooltip: '添加待办',
               onPressed: () => showCreateFlow(context, controller),
               child: const Icon(Icons.add),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// 隐私过头输入条（§6.5）：只留一条极简输入框，写完即走（三无入池）。
-class PanelPrivacyBar extends StatefulWidget {
-  final Future<void> Function(String) onSubmit;
-
-  const PanelPrivacyBar({super.key, required this.onSubmit});
-
-  @override
-  State<PanelPrivacyBar> createState() => _PanelPrivacyBarState();
-}
-
-class _PanelPrivacyBarState extends State<PanelPrivacyBar> {
-  final _ctrl = TextEditingController();
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  Future<void> _submit() async {
-    final text = _ctrl.text;
-    _ctrl.clear();
-    await widget.onSubmit(text);
-    if (mounted) setState(() {});
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Positioned(
-      left: 16,
-      right: 16,
-      bottom: MediaQuery.of(context).padding.bottom + 24,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: Theme.of(context).cardTheme.color,
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.3),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _ctrl,
-                autofocus: true,
-                onSubmitted: (_) => _submit(),
-                decoration: const InputDecoration(
-                  hintText: '只留输入…（写完即走，已静默入池）',
-                  border: InputBorder.none,
-                ),
-              ),
-            ),
-            IconButton(
-              icon: Icon(Icons.send, color: AppColors.accent),
-              onPressed: _submit,
             ),
           ],
         ),
@@ -509,7 +458,7 @@ class PanelOnboardDialog extends StatelessWidget {
     // 每条一句：首次引导只教"手往哪放"，细枝末节留给实际用一次。
     const steps = [
       (Icons.swipe_left_alt, '拖出展开', '朝屏内拖边缘那条细线即开；长按换边'),
-      (Icons.swap_horiz, '横滑翻页', '今日 / 疑问 / 池子，左右横拖切换'),
+      (Icons.swap_horiz, '横滑翻页', '疑问 / 今日 / 池子 / 已完成，左右横拖切换'),
       (Icons.add_circle_outline, '右下角两个钮', '「+」新建任务，「日历」看月历'),
       (Icons.edit_note, '拖到顶再拐个弯', '不开面板，直接记一条（悬浮把手上）'),
     ];
@@ -892,7 +841,7 @@ class _PanelResizeEdge extends StatelessWidget {
   }
 }
 
-/// 悬浮窗宿主的组装件：面板 + 半透明遮罩 + 隐私输入条。
+/// 悬浮窗宿主的组装件：面板 + 半透明遮罩。
 ///
 /// 与安卓壳共用同一份 [SidePanel]；差别只在宿主容器：
 /// 这里的面板浮在其他 App 之上（窗口背景透明），点遮罩即收起。
@@ -900,9 +849,6 @@ class FloatingPanel extends StatelessWidget {
   final AppController controller;
   final PageController pageCtrl;
   final VoidCallback onCollapse;
-  final VoidCallback onPrivacy;
-  final bool privacy;
-  final Future<void> Function(String) onPrivacySubmit;
   final VoidCallback onOpenCalendar;
   final VoidCallback onOpenSettings;
 
@@ -928,9 +874,6 @@ class FloatingPanel extends StatelessWidget {
     required this.controller,
     required this.pageCtrl,
     required this.onCollapse,
-    required this.onPrivacy,
-    required this.privacy,
-    required this.onPrivacySubmit,
     required this.onOpenCalendar,
     required this.onOpenSettings,
     this.dockLeft = false,
@@ -942,19 +885,6 @@ class FloatingPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (privacy) {
-      // 隐私过头：不渲染任何任务数据，只留一条输入框（§11）
-      return Stack(children: [
-        Positioned.fill(
-          child: GestureDetector(
-            onTap: onCollapse,
-            child: Container(color: Colors.black.withValues(alpha: 0.25)),
-          ),
-        ),
-        PanelPrivacyBar(onSubmit: onPrivacySubmit),
-      ]);
-    }
-
     final p = progress.clamp(0.0, 1.0);
     // 跟手滑出量：与 ResizablePanel 自算宽度同一个公式——拖动中不会有尺寸
     // 拖拽，两边不会不一致。
@@ -988,8 +918,6 @@ class FloatingPanel extends StatelessWidget {
             child: SidePanel(
               controller: controller,
               pageCtrl: pageCtrl,
-              onClose: onCollapse,
-              onPrivacy: onPrivacy,
               onOpenCalendar: onOpenCalendar,
               onOpenSettings: onOpenSettings,
               heroTagPrefix: 'floating',

@@ -7,7 +7,7 @@ import '../theme.dart';
 import '../widgets/task_actions.dart';
 import '../widgets/task_tile.dart';
 
-/// 第 4 页：已完成（ui-interaction.md §6.7）。
+/// 已完成页（ui-interaction.md §6.7；页序见 `ui/panel_pages.dart`）。
 ///
 /// 按完成日期分三组（今天 / 昨天 / 更早），组内完成时刻降序。条目弱化呈现、
 /// 无编号、不可拖（历史没有顺序意图）；点条目 = 与今日清单/任务池同一张只读

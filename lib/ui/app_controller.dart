@@ -18,6 +18,7 @@ import '../domain/routine.dart';
 import '../domain/schedule.dart';
 import '../domain/task.dart';
 import '../domain/time_context.dart';
+import 'panel_pages.dart';
 import 'theme.dart';
 
 String _dayMark(DateTime d) =>
@@ -152,8 +153,18 @@ class AppController extends ChangeNotifier {
   /// 需要高亮定位的任务 id（消费后清空）。
   String? get focusedTaskId => _focusedTaskId;
 
-  /// 定位请求应翻到哪一页（0=今日，2=池子，3=已完成）。
+  /// 定位请求应翻到哪一页（页序号，页序见 `ui/panel_pages.dart`）。
   int get focusPage => _focusPage;
+
+  /// 展开后默认停在哪一页（设置项 `default_page`；缺键 / 认不出的 id 回落今日清单）。
+  PanelPage get defaultPanelPage => panelPageFromId(_settings.defaultPage);
+
+  /// 设置页选『展开后默认页面』（§9 第 12 条）：只落设置，不改当前这一页
+  /// ——用户可能正看着某一页，改设置不必当场跳走。
+  Future<void> setDefaultPage(PanelPage page) async {
+    if (page.name == _settings.defaultPage) return;
+    await updateSettings(_settings.copyWith(defaultPage: page.name));
+  }
 
   /// 侧边栏打开请求计数器（增量为"请求打开"；把手拖出/点通知都走它）。
   int get panelOpenRequest => _panelOpenRequest;
@@ -292,7 +303,7 @@ class AppController extends ChangeNotifier {
         routineShowInPool: _settings.routineShowInPool,
       );
 
-  /// 已完成归档（ui 文档 §6.7，第 4 页）：今天/昨天/更早三组。
+  /// 已完成归档（ui 文档 §6.7 已完成页）：今天/昨天/更早三组。
   /// 与调度模式无关（存档不参与排序），所以这里不传 scheduleMode。
   CompletedView get completedView => buildCompletedView(
         tasks: service.tasks,
@@ -711,9 +722,9 @@ class AppController extends ChangeNotifier {
     if (task == null) {
       _pendingNotice = '已删除，可在回收找回';
     } else if (task.isCompleted) {
-      // 已完成 → 跳第 4 页定位高亮（§6.7）：不再是一句"该任务已完成"的死路 toast。
+      // 已完成 → 跳已完成页定位高亮（§6.7）：不再是一句"该任务已完成"的死路 toast。
       _focusedTaskId = taskId;
-      _focusPage = 3;
+      _focusPage = PanelPage.completed.index;
       _panelOpenRequest++;
       _pendingNotice = '已定位到「${task.title}」（已完成）';
     } else {
@@ -728,7 +739,7 @@ class AppController extends ChangeNotifier {
         if (inToday.picked != null) inToday.picked!,
       ].any((t) => t.id == taskId);
       _focusedTaskId = taskId;
-      _focusPage = inTodayList ? 0 : 2;
+      _focusPage = inTodayList ? PanelPage.today.index : PanelPage.pool.index;
       _panelOpenRequest++;
       _pendingNotice = '已定位到「${task.title}」';
     }

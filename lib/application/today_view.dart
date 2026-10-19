@@ -346,7 +346,7 @@ PoolView buildPoolView({
   );
 }
 
-/// 已完成任务归档查询（ui-interaction.md §6.7，第 4 页）：
+/// 已完成任务归档查询（ui-interaction.md §6.7 已完成页）：
 /// 按完成日期分三组。这是查询不是渲染：UI 只消费结果，不含分组逻辑
 /// （与 [buildTodayView] / [buildPoolView] 同规则）。
 ///
