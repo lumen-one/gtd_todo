@@ -187,7 +187,7 @@ class _AndroidShellState extends State<AndroidShell>
 
   // ---- 翻页（左右横滑由 PageView 自己接管，v0.15；这里只管点通知后的定位）----
 
-  // ---- 隐私输入（等价堆三无，决议 22；入口是面板头的『隐私』按钮，v0.15）----
+  // ---- 隐私输入（三无入池，决议 22；入口是面板头的『隐私』按钮，v0.15）----
 
   Future<void> _privacySubmit(String text) async {
     final title = text.trim();
@@ -506,12 +506,22 @@ class _DrawerFallback extends StatelessWidget {
             children: [
               Stack(children: [
                 TodayPanel(controller: controller),
-                PanelActions(controller: controller, heroTagPrefix: 'drawer'),
+                PanelActions(
+                  controller: controller,
+                  onOpenCalendar: () =>
+                      showCalendarDialog(context, controller),
+                  heroTagPrefix: 'drawer',
+                ),
               ]),
               NotesPanel(controller: controller),
               Stack(children: [
                 PoolPanel(controller: controller),
-                PanelActions(controller: controller, heroTagPrefix: 'drawer'),
+                PanelActions(
+                  controller: controller,
+                  onOpenCalendar: () =>
+                      showCalendarDialog(context, controller),
+                  heroTagPrefix: 'drawer',
+                ),
               ]),
             ],
           ),
@@ -520,6 +530,3 @@ class _DrawerFallback extends StatelessWidget {
     );
   }
 }
-
-/// 面板右下角的添加区：添加待办 + 堆三无（§6.1 每页都可添加）。
-/// [heroTagPrefix] 区分面板/抽屉两处实例，避免 Hero 标签冲突。

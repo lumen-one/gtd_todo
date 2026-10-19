@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../../application/settings.dart';
 import '../app_controller.dart';
 import '../dialogs/create_task_dialog.dart';
-import '../dialogs/quick_dump_dialog.dart';
 import '../theme.dart';
 import 'notes_panel.dart';
 import 'completed_panel.dart';
@@ -65,7 +64,7 @@ class _SidePanelState extends State<SidePanel> {
         bottom: false,
         child: Column(
           children: [
-            // 面板头：页名 + 翻页点 + 日历 / 隐私 / 设置? / 关闭。
+            // 面板头：页名 + 翻页点 + 隐私 / 设置? / 关闭（日历在右下角，v1.22）。
             // 翻页 = **左右横滑**（PageView 自己的物理，v0.15）：横方向与列表的
             // 纵向滚动正交，两边互不抢手，所以不再需要任何"重手势"。
             // 圆点是页序指示，同时是可点的跳转靶。
@@ -97,8 +96,6 @@ class _SidePanelState extends State<SidePanel> {
                       ),
                     ),
                   ),
-                  _headButton(Icons.calendar_month_outlined, '日历',
-                      widget.onOpenCalendar),
                   _headButton(Icons.visibility_off_outlined, '隐私模式',
                       widget.onPrivacy),
                   if (widget.onOpenSettings != null)
@@ -134,9 +131,10 @@ class _SidePanelState extends State<SidePanel> {
                       CompletedPanel(controller: controller),
                     ],
                   ),
-                  // 每页都可添加待办与堆三无（§6.1）：右下角双钮
+                  // 每页都可添加待办与开日历（§6.1）：右下角双钮
                   PanelActions(
                     controller: controller,
+                    onOpenCalendar: widget.onOpenCalendar,
                     heroTagPrefix: widget.heroTagPrefix,
                   ),
                 ],
@@ -208,15 +206,17 @@ class _SidePanelState extends State<SidePanel> {
   }
 }
 
-/// 面板右下角的添加区：添加待办 + 堆三无（§6.1 每页都可添加）。
+/// 面板右下角的浮出区：日历 + 添加待办（§6.1 每页都有）。
 /// [heroTagPrefix] 区分面板/抽屉/悬浮窗几处实例，避免 Hero 标签冲突。
 class PanelActions extends StatelessWidget {
   final AppController controller;
+  final VoidCallback onOpenCalendar;
   final String heroTagPrefix;
 
   const PanelActions({
     super.key,
     required this.controller,
+    required this.onOpenCalendar,
     this.heroTagPrefix = 'panel',
   });
 
@@ -231,10 +231,10 @@ class PanelActions extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             FloatingActionButton.small(
-              heroTag: '$heroTagPrefix-quick-dump',
-              tooltip: '堆三无（两秒入池）',
-              onPressed: () => showQuickDump(context, controller),
-              child: const Icon(Icons.waves),
+              heroTag: '$heroTagPrefix-calendar',
+              tooltip: '日历',
+              onPressed: () => onOpenCalendar(),
+              child: const Icon(Icons.calendar_month_outlined),
             ),
             const SizedBox(width: 8),
             FloatingActionButton(
@@ -250,7 +250,7 @@ class PanelActions extends StatelessWidget {
   }
 }
 
-/// 隐私过头输入条（§6.5）：只留一条极简输入框，写完即走（等价堆三无）。
+/// 隐私过头输入条（§6.5）：只留一条极简输入框，写完即走（三无入池）。
 class PanelPrivacyBar extends StatefulWidget {
   final Future<void> Function(String) onSubmit;
 
@@ -329,7 +329,7 @@ class PanelOnboardDialog extends StatelessWidget {
     const steps = [
       (Icons.swipe_left_alt, '拖出展开', '朝屏内拖边缘那条细线即开；长按换边'),
       (Icons.swap_horiz, '横滑翻页', '今日 / 疑问 / 池子，左右横拖切换'),
-      (Icons.add_circle_outline, '右下角添加', '「+」完整创建，「～」两秒堆三无'),
+      (Icons.add_circle_outline, '右下角两个钮', '「+」新建任务，「日历」看月历'),
     ];
     return AlertDialog(
       title: const Text('三步上手'),
