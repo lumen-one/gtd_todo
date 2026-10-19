@@ -578,9 +578,9 @@ abstract class PermissionPort {
 
 | 层                | 位置                                                    | 职责                                                                                                     |
 | ----------------- | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| 原生命令/事件通道 | `gtd/overlay`（MethodChannel）                          | `notifyReady` / `collapse` / `expand` / `openApp{target,routineId}` ↔ 原生 `state{expanded,dockedRight,handleCenterY}` |
+| 原生命令/事件通道 | `gtd/overlay`（MethodChannel）                          | 上行：`notifyReady` / `collapse` / `expand` / `openApp{target,routineId}` / `panelWidth{dp}`；下行：`state{expanded,dockedRight,handleCenterY}` / `panelDrag{dx}` / `panelDragEnd{open}` / `quickNoteStart` / `quickNoteCancel` / `quickNoteOpen{x,y}` |
 | 第二个引擎入口    | `lib/overlay_main.dart`（DartEntrypoint `overlayMain`） | 只剩入口与装配：装配**同一套** domain/application（自己的实例）；通道桥与面板宿主壳 `OverlayBridge` / `OverlayPanelShell` 在 `lib/ui/overlay/`                        |
-| 面板本体          | `lib/ui/panels/side_panel.dart`                         | `SidePanel` / `PanelActions` / `PanelPrivacyBar` / `PanelOnboardDialog`：**应用内壳与悬浮窗共用同一份**  |
+| 面板本体          | `lib/ui/panels/side_panel.dart`                         | `SidePanel` / `PanelActions` / `PanelPrivacyBar` / `QuickNoteLayer`（拖出头快记）/ `PanelOnboardDialog`：**应用内壳与悬浮窗共用同一份**（快记只在悬浮窗用） |
 | 窗口              | 原生 `OverlayHandleService`                             | 全屏**透明** `TYPE_APPLICATION_OVERLAY` 窗口承载引擎的 FlutterView；展开时隐藏原生把手                   |
 
 > `handleCenterY`（逻辑像素）= 原生把手的中心 Y：面板垂直居中于它（ui-interaction.md
@@ -746,6 +746,9 @@ DOWN…UP 要么整个归把手、要么整个归底下的 App，没有"识别�
 仍可用；锁定意图存在 `settings.json`，执行在原生（把手位置本身是原生 prefs），
 系统级与应用内两个把手一致。
 **面板窗口刻意不声明排除区**——那里从边缘起的横向返回恰好等于收起面板。
+**把手拖出头的第二档是快记**（ui-interaction.md §6.8）：过 0.45 × 屏宽后拐离水平即
+把把手窗口就地变成跟手方块，松手弹输入条、直接写一条三无任务。它只多三条**单向下行
+事件**（start / cancel / open），任务落库仍走 Dart 侧同一条 `createTask`，不新增数据通路。
 桌面壳沿用 TaskListPanel，设置页（周期任务/主题/权限）以独立页面打开。
 
 安卓 shell 用 Drawer 摆面板，Windows shell 用侧边栏摆**同样的面板**。
