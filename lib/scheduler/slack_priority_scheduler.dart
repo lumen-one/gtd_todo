@@ -12,13 +12,13 @@ import 'scheduler.dart';
 /// slack     = available - remainingWork            # 裕度，唯一的压力表
 /// risk      = slack ≤ 0 ? 1 : exp(−(slack/τ)^γ)    # 非线性误期风险 ∈ (0,1]
 /// priority  = risk × importance                    # 调度优先级 = 排序键（缺省 3）
-/// interval  = clamp(α·slack, min, max)             # 提醒节奏（工作分钟）
-/// nextReminderAt = addWorkMinutes(now, interval)   # 提醒锚点
+/// interval  = reminderInterval(α·slack, 拐点 pivot) # 提醒节奏（两段：线性 + 对数）
+/// nextReminderAt = 沿用旧锚点 ?? addWorkMinutes(now, interval)
 /// ```
 ///
-/// 与旧 [SlackScheduler] 的差别只有**排序键**（priority 降序 vs urgency 降序）与
-/// **风险非线性**；提醒节奏公式、过滤条件（fixed / 散件 / 周期实例不进调度）、
-/// 派生状态（infeasible / overdue / snoozed）完全一致。
+/// 与旧 [SlackScheduler] 的差别只有**排序键**（priority 降序 vs urgency 降序）；
+/// 风险函数、间隔公式、锚点沿用、过滤条件（fixed / 散件 / 周期实例不进调度）、
+/// 派生状态（infeasible / overdue / snoozed）、四档排序全部一致。
 ///
 /// **提醒门槛（D15）**：`reminderAllowed(task, reminderMode)` 不成立时这一件不出声
 /// （`reminds = false`、`ScheduleResult.nextReminderAt` 不会取到它）；
@@ -56,8 +56,8 @@ class SlackPriorityScheduler implements Scheduler {
         ),
         ParamSpec(
           key: 'maxIntervalMinutes',
-          label: '最大间隔（分钟）',
-          hint: '裕度再大也不退化为固定提醒，默认 1 个工作日',
+          label: '间隔拐点（分钟）',
+          hint: '裕度换算出的间隔撞到它就改按对数放缓：超过后每翻一倍裕度加一个拐点',
           min: 30,
           max: 1440,
           defaultValue: config.maxIntervalMinutes,
@@ -86,6 +86,7 @@ class SlackPriorityScheduler implements Scheduler {
     required DateTime now,
     required WorkTimeRule workRule,
     ReminderMode reminderMode = ReminderMode.standard,
+    Map<String, DateTime> anchors = const {},
   }) {
     final metrics = <TaskMetric>[];
     final infeasible = <String>[];
@@ -150,13 +151,14 @@ class SlackPriorityScheduler implements Scheduler {
       int? interval;
       final schedulable = !isOverdue && !snoozedIntoFuture;
       if (schedulable) {
-        final raw = slack <= 0
-            ? config.minIntervalMinutes
-            : (config.alpha * slack).round();
-        interval = raw
-            .clamp(config.minIntervalMinutes, config.maxIntervalMinutes)
-            .toInt();
-        nextReminderAt = workRule.addWorkMinutes(now, interval);
+        interval = reminderInterval(
+          slack,
+          alpha: config.alpha,
+          minIntervalMinutes: config.minIntervalMinutes,
+          pivotMinutes: config.maxIntervalMinutes,
+        );
+        nextReminderAt = carriedAnchor(anchors[task.id], now) ??
+            workRule.addWorkMinutes(now, interval);
       }
 
       final metric = TaskMetric(
@@ -178,8 +180,9 @@ class SlackPriorityScheduler implements Scheduler {
       }
     }
 
-    // 排序：不可行/普通同池按**调度优先级**降序（deadline 升序、id 升序裁决）；
-    // 逾期沉底。importance 已经是 priority 里的乘数，不再单独裁决。
+    // 排序四档（v1.25）：不可行单独一档——它是"已经注定误期"，必须排在
+    // "还来得及"的前面等用户裁决；同档内按**调度优先级**降序
+    // （deadline 升序、id 升序裁决）。importance 已经是 priority 里的乘数。
     sortable.sort((a, b) {
       final byStatus = _rank(a.metric.displayStatus)
           .compareTo(_rank(b.metric.displayStatus));
@@ -224,10 +227,10 @@ class SlackPriorityScheduler implements Scheduler {
   }
 
   static int _rank(TaskDisplayStatus s) => switch (s) {
-        TaskDisplayStatus.normal => 0,
-        TaskDisplayStatus.infeasible => 0, // 与 normal 同池，priority 会让它靠前
-        TaskDisplayStatus.overdue => 1,
-        TaskDisplayStatus.snoozed => 2,
+        TaskDisplayStatus.infeasible => 0,
+        TaskDisplayStatus.normal => 1,
+        TaskDisplayStatus.overdue => 2,
+        TaskDisplayStatus.snoozed => 3,
       };
 }
 
@@ -239,7 +242,9 @@ class SlackPriorityConfig {
   /// 最小提醒间隔（工作分钟）：低于这个时长的提醒没有行动价值。
   final int minIntervalMinutes;
 
-  /// 最大提醒间隔（工作分钟）：裕度再大也不能退化成"几小时一响的固定提醒"。
+  /// 最大提醒间隔（工作分钟）：`α·slack` 撞到它之前线性缩短，撞到之后按
+  /// 对数放缓（每翻一倍裕度加一个拐点）。它不是硬顶——硬顶会让"裕度 3 天"
+  /// 和"裕度 3 个月"的任务拿到同一个间隔，等于给每件远期任务挂每日固定提醒。
   final int maxIntervalMinutes;
 
   /// 风险尺度 τ（工作分钟）：多出 τ 分钟的裕度，风险压到 1/e。

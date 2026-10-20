@@ -42,11 +42,17 @@ abstract class Scheduler {
   /// - [ReminderMode.full] 凡算法判定该响的都响（原方案）。
   ///
   /// 默认值取"标准"是刻意的：忘记传参数时得到的是**安静**，不是打扰。
+  ///
+  /// [anchors] 是**锚点表**（v1.25，C2 的另一半）：调用方（TaskService）把上次算出的
+  /// 锚点按任务 id 存着，这里能沿用就沿用——`nextReminderAt` 只在这件任务自己变了
+  /// 或旧锚点迟到太多时才重算。没有它的话，每条命令都会把别人的提醒往后推一格。
+  /// 算法本身仍然无状态：锚点是**入参**，不是内部字段。
   ScheduleResult schedule({
     required List<Task> tasks,
     required DateTime now,
     required WorkTimeRule workRule,
     ReminderMode reminderMode = ReminderMode.standard,
+    Map<String, DateTime> anchors = const {},
   });
 }
 
@@ -58,8 +64,8 @@ class SlackSchedulerConfig {
   /// 最小提醒间隔（工作分钟）：低于这个时长的提醒没有行动价值。
   final int minIntervalMinutes;
 
-  /// 最大提醒间隔（工作分钟）：裕度再大也不能退化成"几小时一响的固定提醒"。
-  /// 默认 1 个工作日（480 分钟）。
+  /// 间隔拐点（工作分钟）：`α·slack` 撞到它之前线性缩短，撞到之后按对数放缓
+  /// （每翻一倍裕度加一个拐点）。默认 1 个工作日（480 分钟）。
   final int maxIntervalMinutes;
 
   const SlackSchedulerConfig({

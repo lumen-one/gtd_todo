@@ -95,6 +95,9 @@ class TaskService {
   /// 没有理由再 `loadAll` 一遍——那会让界面看到的顺序变成"写进盘再读回来"的
   /// 那一份，而这份要等 N 次文件写 + 一次全量读才到得了手（拖动闪动的真因）。
   /// 只有外部改动（Obsidian 手改 / 文件监听 / 回到前台 / 启动）才需要真的回读。
+  ///
+  /// **锚点表**（v1.25，C2 的另一半）：命令重算不再把别人的提醒往后推——
+  /// 上次算出的锚点按任务存着，任务自身没变就作为入参交给算法沿用。
   Future<void> recomputeSchedule(
       {EventOrigin origin = EventOrigin.system}) async {
     lastSchedule = scheduler.schedule(
@@ -102,9 +105,61 @@ class TaskService {
       now: now(),
       workRule: workRule,
       reminderMode: scheduleMode.reminderMode,
+      anchors: _carriableAnchors(),
     );
+    _rememberAnchors();
     _emit(DomainEventType.scheduleReanchored, lastSchedule?.nextTaskId ?? '',
         origin);
+  }
+
+  /// 锚点表：`taskId → 上次算出的提醒锚点`。
+  ///
+  /// 调度结果是计算的，不落盘；但"已经定下的闹钟"要跨重锚活下来。没有它，
+  /// 每条命令都用 `now + interval` 重算，等于把每件任务的提醒都往后推一格——
+  /// 用户越勤快地完成小事、拖顺序，最该响的那件越响不起来。
+  final Map<String, DateTime> _anchors = {};
+
+  /// 与 [_anchors] 同寿命的输入指纹表（见 [_anchorFingerprint]）。
+  final Map<String, String> _anchorInputs = {};
+
+  /// 每件任务上次锚定时的**输入指纹**：只有这些字段变了才允许重算锚点。
+  ///
+  /// 只收三样：改期、推迟/恢复、完成。干活（remaining 变小）、改标题、
+  /// 开关提醒都不重置锚点——那是进度与元数据，不是"换了个约定"。
+  static String _anchorFingerprint(Task t) =>
+      '${t.deadline?.toIso8601String()}|'
+      '${t.status.name}|'
+      '${t.snoozedUntil?.toIso8601String()}';
+
+  Map<String, DateTime> _carriableAnchors() {
+    final out = <String, DateTime>{};
+    for (final t in _tasks) {
+      final at = _anchors[t.id];
+      if (at == null) continue;
+      if (_anchorInputs[t.id] != _anchorFingerprint(t)) continue;
+      out[t.id] = at;
+    }
+    return out;
+  }
+
+  /// 把本次结果的锚点写回表里（连同当时的输入指纹）；没有锚点的清掉
+  /// （完成 / 逾期 / 推迟到未来，都会让锚点自然消失）。
+  void _rememberAnchors() {
+    final s = lastSchedule;
+    if (s == null) return;
+    final byIdMap = {for (final t in _tasks) t.id: t};
+    final kept = <String>{};
+    for (final m in s.items) {
+      final at = m.nextReminderAt;
+      if (at == null) continue;
+      final t = byIdMap[m.taskId];
+      if (t == null) continue;
+      _anchors[m.taskId] = at;
+      _anchorInputs[m.taskId] = _anchorFingerprint(t);
+      kept.add(m.taskId);
+    }
+    _anchors.removeWhere((id, _) => !kept.contains(id));
+    _anchorInputs.removeWhere((id, _) => !kept.contains(id));
   }
 
   /// 切换调度模式（设置页 → 装配点回调，D15 / D17）。
@@ -124,10 +179,10 @@ class TaskService {
     final current = now();
     final result = <Task>[];
     for (final t in loaded) {
-      // A4：snooze 到期自动回到 active。
+      // A4：snooze 到期自动回到 active。`snoozedUntil` 缺失的 snoozed 也算过期
+      // （状态机不允许它出现，但手改 metadata 造得出来，不能让它永久卡住）。
       if (t.status == TaskStatus.snoozed &&
-          t.snoozedUntil != null &&
-          !t.snoozedUntil!.isAfter(current)) {
+          (t.snoozedUntil == null || !t.snoozedUntil!.isAfter(current))) {
         final fixed = t.copyWith(status: TaskStatus.active, clearSnooze: true);
         await repo.save(fixed);
         result.add(fixed);
@@ -520,6 +575,22 @@ class TaskService {
     return best;
   }
 
+  /// 有没有"snooze 已到期、但状态还挂着 snoozed"的任务（A4 的定时触点）。
+  ///
+  /// `_reload` 里写回 active，而 `_reload` 只由 `refreshSchedule` 调；
+  /// 标准档下 `lastSchedule.nextReminderAt` 恒为 null，`pollReminder` 会提前
+  /// return，永远走不到那条路——被推迟的件就卡在 snoozed 里：不进清单、
+  /// 不参与排序、也不再提醒。轮询是唯一不依赖"别的事件"的发现方式。
+  bool get hasExpiredSnooze {
+    final current = now();
+    for (final t in _tasks) {
+      if (t.status != TaskStatus.snoozed) continue;
+      final until = t.snoozedUntil;
+      if (until == null || !until.isAfter(current)) return true;
+    }
+    return false;
+  }
+
   /// 由 UI/定时器周期调用：时点性提醒优先，其次 Slack 软提醒。
   /// 到点则产出 ReminderEvent 并重锚；未到点返回 null。
   /// 绝对不要在这里无条件 refreshSchedule（C2）。
@@ -527,6 +598,11 @@ class TaskService {
   /// 两种提醒都已过**门槛**（D15）：时点提醒在 [nextPointReminder] 里过滤，
   /// 软提醒取 `ScheduleResult.nextReminderAt`（那是"会响的下一站"，标准模式下通常为 null）。
   Future<ReminderEvent?> pollReminder() async {
+    // A4 先跑：到期的 snooze 要写回 active 并重锚，否则它既不在清单里、
+    // 也不在"下一站"里，没有任何东西会把它叫醒。
+    if (hasExpiredSnooze) {
+      await refreshSchedule(origin: EventOrigin.system);
+    }
     final current = now();
     final point = nextPointReminder();
     if (point != null && !point.at.isAfter(current)) {
@@ -552,8 +628,11 @@ class TaskService {
     if (current.isBefore(s.nextReminderAt!)) return null;
     final taskId = s.nextReminderTaskId ?? s.nextTaskId;
     if (taskId == null) return null;
-    // 提醒到点仍走读盘那条路：它是时间驱动的，`_reload` 顺带把到期的 snooze
-    // 拉回 active（A4），内存态自己不知道时间过去了。
+    // 响过之后这件任务的锚点作废：重算要给出"下一轮"，不能沿用刚响的那个。
+    // 与上面的"到期 snooze"一样，两条重锚都走读盘——到点是时间驱动的，
+    // `_reload` 顺带把到期的 snooze 拉回 active（A4），内存态不知道时间过去了。
+    _anchors.remove(taskId);
+    _anchorInputs.remove(taskId);
     await refreshSchedule(origin: EventOrigin.system);
     return ReminderEvent(
       firedAt: current,

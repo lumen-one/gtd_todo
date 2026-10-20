@@ -86,6 +86,55 @@ const double defaultRiskScaleMinutes = 480;
 /// 风险陡度默认值 γ：1 = 纯指数；γ>1 = 前半段更平、临界更陡。
 const double defaultRiskGamma = 1;
 
+/// 间隔拐点默认值：`α·slack` 撞到它之前按裕度线性缩短，撞到之后按对数放缓。
+const int defaultIntervalPivotMinutes = 480;
+
+/// 锚点沿用的宽限（v1.25）：旧锚点不早于 `now − 该时长` 才沿用，
+/// 迟到更多视为"错过"（应用长时间没运行），按 `now + interval` 重算。
+const Duration anchorCarryGrace = Duration(minutes: 30);
+
+/// 锚点沿用（v1.25，C2 的另一半）：旧锚点不早于 `now − [anchorCarryGrace]`
+/// 就原样沿用，否则返回 null 让调用方按 `now + interval` 重算。
+///
+/// 为什么要沿用：`nextReminderAt` 每次重锚都用 `now` 起算的话，任何一条命令
+/// （哪怕与这件任务无关）都会把它的提醒往后推一格——用户越勤快地完成小事，
+/// 最该响的那件越响不起来。
+DateTime? carriedAnchor(DateTime? previous, DateTime now) {
+  if (previous == null) return null;
+  if (previous.isBefore(now.subtract(anchorCarryGrace))) return null;
+  return previous;
+}
+
+/// 提醒间隔（工作分钟，domain 词汇的一部分，§3.1 公式）：**分两段**。
+///
+/// ```text
+/// slack ≤ 0            → minInterval
+/// α·slack ≤ pivot      → clamp(α·slack, min, pivot)
+/// α·slack > pivot      → pivot × (1 + log₂(α·slack / pivot))
+/// ```
+///
+/// 第一段是"每轮吃掉剩余裕度的一半"的几何递减；第二段是防"远期任务天天响"：
+/// 硬顶会让裕度 3 天和裕度 3 个月的任务拿到同一个间隔，那等于给每件远期任务
+/// 挂了个每日固定提醒。对数段让"每翻一倍裕度加一个拐点"，远期任务自然稀疏，
+/// 且仍然随裕度**单调**（不会因为截断而让两件不同的任务同频）。
+int reminderInterval(
+  int slackMinutes, {
+  double alpha = 0.5,
+  int minIntervalMinutes = 30,
+  int pivotMinutes = defaultIntervalPivotMinutes,
+}) {
+  if (slackMinutes <= 0) return minIntervalMinutes;
+  final pivot = pivotMinutes < minIntervalMinutes ? minIntervalMinutes : pivotMinutes;
+  final raw = alpha * slackMinutes;
+  if (raw <= pivot) {
+    return raw.round().clamp(minIntervalMinutes, pivot).toInt();
+  }
+  final doubled = math.log(raw / pivot) / math.ln2; // log₂(raw / pivot)
+  final grown = pivot * (1 + doubled);
+  // 兜底上限（16 个拐点 ≈ 17 个工作日）：防极端 deadline 让间隔大到"再也不响"。
+  return grown.round().clamp(minIntervalMinutes, pivot * 16).toInt();
+}
+
 /// 风险函数（domain 词汇的一部分，§3.1 公式、D16）：**时间裕度 → 误期风险**（0,1]。
 ///
 /// `risk = slack ≤ 0 ? 1 : exp(−(slack/τ)^γ)`

@@ -12,8 +12,8 @@ import 'scheduler.dart';
 ///   available = WorkTime(now, deadline)   —— 跳过休息时间的真实可用工时
 ///   slack     = available - remainingWork
 ///   urgency   = remainingWork / available
-///   interval  = clamp(alpha * slack, min, max)   （slack <= 0 时取 min）
-///   nextReminderAt = addWorkMinutes(now, interval)
+///   interval  = reminderInterval(α·slack, 拐点 pivot)  （slack <= 0 时取 min）
+///   nextReminderAt = 沿用旧锚点 ?? addWorkMinutes(now, interval)
 ///
 /// 多任务排序：urgency 高者优先（文档 §11），importance 作并列裁决。
 /// 派生状态：infeasible（urgency > 1，按期已不可行）需要升级处理，
@@ -53,8 +53,8 @@ class SlackScheduler implements Scheduler {
         ),
         ParamSpec(
           key: 'maxIntervalMinutes',
-          label: '最大间隔（分钟）',
-          hint: '裕度再大也不退化为固定提醒，默认 1 个工作日',
+          label: '间隔拐点（分钟）',
+          hint: '裕度换算出的间隔撞到它就改按对数放缓：超过后每翻一倍裕度加一个拐点',
           min: 30,
           max: 1440,
           defaultValue: config.maxIntervalMinutes,
@@ -67,6 +67,7 @@ class SlackScheduler implements Scheduler {
     required DateTime now,
     required WorkTimeRule workRule,
     ReminderMode reminderMode = ReminderMode.standard,
+    Map<String, DateTime> anchors = const {},
   }) {
     final metrics = <TaskMetric>[];
     final infeasible = <String>[];
@@ -118,13 +119,14 @@ class SlackScheduler implements Scheduler {
       int? interval;
       final schedulable = !isOverdue && !snoozedIntoFuture;
       if (schedulable) {
-        final raw = slack <= 0
-            ? config.minIntervalMinutes
-            : (config.alpha * slack).round();
-        interval = raw
-            .clamp(config.minIntervalMinutes, config.maxIntervalMinutes)
-            .toInt();
-        nextReminderAt = workRule.addWorkMinutes(now, interval);
+        interval = reminderInterval(
+          slack,
+          alpha: config.alpha,
+          minIntervalMinutes: config.minIntervalMinutes,
+          pivotMinutes: config.maxIntervalMinutes,
+        );
+        nextReminderAt = carriedAnchor(anchors[task.id], now) ??
+            workRule.addWorkMinutes(now, interval);
       }
 
       final metric = TaskMetric(
@@ -148,8 +150,8 @@ class SlackScheduler implements Scheduler {
       }
     }
 
-    // 排序：不可行/普通按 urgency 降序，importance 降序、deadline 升序做并列裁决；
-    // 逾期沉底。
+    // 排序四档（v1.25，与默认算法同一份口径）：不可行单独一档，
+    // 同档内按 urgency 降序，importance 降序、deadline 升序做并列裁决。
     sortable.sort((a, b) {
       final byStatus = _rank(a.metric.displayStatus)
           .compareTo(_rank(b.metric.displayStatus));
@@ -195,10 +197,10 @@ class SlackScheduler implements Scheduler {
   }
 
   static int _rank(TaskDisplayStatus s) => switch (s) {
-        TaskDisplayStatus.normal => 0,
-        TaskDisplayStatus.infeasible => 0, // 与 normal 同池，urgency 会让它靠前
-        TaskDisplayStatus.overdue => 1,
-        TaskDisplayStatus.snoozed => 2,
+        TaskDisplayStatus.infeasible => 0,
+        TaskDisplayStatus.normal => 1,
+        TaskDisplayStatus.overdue => 2,
+        TaskDisplayStatus.snoozed => 3,
       };
 }
 

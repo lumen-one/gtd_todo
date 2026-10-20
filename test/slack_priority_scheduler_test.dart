@@ -108,6 +108,24 @@ void main() {
           greaterThan(r.metricOf('roomy')!.priority));
       expect(r.nextTaskId, 'tight');
     });
+
+    test('不可行单独一档：重要度最低也排在"还来得及"的前面（v1.25）', () {
+      final r = scheduler.schedule(
+        tasks: [
+          task(id: 'infeasible', deadline: wed(17, 0), remaining: 90, importance: 1),
+          task(id: 'tight', deadline: wed(18, 0), remaining: 53, importance: 5),
+        ],
+        now: now,
+        workRule: rule,
+      );
+      expect(r.metricOf('infeasible')!.displayStatus,
+          TaskDisplayStatus.infeasible);
+      // 同池比较时 tight 的调度优先级更高（4.35 vs 1.00）——所以要靠档位而不是 priority
+      expect(r.metricOf('tight')!.priority,
+          greaterThan(r.metricOf('infeasible')!.priority));
+      expect(r.items.first.taskId, 'infeasible');
+      expect(r.nextTaskId, 'infeasible', reason: '已注定误期的事先等用户裁决');
+    });
   });
 
   // ---------- 提醒门槛（两个模式） ----------

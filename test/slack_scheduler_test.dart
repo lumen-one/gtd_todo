@@ -50,8 +50,8 @@ void main() {
     expect(r.nextTaskId, 'a');
   });
 
-  test('裕度很大时 interval 被 max 截断，不会退化成几小时一响的固定提醒', () {
-    // available ≈ 2370min，remaining 60 → alpha*slack = 1155 → clamp 480
+  test('裕度很大时 interval 越过拐点后按对数放缓（不再撞硬顶、也不退化成每日固定提醒）', () {
+    // available ≈ 2370min，remaining 60 → alpha*slack = 1155 > 拐点 480
     final r = scheduler.schedule(
       tasks: [
         task(id: 'a', deadline: DateTime(2026, 10, 14, 18, 0), remaining: 60),
@@ -59,7 +59,21 @@ void main() {
       now: now,
       workRule: rule,
     );
-    expect(r.metricOf('a')!.intervalMinutes, 480);
+    final near = r.metricOf('a')!.intervalMinutes!;
+    expect(near, greaterThan(480), reason: '越过拐点后仍然随裕度增长');
+
+    // 裕度再大一个量级 → 间隔继续变长，而不是和上面同频
+    final far = scheduler.schedule(
+      tasks: [
+        task(id: 'b', deadline: DateTime(2026, 11, 14, 18, 0), remaining: 60),
+      ],
+      now: now,
+      workRule: rule,
+    ).metricOf('b')!.intervalMinutes!;
+    expect(far, greaterThan(near), reason: '硬顶会让两者同频 —— 远期任务天天响');
+
+    // 兜底上限：16 个拐点
+    expect(far, lessThanOrEqualTo(480 * 16));
   });
 
   test('多任务：urgency 高者优先；snooze 后其他任务自动顶上', () {
