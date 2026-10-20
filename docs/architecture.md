@@ -149,7 +149,7 @@
 | `TaskStatus`                  | pending / active / snoozed / completed / **overdue（派生，不写入存储）**；只增不改                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | 现状          |
 | `WorkTimeRule` / `WorkWindow` | 工时日历：每周工作窗、节假日；`workMinutesBetween`、`addWorkMinutes`、`nextWindowStart`（「到下个工作窗」档位，§3.5）                                                                                                                                                                                                                                                                                                                                                                                                                                             | 现状          |
 | `Clock`                       | 当前时间 `DateTime now()`，构造注入【现状，形态为 `DateTime Function()`】                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | 现状          |
-| `TaskMetric`                  | 单任务派生指标：available、slack、**risk（裕度的非线性函数）**、**priority（= risk × importance，排序键）**、urgency、displayStatus、interval、nextReminderAt（**提醒锚点**）、**reminds（当前模式下会不会出声）**；计算结果，不持久化【现状】                                                                                                                                                                                                                                                                                           | 现状          |
+| `TaskMetric`                  | 单任务派生指标：available、slack、**risk（裕度的非线性函数）**、**priority（= risk × importance，排序键）**、urgency、displayStatus、interval、nextReminderAt（**提醒锚点，跨重锚沿用**，§3.1）、**reminds（当前模式下会不会出声）**；计算结果，不持久化【现状】                                                                                                                                                                                                                                                                                           | 现状          |
 | `ScheduleResult`              | 一次调度的输出：items（**已排序**：永远按调度优先级排，不知道有"无排序"这一回事）、nextTaskId、nextReminderAt（**下一站"会响"的提醒**，已过模式门槛）、infeasible/overdue 名单；所有算法的统一方言【现状】                                                                                                                                                                                                                                                                                                                                         | 现状          |
 | `ReminderMode`                | 提醒**门槛**（内核方言）：**standard**（标准：只排列不提醒，逐任务可手动开）/ **full**（完整：算法判定该响的都响）。进 `Scheduler.schedule` 的入参                                                                                                                                                                                                                                                                                                                                                                                                 | 现状          |
 | `ScheduleMode`                | **调度模式**（用户可见的三档，domain）：**full** / **standard**（默认）/ **manual**，逐级弱化算法替人做主的程度；由它派生**内核门槛**（`ScheduleMode.reminderMode`，给 `Scheduler.schedule`）与**业务层排序口径**（`isManual`：今日可推组是否改用手动序）。**定义在 domain（`domain/schedule.dart`），但只被 application 与 UI 消费，`Scheduler` 不认得它**                                                                                                                                                                                        | 现状          |
@@ -166,24 +166,43 @@ slack     = available − remaining                  # 时间裕度，唯一的�
 urgency   = remaining / available                  # >1 → 按期不可行（派生，仍保留展示）
 risk      = slack ≤ 0 ? 1 : exp(−(slack/τ)^γ)      # 【非线性】误期风险 ∈ (0,1]
 priority  = risk × importance                      # 调度优先级 = 排序键（importance 缺省 3）
-interval  = clamp(α·slack, minInterval, maxInterval)   # 提醒节奏；slack≤0 → minInterval
-nextReminderAt = addWorkMinutes(now, interval)     # 锚点，结果自动落在工作窗内
-默认：τ=480（1 个工作日的裕度换 e⁻¹ 的风险）、γ=1、α=0.5、minInterval=30、maxInterval=480
+interval  = slack ≤ 0 ? minInterval
+          : α·slack ≤ pivot ? clamp(α·slack, min, pivot)
+          : pivot·(1 + log₂(α·slack / pivot))      # 提醒节奏（工作分钟），分两段
+nextReminderAt = 沿用旧锚点（仍有效时）否则 addWorkMinutes(now, interval)
+默认：τ=480（1 个工作日的裕度换 e⁻¹ 的风险）、γ=1、α=0.5、minInterval=30、pivot=480
 ```
+
+- **`maxInterval` 是拐点不是硬顶**：`α·slack` 撞到 480 之前按裕度线性缩短；
+  超过之后每翻一倍裕度加一个拐点（对数放缓）。硬顶会让"裕度 3 天"和"裕度 3 个月"
+  的任务拿到同一个间隔 —— 也就是每件远期任务每天响一次，任务一多就是几十条通知。
+
+- **锚点跨重锚沿用**（`TaskService._anchors`）：`schedule` 收一个
+  `anchors: Map<taskId, DateTime>` 入参，同一件任务的
+  `deadline` / `status` / `snoozedUntil` 没变就**沿用上次算出的锚点**，只有它自己
+  变了（改期 / 推迟 / 恢复）或旧锚点已迟到超过 30 分钟才按 `now + interval` 重算。
+  没有这一层的话，每条命令（哪怕与它无关）都会把它的提醒往后推一格：
+  用户越勤快地完成小事、拖顺序，最该响的那件越响不起来（C2 只管住了 tick 那一路）。
+  锚点是**计算结果**、不落盘，进程重启后重新起算。
 
 - **'长期'不进这套公式**：工作强度 = '长期'的任务没有截止，本来就被 B1/B2
   挡在派生之外；把它们塞进公式只会逼出一个假装精确的 risk——那正是'长期'要避免的。
 
 - **裕度优先**：谁的风险高谁排前面；`importance`（人的优先级，1–5，缺省 3）是**乘数**，
-  让"重要的事"整体前移，但**盖不过**已经贴住截止的事（risk→1 时乘数再小也靠前）；
+  让"重要的事"整体前移。乘数最多 5 倍，而 `risk` 从 1 掉到 1/e 只要 τ 分钟裕度
+  ——所以它盖得过 τ 以内的裕度差，越往后越盖不动；**已经注定误期的（infeasible）
+  不跟它比**，单独一档排在前面（见下面的排序）；
 
 - **风险是非线性的**：线性 f 要给 slack 凭空规定"到哪算 0"、还会算出负数；
   指数族只要一个尺度 τ，且恒落在 (0,1]：**裕度还宽时催得少，裕度一薄就陡然变急**。
   γ>1 = 裕度充足时把风险压得更低（更平）、裕度一薄就迅速冲到 1（更陡）——
   "到点前才慌"的那类人；
 
-排序：infeasible 与 normal 同池按 **priority 降序**（deadline 升序、id 升序裁决）；
-overdue、snoozed 沉底；overdue 退出提醒循环。
+排序：**四档**——`infeasible` → `normal` → `overdue` → `snoozed`；
+前两档内按 **priority 降序**（deadline 升序、id 升序裁决），overdue 退出提醒循环。
+不可行是"已经注定误期"，必须排在"还来得及"的前面等用户裁决（B2），
+所以它单独一档，不靠 `risk` 去挤——`risk` 在 `slack ≤ 0` 处饱和成 1，
+和"刚好贴线"分不开，再乘上 importance 还容易被重要任务压下去。
 
 **无排序（第三档）**：这一层**完全不属于内核**——`Scheduler.schedule`
 不收任何排序口径，`ScheduleResult.items` 在任何一档都按上面的排序键排。
@@ -208,8 +227,9 @@ overdue、snoozed 沉底；overdue 退出提醒循环。
 而**锚点与间隔照算**：`TaskMetric.nextReminderAt` / `intervalMinutes` 不受门槛影响——
 "今天该看哪几件"（今日清单准入）是调度问题，不是打扰问题。
 
-**旧算法 `slack.v1` 保留在注册表里作对照**；其差异只有两点：
-排序键用 `urgency` 降序（importance 降序裁决），提醒门槛与上面同一套。
+**旧算法 `slack.v1` 保留在注册表里作对照**；与默认算法的差异只有**排序键**一处：
+按 `urgency` 降序（importance 降序裁决）。`slackRisk` / `reminderInterval` /
+锚点沿用 / 提醒门槛 / 四档排序全部共用同一份实现。
 
 ### 3.2 核心规则（三类分开：不变量 / 派生规则 / 架构规则）
 
@@ -225,6 +245,10 @@ overdue、snoozed 沉底；overdue 退出提醒循环。
   **长期任务豁免**：工作强度 = '长期'的任务**不设优先级**——没有"缺省 3"
   可言（同 A2 的 fixed 豁免先例）；
 - A4. `snoozed` 状态必须伴随未来的 `snoozedUntil`；到期自动回 `active`【现状】。
+  **定时触点**：`pollReminder()` 每轮先查有没有已到期的 snooze，有就先
+  `refreshSchedule()`（写回 active 并重锚）。不能只等"下一站提醒到点"——
+  标准档下 `nextReminderAt` 恒为 null，那条路走不到，被推迟的件会一直卡在
+  `snoozed` 里不进清单、不参与排序。
 
 **派生规则**（由状态与时间计算，不写入存储）：
 
@@ -253,8 +277,13 @@ overdue、snoozed 沉底；overdue 退出提醒循环。
   由编译器强制）】本文件其他位置（§0、§1 铁律 2、§6）均为对此条的引用。
 - C2. **防 Zeno**：重锚只在事件发生时调用（用户命令、提醒到点、文件变更）；周期 tick
   只做 `pollReminder()`——否则 nextReminderAt 每次重锚不断后移，提醒永远到不了
-  【现状：已遵守，靠注释约定】。重锚**分两条**：命令走 `recomputeSchedule`
+  【现状：已遵守，且可验证——锚点表让它落地】。重锚**分两条**：命令走 `recomputeSchedule`
   （当前内存态，不读盘），外部改动走 `refreshSchedule`（先 `loadAll` 从盘回流再重算）。
+  **两条都会重算间隔，但不会重新决定锚点**：`TaskService._anchors` 把上次的锚点
+  按任务存着，`Scheduler.schedule(anchors:)` 收到就沿用（判据见 §3.1 的"锚点跨重锚沿用"）。
+  于是"命令 → 重算"与"文件监听 → 再重算一次"都不会把别人的提醒往后推。
+  锚点作废只有三种情形：这件任务的输入变了、它真的响过一次（`pollReminder` 软分支
+  先删再重算）、或旧锚点迟到超过 30 分钟（算错过）。
 - C3. **AI 无第二条写路径**：AI 的变更与人类点击走同一命令通道（详见 §6）【规划】。
 
 ### 3.3 领域事件（添加而不修改的钩子）【现状】
