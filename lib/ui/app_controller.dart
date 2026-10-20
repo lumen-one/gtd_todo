@@ -66,6 +66,11 @@ class AppController extends ChangeNotifier {
   /// "下一站会响的提醒"与清单顺序随之变，任务数据一行不动。
   final void Function(ScheduleMode scheduleMode)? onScheduleModeChanged;
 
+  /// 装配点注入的回调：**工时日历**变化时同步给 TaskService（v1.26）。
+  /// 它是 slack 的分母，改完要把锚点表整张作废——所以只能在指纹真的变了时调，
+  /// 不能跟着每次设置保存都推一遍。
+  final void Function(WorkTimeRule rule)? onWorkRuleChanged;
+
   ReminderEvent? _lastReminder;
   StreamSubscription<DomainEvent>? _sub;
   StreamSubscription<DomainEvent>? _routineSub;
@@ -186,6 +191,7 @@ class AppController extends ChangeNotifier {
     this.onWindowsChanged,
     this.onAlarmModeChanged,
     this.onScheduleModeChanged,
+    this.onWorkRuleChanged,
     Stream<ShownNotification>? notificationSurface,
   }) {
     _sub = service.events.listen((_) => notifyListeners());
@@ -230,10 +236,13 @@ class AppController extends ChangeNotifier {
     _settingsLoaded = true;
     // 调度模式来自设置：装载完就同步给 TaskService（默认标准 = 只排列不提醒）。
     onScheduleModeChanged?.call(_settings.scheduleMode);
+    // 工时日历同理：装配时用的是默认规则，这里换成用户设置的那份。
+    onWorkRuleChanged?.call(_settings.workRule);
     notifyListeners();
   }
 
   Future<void> updateSettings(AppSettings next) async {
+    final previous = _settings;
     _settings = next;
     AppColors.applyPreset(AppThemePreset.fromId(next.themePreset));
     notifyListeners();
@@ -245,6 +254,10 @@ class AppController extends ChangeNotifier {
     onWindowsChanged?.call(notificationWindowRule);
     onAlarmModeChanged?.call(next.alarmMode);
     onScheduleModeChanged?.call(next.scheduleMode);
+    // 工时只在指纹变了时推：它会清空锚点表，跟着每次保存都推等于把提醒全部重排
+    if (next.workSignature != previous.workSignature) {
+      onWorkRuleChanged?.call(next.workRule);
+    }
   }
 
   /// 调度模式（决议 43）：完整 / 标准（默认）/ 无排序。

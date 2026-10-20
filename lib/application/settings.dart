@@ -1,6 +1,54 @@
 import 'dart:convert';
 
 import '../domain/schedule.dart';
+import '../domain/time_context.dart';
+
+/// 默认工作日（周一至周五）与默认工作窗（09:00–12:00、13:30–18:00）：
+/// 设置缺键、被手改坏、或用户在面板里清空时的落点。与 [WorkTimeRule.standard] 一致——
+/// 两处口径只能有一份，改这里就要同时改那边。
+const List<int> defaultWorkDays = [
+  DateTime.monday,
+  DateTime.tuesday,
+  DateTime.wednesday,
+  DateTime.thursday,
+  DateTime.friday,
+];
+
+const List<List<int>> defaultWorkWindows = [
+  [9 * 60, 12 * 60],
+  [13 * 60 + 30, 18 * 60],
+];
+
+/// 工作日列表清洗：只认 1–7、去重、升序；空则回落默认。
+List<int> clampWorkDays(Object? raw) {
+  if (raw is! List) return defaultWorkDays;
+  final days = <int>{
+    for (final d in raw)
+      if (d is num && d >= DateTime.monday && d <= DateTime.sunday) d.toInt(),
+  }.toList()
+    ..sort();
+  return days.isEmpty ? defaultWorkDays : days;
+}
+
+/// 工作窗清洗：只认 `[start, end)`、0 ≤ start < end ≤ 24:00 的两元素整数对，
+/// 按开始时间排序；一段都不剩则回落默认。
+List<List<int>> clampWorkWindows(Object? raw) {
+  if (raw is! List) return defaultWorkWindows;
+  final out = <List<int>>[];
+  for (final w in raw) {
+    if (w is! List || w.length != 2) continue;
+    final a = w[0];
+    final b = w[1];
+    if (a is! num || b is! num) continue;
+    final s = a.toInt();
+    final e = b.toInt();
+    if (s < 0 || s >= e || e > 24 * 60) continue;
+    out.add([s, e]);
+  }
+  if (out.isEmpty) return defaultWorkWindows;
+  out.sort((x, y) => x[0].compareTo(y[0]));
+  return out;
+}
 
 /// 把手热区宽度的取值区间（dp，§6.0 / §9 第 10 条）：手改 settings.json 改坏了
 /// 也不越界，读进来一律夹到区间里。
@@ -116,6 +164,16 @@ class AppSettings {
   /// 调小只是自损竖拖起手的容错。
   final int handleHotWidth;
 
+  /// **哪几天算工作日**（§9 第 13 条，v1.26）：`DateTime.monday..sunday` 的子集，
+  /// 落 settings.json 的 `work_days`。与 [workWindows] 一起构成工时日历，
+  /// 也就是 slack 的分母——不是习惯偏好，是算法输入。
+  final List<int> workDays;
+
+  /// **工作日的工作窗**（分钟数对，`[start, end)`，多段式）：`[[540,720],[810,1080]]`
+  /// = 09:00–12:00、13:30–18:00。落 settings.json 的 `work_windows`。
+  /// 节假日/调休未做（`WorkTimeRule.holidays` 留位未接线）。
+  final List<List<int>> workWindows;
+
   const AppSettings({
     this.notificationWindows = const [[9 * 60, 21 * 60]],
     this.scheduleMode = ScheduleMode.standard,
@@ -134,6 +192,8 @@ class AppSettings {
     this.handleLocked = false,
     this.defaultPage = 'today',
     this.handleHotWidth = defaultHandleHotWidth,
+    this.workDays = defaultWorkDays,
+    this.workWindows = defaultWorkWindows,
   });
 
   static const AppSettings defaults = AppSettings();
@@ -156,6 +216,8 @@ class AppSettings {
     bool? handleLocked,
     String? defaultPage,
     int? handleHotWidth,
+    List<int>? workDays,
+    List<List<int>>? workWindows,
     bool clearNotesPath = false,
     bool clearLastPickDate = false,
     bool clearPanelWidth = false,
@@ -180,8 +242,18 @@ class AppSettings {
       handleLocked: handleLocked ?? this.handleLocked,
       defaultPage: defaultPage ?? this.defaultPage,
       handleHotWidth: handleHotWidth ?? this.handleHotWidth,
+      workDays: workDays ?? this.workDays,
+      workWindows: workWindows ?? this.workWindows,
     );
   }
+
+  /// 工时日历（算法入参）：由 [workDays] + [workWindows] 构造，
+  /// 非法组合已在解码时夹过（见 [clampWorkDays] / [clampWorkWindows]）。
+  WorkTimeRule get workRule => WorkTimeRule.fromSettings(workDays, workWindows);
+
+  /// 工时指纹（变更判定）：AppController 用它决定要不要把新日历推给 TaskService
+  /// ——每次设置变更都推会让锚点表白清一遍。
+  String get workSignature => workRule.signature;
 
   Map<String, Object?> toJson() => {
         'notification_windows': notificationWindows,
@@ -201,6 +273,8 @@ class AppSettings {
         'handle_locked': handleLocked,
         'default_page': defaultPage,
         'handle_hot_width': handleHotWidth,
+        'work_days': workDays,
+        'work_windows': workWindows,
       };
 
   factory AppSettings.fromJson(Map<String, Object?> json) {
@@ -230,6 +304,8 @@ class AppSettings {
       handleLocked: json['handle_locked'] == true,
       defaultPage: (json['default_page'] as String?) ?? 'today',
       handleHotWidth: clampHandleHotWidth(json['handle_hot_width']),
+      workDays: clampWorkDays(json['work_days']),
+      workWindows: clampWorkWindows(json['work_windows']),
     );
   }
 }

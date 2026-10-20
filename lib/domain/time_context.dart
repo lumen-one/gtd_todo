@@ -20,6 +20,39 @@ class WorkTimeRule {
 
   const WorkTimeRule({required this.weekly, this.holidays = const []});
 
+  /// 从设置构造（设置页「工作时间」）：[days] = 一周里哪几天算工作日
+  /// （`DateTime.monday..sunday`），[windows] = 这些天共用的工作窗（分钟数对）。
+  ///
+  /// 非法输入一律回落：宁可走默认工时，也不要让坏设置算出负产能或空日历
+  /// （空日历会让 `workMinutesBetween` 恒为 0，所有任务瞬间"不可行"）。
+  factory WorkTimeRule.fromSettings(List<int> days, List<List<int>> windows) {
+    final cleanDays = <int>{
+      for (final d in days)
+        if (d >= DateTime.monday && d <= DateTime.sunday) d,
+    }.toList()
+      ..sort();
+    final cleanWindows = <WorkWindow>[
+      for (final w in windows)
+        if (w.length == 2 && w[0] >= 0 && w[0] < w[1] && w[1] <= 24 * 60)
+          WorkWindow(w[0], w[1]),
+    ];
+    if (cleanDays.isEmpty || cleanWindows.isEmpty) return standard;
+    return WorkTimeRule(
+      weekly: {for (final d in cleanDays) d: cleanWindows},
+    );
+  }
+
+  /// 结构指纹（设置变更判定用）：`1:540-720,810-1080;2:...`。
+  /// 值类型没有实现 `==`（Map/List 的深比较不值得），比指纹更快也更直白。
+  String get signature {
+    final days = weekly.keys.toList()..sort();
+    return days.map((d) {
+      final ws = [...weekly[d]!]
+        ..sort((a, b) => a.startMinute.compareTo(b.startMinute));
+      return '$d:${ws.map((w) => '${w.startMinute}-${w.endMinute}').join(',')}';
+    }).join(';');
+  }
+
   /// 默认规则：周一至周五 09:00-12:00、13:30-18:00。
   static const WorkTimeRule standard = WorkTimeRule(weekly: {
     DateTime.monday: [WorkWindow(9 * 60, 12 * 60), WorkWindow(13 * 60 + 30, 18 * 60)],

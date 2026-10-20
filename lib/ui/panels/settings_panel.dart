@@ -5,6 +5,7 @@ import '../../domain/schedule.dart';
 import '../app_controller.dart';
 import '../dialogs/settings_notes_path_dialog.dart';
 import '../dialogs/settings_windows_dialog.dart';
+import '../dialogs/work_time_dialog.dart';
 import '../panel_pages.dart';
 import '../theme.dart';
 import 'settings_permissions.dart';
@@ -77,10 +78,11 @@ Widget _hotWidthButton(AppController c, AppSettings s, int dp) {
 /// 设置页（ui-interaction.md §9，暂定 App 唯一主体页面）：
 /// 1. 权限引导；2. 任务目录；3. 侧边栏（**展开后默认页面** / 系统级贴屏把手 /
 /// 固定把手位置 / 固定侧边栏大小 / 把手热区宽度 / 重看首次引导）；
-/// 4. 周期任务管理（routines.md）；5. 提醒与排序（**调度模式三档：完整/标准/
-/// 无排序** + 时间段多段式 + 闹钟模式）；6. 定期挑；7. 疑问笔记路径；
-/// 8. 周期任务在任务池的显示开关；9. 主题（**明暗三选一：跟随系统/浅色/深黑**
-/// + 强调色预设）；10. 回收站；11. 同步（§4.4：主机/从机，局域网文件同步）。
+/// 4. 周期任务管理（routines.md）；5. **工作时间（工作日 + 工作窗，slack 的分母）**；
+/// 6. 提醒与排序（**调度模式三档：完整/标准/无排序** + 时间段多段式 + 闹钟模式）；
+/// 7. 定期挑；8. 疑问笔记路径；9. 周期任务在任务池的显示开关；
+/// 10. 主题（**明暗三选一：跟随系统/浅色/深黑** + 强调色预设）；
+/// 11. 回收站；12. 同步（§4.4：主机/从机，局域网文件同步）。
 class SettingsPanel extends StatefulWidget {
   final AppController controller;
 
@@ -125,6 +127,8 @@ class _SettingsPanelState extends State<SettingsPanel> {
         _SectionCard('侧边栏', _panelSection(s)),
 
         _SectionCard('同步', [SettingsSyncSection(controller: _c)]),
+
+        _SectionCard('工作时间', _workTimeSection(s)),
 
         _SectionCard('提醒与排序', _reminderSection(s)),
 
@@ -275,6 +279,16 @@ class _SettingsPanelState extends State<SettingsPanel> {
                   .join('、')),
           trailing: const Icon(Icons.edit_outlined),
           onTap: () => showSettingsWindowsDialog(context, _c),
+        ),
+      ];
+
+  List<Widget> _workTimeSection(AppSettings s) => [
+        ListTile(
+          leading: const Icon(Icons.work_outline),
+          title: const Text('工作日与工作窗'),
+          subtitle: Text(workTimeSummary(s.workDays, s.workWindows)),
+          trailing: const Icon(Icons.edit_outlined),
+          onTap: () => showWorkTimeDialog(context, _c),
         ),
       ];
 

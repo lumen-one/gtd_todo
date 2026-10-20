@@ -62,6 +62,7 @@ Future<_OverlayCore> _assembleOverlayCore() async {
   final service = TaskService(
     repo: repo,
     scheduler: const SlackPriorityScheduler(), // 与主引擎同一默认算法（v1.9）
+    // 工时日历同样是设置项：先按默认值起来，bootstrap 读完设置后换掉（v1.26）。
     workRule: WorkTimeRule.standard,
   );
   await service.refreshSchedule();
@@ -81,6 +82,8 @@ Future<_OverlayCore> _assembleOverlayCore() async {
     // 调度模式也要跟上（面板不装交付插座，但清单的"排什么顺序、会不会响"口径
     // 两边必须一致——决议 43）。
     onScheduleModeChanged: (mode) => service.updateScheduleMode(mode),
+    // 工时日历同理：面板算的"今天该看哪几件"必须和主引擎用同一份分母。
+    onWorkRuleChanged: (rule) => service.updateWorkRule(rule),
   );
   controller.notesReader =
       FileNotesReaderPort(() => controller.settings.notesPath);

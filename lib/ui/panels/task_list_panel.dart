@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../domain/schedule.dart';
 import '../../domain/task.dart';
 import '../app_controller.dart';
+import '../dialogs/work_time_dialog.dart';
 
 String _two(int n) => n.toString().padLeft(2, '0');
 
@@ -150,32 +151,10 @@ class TaskListPanelState extends State<TaskListPanel> {
     return ordered;
   }
 
-  void _showWorkRuleDialog(BuildContext context) {
-    final rule = widget.controller.workRule;
-    final names = ['一', '二', '三', '四', '五', '六', '日'];
-    final rows = <String>[];
-    rule.weekly.forEach((day, windows) {
-      final w = windows
-          .map((x) =>
-              '${_two(x.startMinute ~/ 60)}:${_two(x.startMinute % 60)}-'
-              '${_two(x.endMinute ~/ 60)}:${_two(x.endMinute % 60)}')
-          .join('、');
-      rows.add('周${names[day - 1]}：$w');
-    });
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('工作时间规则'),
-        content: Text(rows.join('\n')),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('关闭'),
-          ),
-        ],
-      ),
-    );
-  }
+  /// 工时日历入口（桌面标题栏的「工作时间规则」按钮）：**直接开编辑面板**，
+  /// 与设置页「工作时间」那一项同一个（v1.26，原先这里是只读弹窗）。
+  void _showWorkRuleDialog(BuildContext context) =>
+      showWorkTimeDialog(context, widget.controller);
 
   Future<void> _showCreateDialog(BuildContext context) async {
     final titleCtrl = TextEditingController();

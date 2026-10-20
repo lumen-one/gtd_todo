@@ -59,6 +59,8 @@ Future<void> main() async {
   final service = TaskService(
     repo: repo,
     scheduler: registry.defaultScheduler,
+    // 工时日历是设置项（v1.26），而设置是异步读的：先按默认值起来，
+    // `controller.bootstrap()` 读完设置后经 onWorkRuleChanged 换成用户那份。
     workRule: WorkTimeRule.standard,
   );
   await service.refreshSchedule();
@@ -96,6 +98,7 @@ Future<void> main() async {
     onWindowsChanged: (rule) => dispatcher.updateWindows(rule),
     onAlarmModeChanged: (mode) => dispatcher.updateAlarmMode(mode),
     onScheduleModeChanged: (mode) => service.updateScheduleMode(mode),
+    onWorkRuleChanged: (rule) => service.updateWorkRule(rule),
     notificationSurface: notifications.shown,
   );
   // 疑问笔记路径随设置实时生效（对该文件零写入）。

@@ -24,7 +24,10 @@ part 'task_service/task_service_ordering.dart';
 class TaskService {
   final TaskRepository repo;
   final Scheduler scheduler;
-  final WorkTimeRule workRule;
+
+  /// 工时日历（v1.26）：**slack 的分母**，由设置注入、可整体替换（[updateWorkRule]）。
+  /// 装配点先用默认规则起来，设置加载完再换掉——它是异步的，等不了。
+  WorkTimeRule workRule;
 
   /// **调度模式**（v1.12，决议 43）：**完整 / 标准 / 无排序**三档，默认标准。
   ///
@@ -172,6 +175,20 @@ class TaskService {
     scheduleMode = mode;
     _emit(DomainEventType.scheduleModeChanged, '', EventOrigin.user);
     await recomputeSchedule();
+  }
+
+  /// 换工时日历（设置页「工作时间」，v1.26）。
+  ///
+  /// 改的是 **slack 的分母**：所有人、所有任务的 `available` 都会变，所以
+  /// 锚点表整张作废（旧锚点对应的是旧产能，留着只会把提醒钉在错的地方）。
+  /// 任务数据一行不动——工时是设置，不是任务。
+  Future<void> updateWorkRule(WorkTimeRule next,
+      {EventOrigin origin = EventOrigin.user}) async {
+    if (next.signature == workRule.signature) return;
+    workRule = next;
+    _anchors.clear();
+    _anchorInputs.clear();
+    await recomputeSchedule(origin: origin);
   }
 
   Future<void> _reload() async {
