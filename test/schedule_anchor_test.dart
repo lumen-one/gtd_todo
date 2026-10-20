@@ -116,6 +116,21 @@ void main() {
     expect(svc.lastSchedule!.metricOf(a.id), isNotNull, reason: '重新进入调度');
   });
 
+  test('pollReminder 不可重入：两路同时打进来只发一条', () async {
+    final a = await svc.createTask(
+      title: 'A',
+      deadline: DateTime(2026, 10, 8, 18, 0),
+      estimatedWorkMinutes: 300,
+    );
+    final anchor = svc.lastSchedule!.metricOf(a.id)!.nextReminderAt!;
+    now = anchor; // 到点
+
+    // 20 秒 tick 与闹钟回调不共享锁：同一时刻进来两次
+    final results = await Future.wait([svc.pollReminder(), svc.pollReminder()]);
+    expect(results.where((e) => e != null).length, 1,
+        reason: '少发一条好过同一件事弹两次');
+  });
+
   group('reminderInterval：两段式', () {
     test('拐点前按裕度线性缩短，slack ≤ 0 取最小间隔', () {
       expect(reminderInterval(-120), 30);

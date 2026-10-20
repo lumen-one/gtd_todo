@@ -230,6 +230,23 @@ void main() {
     expect(r.nextTaskId, 'infeasible');
   });
 
+  test('全部 snoozed：不给"建议先做"（否则面板顶部指向刚推开的件）', () {
+    final r = scheduler.schedule(
+      tasks: [
+        task(
+          id: 'a',
+          deadline: wed(18, 0),
+          status: TaskStatus.snoozed,
+          snoozedUntil: wed(17, 0),
+        ),
+      ],
+      now: now,
+      workRule: rule,
+    );
+    expect(r.items.single.displayStatus, TaskDisplayStatus.snoozed);
+    expect(r.nextTaskId, isNull);
+  });
+
   test('不进调度的三类：固定时点 / 散件 / 周期实例', () {
     final r = scheduler.schedule(
       tasks: [

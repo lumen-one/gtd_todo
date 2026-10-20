@@ -7,6 +7,7 @@ import 'package:gtd_todo/application/reminder_dispatcher.dart';
 import 'package:gtd_todo/application/task_service.dart';
 import 'package:gtd_todo/domain/reminder.dart';
 import 'package:gtd_todo/domain/schedule.dart';
+import 'package:gtd_todo/domain/task.dart';
 import 'package:gtd_todo/domain/time_context.dart';
 import 'package:gtd_todo/platform/desktop_adapters.dart';
 import 'package:gtd_todo/repository/memory_task_repository.dart';
@@ -127,6 +128,28 @@ void main() {
     );
     await Future<void>.delayed(Duration.zero);
     expect(alarm.scheduledAt, DateTime(2026, 10, 7, 19, 0));
+  });
+
+  test('顺延之后的软提醒不能挤掉更早的时点闹钟（比早晚要用送达时刻）', () async {
+    // 软提醒锚点 16:30，被晚间窗口顺延到 19:00；时点提醒在 18:00。
+    // 拿未顺延的 16:30 去比，会选中软提醒 → 今晚的闹钟被跳过。
+    const evening = NotificationWindowRule([NotificationWindow(19 * 60, 21 * 60)]);
+    await startDispatcher(windows: evening);
+    final soft = await svc.createTask(
+      title: '软提醒',
+      deadline: DateTime(2026, 10, 7, 18, 0),
+      estimatedWorkMinutes: 60,
+    );
+    final meeting = await svc.createTask(
+      title: '例会',
+      type: TaskType.fixed,
+      deadline: DateTime(2026, 10, 7, 18, 0),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    expect(alarm.scheduledAt, DateTime(2026, 10, 7, 18, 0));
+    expect(alarm.taskId, meeting.id, reason: '时点提醒更早，先挂它');
+    expect(alarm.taskId, isNot(soft.id));
   });
 
   test('闹钟到点 → pollReminder → NotificationPort.show 带 actions', () async {

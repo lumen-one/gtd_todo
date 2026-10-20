@@ -185,10 +185,18 @@ class SlackScheduler implements Scheduler {
       }
     }
 
+    // 建议先做的那件必须"没被推迟"（v1.26）：全都 snoozed 时不给建议。
+    String? nextTaskId;
+    for (final m in ordered) {
+      if (m.displayStatus == TaskDisplayStatus.snoozed) continue;
+      nextTaskId = m.taskId;
+      break;
+    }
+
     return ScheduleResult(
       computedAt: now,
       items: ordered,
-      nextTaskId: ordered.isEmpty ? null : ordered.first.taskId,
+      nextTaskId: nextTaskId,
       nextReminderAt: nextReminderAt,
       nextReminderTaskId: nextReminderTaskId,
       infeasibleTaskIds: infeasible,

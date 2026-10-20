@@ -608,13 +608,31 @@ class TaskService {
     return false;
   }
 
+  /// 轮询是否正在进行（v1.26）。两个入口会打进来：`AppController` 的 20 秒
+  /// tick 与 `ReminderDispatcher` 的闹钟回调——它们不共享任何锁，同一个软提醒
+  /// 能被两边各发一次通知（点提醒有 `point_fired` 幂等标记，软提醒没有）。
+  bool _polling = false;
+
   /// 由 UI/定时器周期调用：时点性提醒优先，其次 Slack 软提醒。
   /// 到点则产出 ReminderEvent 并重锚；未到点返回 null。
   /// 绝对不要在这里无条件 refreshSchedule（C2）。
   ///
   /// 两种提醒都已过**门槛**（D15）：时点提醒在 [nextPointReminder] 里过滤，
   /// 软提醒取 `ScheduleResult.nextReminderAt`（那是"会响的下一站"，标准模式下通常为 null）。
+  ///
+  /// **不可重入**：上一次还在跑（里面有 await 读盘/落盘）时，这一次直接返回 null
+  /// ——少发一条，好过同一件事弹两次。
   Future<ReminderEvent?> pollReminder() async {
+    if (_polling) return null;
+    _polling = true;
+    try {
+      return await _pollReminder();
+    } finally {
+      _polling = false;
+    }
+  }
+
+  Future<ReminderEvent?> _pollReminder() async {
     // A4 先跑：到期的 snooze 要写回 active 并重锚，否则它既不在清单里、
     // 也不在"下一站"里，没有任何东西会把它叫醒。
     if (hasExpiredSnooze) {

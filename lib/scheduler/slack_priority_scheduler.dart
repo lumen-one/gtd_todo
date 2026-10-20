@@ -215,10 +215,19 @@ class SlackPriorityScheduler implements Scheduler {
       }
     }
 
+    // 建议先做的那件必须"没被推迟"（v1.26）：全都 snoozed 时干脆不给建议，
+    // 否则面板顶部会建议用户去做一件他刚推开的任务。
+    String? nextTaskId;
+    for (final m in ordered) {
+      if (m.displayStatus == TaskDisplayStatus.snoozed) continue;
+      nextTaskId = m.taskId;
+      break;
+    }
+
     return ScheduleResult(
       computedAt: now,
       items: ordered,
-      nextTaskId: ordered.isEmpty ? null : ordered.first.taskId,
+      nextTaskId: nextTaskId,
       nextReminderAt: nextReminderAt,
       nextReminderTaskId: nextReminderTaskId,
       infeasibleTaskIds: infeasible,

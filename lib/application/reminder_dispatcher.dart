@@ -81,16 +81,19 @@ class ReminderDispatcher {
     final point = service.nextPointReminder();
     final softAt = s.nextReminderAt;
     final softId = s.nextReminderTaskId;
+    // 先按送达策略把软提醒的**实际送达时刻**算出来，再和时点提醒比早晚（v1.26）。
+    // 拿没顺延的原始时刻去比，会把一个被顺延到次日上午的软提醒排在今晚的
+    // 时点闹钟前面——那一晚的闹钟就被跳过了。
+    final softDelivery = softAt == null ? null : windows.resolveDelivery(softAt);
 
     DateTime? at;
     String? taskId;
     var fullScreen = false;
-    if (softAt != null &&
+    if (softDelivery != null &&
         softId != null &&
-        (point == null || !point.at.isBefore(softAt))) {
-      at = softAt; // 软提醒：经送达策略（段外顺延）
+        (point == null || !point.at.isBefore(softDelivery))) {
+      at = softDelivery; // 软提醒：已按送达策略顺延
       taskId = softId;
-      at = windows.resolveDelivery(at);
     } else if (point != null) {
       at = point.at; // 时点性提醒：原样响（决议 26）
       taskId = point.taskId;

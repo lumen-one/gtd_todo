@@ -663,7 +663,12 @@ application 层的 **ReminderDispatcher**（见 §4.3）。装配点负责把 Al
 | **时点性提醒**   | 不可推到点 + 设了响的周期实例 | 原样响（不受静默段限制）                 | 闹钟模式开 → alarm 渠道 + full-screen |
 
 - 单闹钟取两者中更早的一个（`ScheduleResult.nextReminderAt` vs
-  `TaskService.nextPointReminder()`）；
+  `TaskService.nextPointReminder()`）。**比的是"送达时刻"**：软提醒先按
+  NotificationWindowRule 顺延、再参与比较——拿原始锚点去比，会把一个被顺延到
+  次日上午的软提醒排在今晚的时点闹钟前面，那一晚的闹钟就被跳过了（v1.26 修）；
+- **`pollReminder` 不可重入**：20 秒 tick 与闹钟回调会同时打进来，而软提醒没有
+  `point_fired` 那样的幂等标记——上一次还在跑时这一次直接返回 null
+  （少发一条，好过同一件事弹两次，v1.26）；
 - **只到点响一次**：响过写 metadata `point_fired`（持久），改期/推迟会清掉它；
   错过超过 30 分钟（`pointReminderGrace`）不再补响（已知局限见 §12）；
 - 安卓的"应用被杀"路径：挂闹钟时留下 `ReminderDraft`，到点由原生接收器
