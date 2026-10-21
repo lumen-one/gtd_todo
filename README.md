@@ -44,7 +44,7 @@ flutter build windows --release
 同一网络内两台设备同步任务数据：一台当**主机**（通常 Windows），其余当**从机**
 接入；双向同步，冲突由主机裁决——从机被覆盖的版本存档到 `.gtd/conflicts/`，
 不丢数据。设置页 → 同步：开主机 / 扫局域网发现 / 手输 IP / 立即同步 / 看上次
-同步时间与冲突提示。同步范围与冲突规则见 [docs/architecture.md](docs/architecture.md) §4.4。
+同步时间与冲突提示。同步范围与冲突规则见 [docs/sockets/sync.md](docs/sockets/sync.md)。
 
 注意：Windows 首次开主机会弹防火墙对话框，需允许**专用网络**入站（HTTP 49872
 + UDP 49871）；路由器若禁了广播，用手输 IP 兜底。
@@ -79,19 +79,9 @@ tasks/
 - [x] 交房租 创建 2026-10-01,09:00 完成 2026-10-01,09:30 ##生活
 ```
 
-**内核属性文档**（`.gtd/<任务id>.md`）：应用根据已有属性补上/算出的那部分：
-
-```markdown
----
-id: task-001
-digest: 7683b0bb       # 行指纹：把这一条和 tasks.md 里那一行对上号
-work_intensity: 120    # 工作强度（完成它需要的工时，工作分钟）
-remaining_load: 0.75   # 剩余工作量（分数，乘以工作强度才是分钟）
-priority: 3            # 优先级 1–5
-time_slack: 210        # 时间裕度（工作分钟）
-status: active
----
-```
+**内核属性文档**（`.gtd/<任务id>.md`）：应用算出来的那半边（行指纹、工作强度、
+优先级、时间裕度、剩余工作量），一个任务一份。字段与写法见
+[docs/formats/](docs/formats/README.md)。
 
 约定（详见 [docs/formats/](docs/formats/README.md)）：
 

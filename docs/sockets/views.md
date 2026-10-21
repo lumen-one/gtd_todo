@@ -3,8 +3,6 @@
 `buildTodayView()` / `buildPoolView()` 是 UI 与调度结果之间唯一的接口：UI 只消费
 查询结果，不自己拼装。三种调度模式的差别全部在这两个函数的分支里。
 
-> 本节从 [架构文档](../architecture.md) §4.1 的"新座位"搬出，口径未改。
-
 **今日视图查询 `buildTodayView()` / 任务池查询 `buildPoolView()`**（application 层）：
 聚合 ScheduleResult（可推/逾期）+ 固定时点组 + 例行实例 + 被挑散件 + 散件段
 （仅无排序档）五种来源，UI 只消费查询结果；

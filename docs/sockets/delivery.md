@@ -3,8 +3,6 @@
 "到点把提醒送到用户眼前"这一侧的全部插座：通知、闹钟、权限、目录选择，以及桌面与
 安卓两套适配器。末尾是系统级悬浮面板（第二个 Flutter 引擎）的层职责与引擎边界。
 
-> 本节从 [架构文档](../architecture.md) §4.2 整节搬出，口径未改；那一节现在只留索引。
-
 ## 接口
 
 ```dart
@@ -49,7 +47,7 @@ abstract class AlarmPort {
 abstract class FolderPickerPort {
   Future<String?> pickDirectory();
   Future<String?> pickFile({required String dialogTitle,
-      required List<String> allowedExtensions});  // 灵感文件路径（[灵感页](../panels/notes.md)）
+      required List<String> allowedExtensions});  // 灵感文件路径（页面规则见 ../panels/notes.md）
 }  // SAF / 桌面选择器
 
 abstract class PermissionPort {

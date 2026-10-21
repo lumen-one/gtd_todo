@@ -4,8 +4,6 @@
 解耦）和**单闹钟怎么协调两个提醒源**（`ReminderDispatcher`）。门槛放在算法与服务
 那一层，协调者不必知道调度模式。
 
-> 本节从 [架构文档](../architecture.md) §4.3 整节搬出，口径未改。
-
 **NotificationWindowRule（通知时间段）**：与 WorkTimeRule（工时产能，domain）
 **解耦**——slack 数学不动，"什么时候真正打扰用户"由它裁决，归 application 层。
 
@@ -42,7 +40,7 @@
   `point_fired` 那样的幂等标记——上一次还在跑时这一次直接返回 null
   （少发一条，好过同一件事弹两次，v1.26）；
 - **只到点响一次**：响过写 metadata `point_fired`（持久），改期/推迟会清掉它；
-  错过超过 30 分钟（`pointReminderGrace`）不再补响（已知局限见 [architecture.md](../architecture.md) §12）；
+  错过超过 30 分钟（`pointReminderGrace`）不再补响（已知局限见 [architecture.md](../architecture.md) §11）；
 - 安卓的"应用被杀"路径：挂闹钟时留下 `ReminderDraft`，到点由原生接收器
   `ReminderReceiver` 自己弹通知（同一 taskId 的通知 id 相同 → Dart 侧再 show 时是替换，
   不会重复）；按钮点击走 `ActionReceiver` → 事件回传（应用不在则入队，启动后 `drainEvents` 补做）。

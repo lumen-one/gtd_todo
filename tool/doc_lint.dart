@@ -77,6 +77,7 @@ class DocLint {
 
       problems.addAll(_checkLinks(rel, abs, text));
       problems.addAll(_checkChapters(rel, abs, chapterText, chapterCache));
+      problems.addAll(_checkCodeLinks(rel, raw));
       problems.addAll(_checkStatusWords(rel, text));
     }
 
@@ -169,6 +170,23 @@ class DocLint {
             final where = target == abs ? '本文档' : relativePath(root, target);
             problems.add(LintProblem(rel, i + 1, LintSeverity.error,
                 '章节引用 §$ref 在 $where 里不存在'));
+            continue;
+          }
+          if (target == abs && _aliasBefore(line, m.start) != null) {
+            final alias = _aliasBefore(line, m.start)!;
+            problems.add(LintProblem(rel, i + 1, LintSeverity.warning,
+                '「$alias §$ref」按本文档解析了；指别的文件要写路径链接'));
+          }
+          // 指向"索引节"只在一种情况下算问题：句子还点名了节里的小部件
+          //（"详见 §4.2 的边界表"）——那说明作者以为正文还在那儿。
+          final after = line.substring(m.end).replaceAll('`', '');
+          final claimsPart =
+              RegExp(r'^[^\n]{0,3}(里那句|里那段|的边界表|的表格|的清单|那张表|的那条|的公式)')
+                  .hasMatch(after);
+          if (claimsPart && _isIndexStub(_sectionBodyOf(target, ref))) {
+            final where = target == abs ? '本文档' : relativePath(root, target);
+            problems.add(LintProblem(rel, i + 1, LintSeverity.warning,
+                '§$ref 在 $where 里已是索引节（正文搬走了），那句/那张表不在那儿'));
           }
         }
       }
@@ -199,6 +217,72 @@ class DocLint {
     return abs;
   }
 
+  /// `§` 前面**紧贴**的是文档别名（"架构合同 §6"、"arch §5.1"）而不是路径——
+  /// 这种写法会被解析成本文，指错文件也查不出来。
+  ///
+  /// 必须紧贴：`（先改 UI 文档再改 §3.1）` 里的 §3.1 说的是本文，隔了字就不算。
+  String? _aliasBefore(String line, int refIndex) {
+    final head = line.substring(0, refIndex).replaceAll('`', '').trimRight();
+    for (final a in _docAliases) {
+      if (head.endsWith(a) || head.endsWith('$a =') || head.endsWith('$a=')) {
+        return a;
+      }
+    }
+    return null;
+  }
+
+  /// 目标章节的正文（标题行之后，到下一个标题行之前）。
+  String _sectionBodyOf(String absPath, String ref) {
+    final content = _contentOf(absPath);
+    if (content == null) return '';
+    final lines = content.split('\n');
+    final head = RegExp('^#{1,6}\\s+${RegExp.escape(ref)}(?:\\.|\\s|\$)');
+    var start = -1;
+    for (var i = 0; i < lines.length; i++) {
+      if (head.hasMatch(lines[i].trimRight())) {
+        start = i;
+        break;
+      }
+    }
+    if (start < 0) return '';
+    final buf = <String>[];
+    for (var i = start + 1; i < lines.length; i++) {
+      if (_anyHeadingRe.hasMatch(lines[i])) break;
+      buf.add(lines[i]);
+    }
+    return buf.join('\n');
+  }
+
+  /// "索引节"判据：正文很短，而且把活指给了别处（含链接）。
+  /// 引用这种节多半是想引正文——正文已经搬走了，得改引用或改指向。
+  bool _isIndexStub(String body) {
+    final visible = body.replaceAll(RegExp(r'\s'), '');
+    return visible.length < 400 && _linkRe.hasMatch(body);
+  }
+
+  // -------------------------------------------------------------- 代码块链接
+
+  /// 围栏代码块里的 `[x](y.md)` 渲染成**字面文本**，既点不了也查不到——
+  /// 它多半是拆文档换链接时留下的碎片。
+  List<LintProblem> _checkCodeLinks(String rel, String raw) {
+    final problems = <LintProblem>[];
+    final lines = raw.split('\n');
+    var inFence = false;
+    for (var i = 0; i < lines.length; i++) {
+      final trimmed = lines[i].trimLeft();
+      if (trimmed.startsWith('```') || trimmed.startsWith('~~~')) {
+        inFence = !inFence;
+        continue;
+      }
+      if (!inFence) continue;
+      if (_linkRe.hasMatch(lines[i])) {
+        problems.add(LintProblem(rel, i + 1, LintSeverity.warning,
+            '代码块里的链接渲染成字面文本，点不了：写进正文或去掉链接语法'));
+      }
+    }
+    return problems;
+  }
+
   // ------------------------------------------------------------------ 状态词
 
   List<LintProblem> _checkStatusWords(String rel, String text) {
@@ -208,9 +292,6 @@ class DocLint {
 
     for (var i = 0; i < lines.length; i++) {
       final line = lines[i];
-      // 文档开头 20 行内的引用块是"本文档怎么读"的门面，允许提到这些词。
-      if (i < 20 && line.trimLeft().startsWith('>')) continue;
-
       for (final w in _historyWords) {
         if (line.contains(w)) {
           problems.add(LintProblem(rel, i + 1, LintSeverity.error,
@@ -372,6 +453,12 @@ String relativePath(String root, String absolute) {
 final _linkRe = RegExp(r'\]\(([^)]+)\)');
 final _headingRe = RegExp(r'^#+\s+(\d+(?:\.\d+)*)\.?\s', multiLine: true);
 
+/// 任意标题行（用来切章节正文，不要求带编号）。
+final _anyHeadingRe = RegExp(r'^#{1,6}\s');
+
+/// 文档别名：写在 `§` 前面时，人以为它指那份文档，检查器却只能按本文档解析。
+const _docAliases = ['架构合同', '架构文档', 'arch', 'UI 文档', 'ui 文档', '格式文档', '正典'];
+
 /// 单个引用，或范围引用 `§0–§2` / `§3.4-§3.5`。范围一次产生两个编号。
 final _sectionRefRe =
     RegExp(r'§\s*(\d+(?:\.\d+)*)(?:\s*[–—\-~]\s*§?\s*(\d+(?:\.\d+)*))?');
@@ -401,4 +488,5 @@ const _statusWords = [
   '计划中',
   '待定',
   '尚未',
+  '✅',
 ];

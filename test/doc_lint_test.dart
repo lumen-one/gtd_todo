@@ -43,9 +43,12 @@ void main() {
       expect(lint.run(), isEmpty);
     });
 
-    test('围栏代码块里的链接不算', () {
+    test('围栏代码块里的链接不算死链（但会提示点不了）', () {
+      // 剥代码是为了不误报死链；代码块里真写链接另有一条专门的提示。
       final lint = _lint({'docs/a.md': '```\n[乙](nope.md)\n```'});
-      expect(lint.run(), isEmpty);
+      final problems = lint.run();
+      expect(problems, hasLength(1));
+      expect(problems.single.severity, LintSeverity.warning);
     });
 
     test('http / mailto / 纯锚点都跳过', () {
@@ -192,11 +195,76 @@ void main() {
       }
     });
 
-    test('开头 20 行内的引用块整体豁免，之后不再豁免', () {
-      final header = List.filled(20, '').join('\n');
-      final lint = _lint({'docs/a.md': '$header\n> 这里写【规划】\n'});
+    test('开头的引用块也照查（撤掉了 20 行豁免）', () {
+      // 豁免过：它让一份文档的整个开头（版本历史、"落地进度"）整段绕过检查。
+      final lint = _lint({'docs/a.md': '> 落地进度：已实现。\n'});
       final p = lint.run().single;
       expect(p.severity, LintSeverity.warning);
+    });
+
+    test('打勾清单（✅）算状态标注', () {
+      final lint = _lint({'docs/a.md': '1. 二期：任务池 + 日历弹窗；✅\n'});
+      final p = lint.run().single;
+      expect(p.severity, LintSeverity.warning);
+    });
+  });
+
+  // -------------------------------------------------------------- 引用的坑
+
+  group('引用的坑', () {
+    test('文档别名紧贴 § 时报（会被解析成本文）', () {
+      // "架构合同 §6" 不写文件名：本文恰好也有 §6，于是查得通，指错也看不出来。
+      final lint = _lint({
+        'docs/a.md': '回滚见 架构合同 §6。\n\n## 6. 别的节\n',
+      });
+      final p = lint.run().single;
+      expect(p.severity, LintSeverity.warning);
+      expect(p.message, contains('架构合同'));
+    });
+
+    test('别名不紧贴不算（隔了字说的是本文）', () {
+      final lint = _lint({
+        'docs/a.md': '（先改 UI 文档再改 §6）\n\n## 6. 别的节\n',
+      });
+      expect(lint.run(), isEmpty);
+    });
+
+    test('指到索引节并点名小部件时报', () {
+      // 内容搬走之后只剩三行索引，但引用还写着"§4.2 的边界表"。
+      final lint = _lint({
+        'docs/a.md': '详见 b.md §4.2 的边界表。\n',
+        'docs/b.md': '# 乙\n\n## 4. 插座\n\n### 4.2 交付类\n\n见 [交付](c.md)。\n',
+        'docs/c.md': '# 丙',
+      });
+      final p = lint.run().single;
+      expect(p.message, contains('索引节'));
+    });
+
+    test('只提章节、不点名小部件时不报', () {
+      final lint = _lint({
+        'docs/a.md': '详见 b.md §4.2。\n',
+        'docs/b.md': '# 乙\n\n## 4. 插座\n\n### 4.2 交付类\n\n见 [交付](c.md)。\n',
+        'docs/c.md': '# 丙',
+      });
+      expect(lint.run(), isEmpty);
+    });
+
+    test('代码块里的链接报（渲染成字面文本，点不了）', () {
+      final lint = _lint({
+        'docs/a.md': '```dart\n// 见 [格式](b.md)\n```\n',
+        'docs/b.md': '# 乙',
+      });
+      final p = lint.run().single;
+      expect(p.severity, LintSeverity.warning);
+      expect(p.line, 2);
+    });
+
+    test('正文里的链接不误报', () {
+      final lint = _lint({
+        'docs/a.md': '见 [格式](b.md)。\n',
+        'docs/b.md': '# 乙',
+      });
+      expect(lint.run(), isEmpty);
     });
   });
 
@@ -206,7 +274,7 @@ void main() {
     test('代码块占用行号，后面的报错行号不偏移', () {
       // stripCode 用空行占位而不是整段删除；整段删除的话这里会报第 3 行。
       final lint = _lint({
-        'docs/a.md': '# 甲\n\n```\n[x](gone.md)\n```\n\n正文见 [y](nope.md)。',
+        'docs/a.md': '# 甲\n\n```dart\nvar x = 1;\n```\n\n正文见 [y](nope.md)。',
       });
       final p = lint.run().single;
       expect(p.line, 7);

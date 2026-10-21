@@ -1,4 +1,4 @@
-# B.5 旧格式兼容 · B-2 `routines.md`
+# B.5 旧格式兼容与 `routines.md`
 
 **旧格式：一任务一文件的 frontmatter**（`formatId = md-frontmatter/1`）**只读兼容**。
 目录里若只有旧文件而**没有** `tasks.md`，首次读取自动迁移：
@@ -26,7 +26,7 @@ type: fixed
 **回归测试**：`test/markdown_task_repository_test.dart`「迁移」组 +
 「人类文档里别人的内容一字不动」组。
 
-#### 附录 B-2：`routines.md`（周期规则文件）
+## `routines.md`（周期规则文件）
 
 与任务文件同目录的**独立文件**（TaskRepository/TaskCodec 不覆盖它），
 **一条规则一个 frontmatter 条目**，条目之间用 `---` 分隔；条目正文是规则备注，
@@ -65,5 +65,5 @@ created: 2026-10-07T09:00
 | `remind`           | bool         | 响不响（true 必须有时刻）        |
 | `enabled`          | bool         | 启用开关                                  |
 | `created`          | ISO8601      | 创建时间                                  |
-| `schema`           | int（规划）  | 迁移版本号，见 ../architecture.md §3.4 防线三                |
+| `schema`           | int（规划）  | 迁移版本号，见 [架构文档](../architecture.md) §3.4 防线三                |
 

@@ -1,28 +1,5 @@
 # UI 与交互需求文档（安卓侧边栏版）
 
-> 状态：现行口径含**挂起进行**——长期任务可顶置到今日页最顶的
-> **挂起组**（无编号、组内可拖调序），保持到完成或主动取消，不按天过期；
-> 契约侧与 architecture.md 同步。
->
-> **落地进度**：MVP + 二期 + 三期**全部落地**（**唯一例外：AI L2**）——
-> 含四页侧边栏、系统级悬浮面板本体、双文档存储、算法层与提醒模式、
-> 调度模式三档（完整 / 标准（默认）/ 无排序）、长期任务、挂起进行、
-> 暗黑模式（明暗三选一，默认跟随系统）；
-> 明细见 §12。
->
-> **v1.24**：页序改为 **疑问笔记 → 今日清单 → 任务池 → 已完成**（今日清单退到第二页），
-> 展开后落哪一页成了设置项（§9 第 12 条，默认今日清单）；面板头撤掉『隐私』与『关闭』，
-> 只留右上角『设置』——隐私过头整套撤销，防瞟改走快记（[已撤销的隐私过头](panels/README.md) / [快记](panels/quick-note.md)）。
-> （第一页的名称 v1.29 起由『疑问笔记』改为『灵感』，见下条与 [灵感页](panels/notes.md)。）
->
-> **v1.27**：无排序档下三无散件**常驻今日页最底**——新增 ⑥ 散件段（不编号、弱化、
-> 拖动只改整理序），任务池不再显示散件段。⑤ 被挑散件**保留**：被挑中的那件从 ⑥ 移出、
-> 单列在它上方，两处不重复；『定期挑』照旧。标准/完整两档一行不变（[今日清单页](panels/today.md) / [任务池页](panels/pool.md) / §7.0）。
->
-> **v1.29**：『疑问笔记』页改名**『灵感』**，并从**只读**变**可编辑**——App 就地改那篇
-> Markdown 的**正文段**，frontmatter 与其他段落一个字符都不动（[灵感页](panels/notes.md)）。页序、路径设置项、
-> 屏蔽规则、空态文案位置全部照旧，只把"编辑去 Obsidian"这条限制撤掉。
->
 > 定位：这是**客户端层的需求**。architecture.md 的分层契约不变：侧边栏、悬浮把手、系统通知
 > 全部是"平台呈现"，用户能做的一切动作仍然只能通过 TaskService 的命令进入核心。
 > UI 里只出现接口名，不出现平台名——本文件描述"要什么"，"从哪个文件调"永远归适配器。
@@ -90,7 +67,7 @@
 ## 2. 平台与权限前置（安卓）
 
 - 平台：安卓 App，Flutter（现有工程已有 domain/application/repository/scheduler，本阶段补安卓 shell）。
-- 需要的系统能力（全部走插座，对应 architecture.md §4.2）：
+- 需要的系统能力（全部走插座，契约见 [sockets/delivery.md](sockets/delivery.md)）：
   - **悬浮窗权限**（SYSTEM_ALERT_WINDOW）：侧边栏把手与面板；
   - **通知权限**：到点提醒；
   - **精确闹钟权限 + 电池白名单**：准点响铃（安卓 12+ 需单独授权）；
@@ -143,42 +120,11 @@ snoozedUntil/metadata/created），需要扩展（详见 §10）：
 
 ### 4.3 存储形态：双文档（正典见 [formats/](formats/README.md)）
 
-**人写人看的归一个文档，内核算的归另一个文档。** 任务数据不是一个文件，是两个：
+**人写的归一个文档，内核算的归另一个文档**：`tasks.md` 一行一条任务（人看人改，
+应用只代笔自己那一行）；`.gtd/<任务id>.md` 装内核算出来的属性；两条靠行指纹配对。
+长期任务的内核文档只剩 `id` 一行——'长期'不单独落一行，**没有 `work_intensity` 就是长期**。
 
-```text
-tasks/
-├── tasks.md           ← 人类文档：Obsidian 里看/改/共享的就是它
-└── .gtd/<任务id>.md    ← 内核属性文档：应用自己写
-```
-
-**人类文档**（一个文档、`# 标题` 分类、一条任务一行）：
-
-```markdown
-# 工作
-
-- [ ] 任务名 创建 2026-10-11,07:00 结束 2026-10-12,18:00 这是备注。 ##这是标签1 ##这是标签2
-- [x] 交房租 创建 2026-10-01,09:00 完成 2026-10-01,09:30 ##生活
-```
-
-人写的六个属性：**任务名、创建日期、结束日期、完成日期、备注、标签**。
-**更多的标签 = 更多的属性**：多打一个 `##标签` 就多一个维度，内核不解释它的语义
-（唯一用法：新任务按第一个标签落到同名 `# 小节`）。
-
-**内核属性文档**（应用根据已有属性算出来或补上的那部分）：
-
-```markdown
----
-id: task-001
-digest: 7683b0bb       # 行指纹：把这一条和人类文档里那一行对上号
-work_intensity: 120    # 工作强度（完成它需要的工时，工作分钟）
-remaining_load: 0.75   # 剩余工作量（**分数**，乘以工作强度才是分钟）
-priority: 3            # 优先级 1–5
-time_slack: 210        # 时间裕度（工作分钟）
-status: active
----
-```
-
-**长期任务**：三无的缺省态——这份文档**只剩 `id` 一行**：工作强度、优先级、时间裕度、剩余工作量全部没有（'长期'不单独落一行，**没有 `work_intensity` 就是长期**），完成态只认人类文档的 `[x]` / `完成 <时刻>`。
+字段、行语法、配对与归属规则的正典在 [formats/](formats/README.md)，本节不复述。
 
 **分工与承诺**（写死）：
 
@@ -264,18 +210,7 @@ status: active
 改某个页面的行为只改对应那一页；页序、默认页、面板头这些跨页规则在
 [`panels/README.md`](panels/README.md)。
 
-| 页面 / 主题 | 正典位置 |
-|---|---|
-| 6.0 把手与面板（热区、拖开、尺寸、位置、入口） | [panels/handle.md](panels/handle.md) |
-| 6.1 今日清单页（分组、挂起、插队、无排序档） | [panels/today.md](panels/today.md) |
-| 6.2 灵感页 | [panels/notes.md](panels/notes.md) |
-| 6.3 任务池页 | [panels/pool.md](panels/pool.md) |
-| 6.4 日历弹窗 | [panels/calendar.md](panels/calendar.md) |
-| 6.5 隐私过头（已撤销）· 6.6 空状态与引导 | [panels/README.md](panels/README.md) |
-| 6.7 已完成页 | [panels/completed.md](panels/completed.md) |
-| 6.8 快记（拖出头第二档） | [panels/quick-note.md](panels/quick-note.md) |
-| 6.9 主线覆盖页 | [panels/mainline.md](panels/mainline.md) |
-| 6.10 桌面（Windows）布局 | [panels/desktop.md](panels/desktop.md) |
+目录表与各页清单在 [panels/README.md](panels/README.md)——本节不复述。
 
 ## 7. 提醒系统
 
@@ -301,7 +236,7 @@ status: active
   想让它出声，仍然去编辑表单给单件开『提醒我』。
 
 - **为什么默认标准**：提醒是打扰。默认"只排队、不出声"，需要被推着走的事再单独开——
-  一次设置或一次点击的代价，换默认安静（代价记在 architecture.md §12）。
+  一次设置或一次点击的代价，换默认安静（代价记在 [架构文档](architecture.md) §11）。
 
 - **门槛与送达策略是两件事，串联生效**：门槛决定"**要不要**出声"（这一件
   `reminds = false`、结果里的下一站 `nextReminderAt = null` 就是不出声），通知时间段决定
@@ -341,7 +276,7 @@ nextReminderAt = 沿用上次锚点（任务自身没变时）否则 addWorkMinu
   （如 9:00–12:00、14:00–18:00、19:00–21:00，方便抠掉午睡/饭点）；默认一段 **9:00–21:00**；
 - **AI 动态调整 = L2 软控制**：AI 只允许在 Scheduler `params` 声明范围内微调
   （α、最小间隔、间隔拐点、风险尺度 τ 与陡度 γ），一切变更走 origin=ai 的领域事件，**可审计、可拒绝**——
-  回滚不承诺（架构合同 §6：逆命令机制未设计，落地前 UI 只提供"拒绝"）；
+  回滚不承诺（[架构文档](architecture.md) §6：逆命令机制未设计，落地前 UI 只提供"拒绝"）；
   没配 key / AI 挂掉 → 默认策略照常。
 - **不可推**：只到点响一次，不提前、不进调度；**标准模式下要先给这一件开提醒**
   才会响（§7.0）。（实现：`TaskService.nextPointReminder()` + ReminderDispatcher
@@ -428,7 +363,7 @@ App 主体，桌面上它是侧边栏右边那一栏（[桌面布局](panels/des
 把手位置上锁、把手热区宽度、固定侧边栏大小（含跟手收起）、重看首次拖出引导、
 闹钟模式（全屏渠道）。判据是"**这套壳有没有那个东西**"，不是"什么系统"：由组装点
 注入一张 `ShellCapabilities` 能力表（`lib/application/shell_capabilities.dart`），
-设置页只读表、**不问平台**（arch §5.1 的口诀）。桌面上这几项**整行不渲染**——
+设置页只读表、**不问平台**（[架构文档](architecture.md) §5.1 的口诀）。桌面上这几项**整行不渲染**——
 不是灰掉：灰掉会让人以为"再找找就找到了"，而桌面上它根本不存在。于是桌面的
 『侧边栏』区只剩"展开后默认页面"，副标题也跟着改成"重新打开窗口时落在这一页"。
 下面各条里标〔悬浮壳〕的即此列。
@@ -464,7 +399,7 @@ App 主体，桌面上它是侧边栏右边那一栏（[桌面布局](panels/des
     先起来）。选的就是"好抓"与"不挡路"的折中点——热区盖住的触摸归把手（[把手与面板](panels/handle.md)），
     越宽越好抓、底下那一竖条越挡路，系统返回手势被抢走的边也越宽。**竖向高度不开
     这个口子**：200dp 是系统手势排除的配额上限，调小只是自损竖拖起手的容错。
-    `settings.json` 本就**不参与同步**（范围见 architecture.md §4.4），所以它是
+    `settings.json` 本就**不参与同步**（范围见 [sockets/sync.md](sockets/sync.md)），所以它是
     纯本机手感项，换设备不跟着走。
 11. 〔悬浮壳〕**固定侧边栏大小**：打开时**冻结此刻生效**的宽高——开关本身落
     `settings.json` 的 `panel_size_locked`，数值仍写 `panel_width` /
@@ -499,17 +434,17 @@ App 主体，桌面上它是侧边栏右边那一栏（[桌面布局](panels/des
 | 5   | **定期挑**机制                                                                        | system 事件订阅者：按间隔**独立随机**挑散件 → 附到今日尾部；记录上次挑的时间与当日手动挑标记（手动优先，尾部最多一件）；未完成件次日重新参与随机                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | 6   | **灵感页（原疑问笔记）可读可写**                                                      | 读写端口（读 vault 内指定文件、写回同一文件的正文段）；**frontmatter 与其后段落逐行原样保留**，写入只替换正文段；UI 层只见接口名。v1.29 前是只读、对该文件零写入，现改为可就地编辑（[灵感页](panels/notes.md)）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | 7   | 侧边栏 + 悬浮把手                                                                     | android_shell 的一部分；悬浮窗权限走 PermissionPort                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| 8   | 通知快捷按钮 + 闹钟模式                                                               | NotificationPort actions 与 ReminderChannel（契约见 architecture.md §4.2/§4.3；**桌面适配器 + 安卓适配器均已落地**——系统精确闹钟、通知按钮、全屏闹钟渠道）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| 8   | 通知快捷按钮 + 闹钟模式                                                               | NotificationPort actions 与 ReminderChannel（契约见 [sockets/delivery.md](sockets/delivery.md)；**桌面适配器 + 安卓适配器均已落地**——系统精确闹钟、通知按钮、全屏闹钟渠道）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | 9   | 拖拽插队（手动优先）                                                                  | 手动顺序是**持久意图**：插队标记记在任务上，排序时插队件压最上面，**保持到完成**；其余任务照常按调度排序                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | 10  | 逾期置顶展示                                                                          | overdue 是派生状态（已有）；仅渲染层置顶 + 橙红徽标，不新增字段                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | 11  | 软删除 `.trash/`                                                                      | TaskService 的 delete 命令改为：移入任务目录 `.trash/` 子目录 + 撤销窗口；`loadAll` 忽略该子目录；设置提供『清空回收』。内核属性文件进 `.gtd/.trash/`，人类文档那一行用 `%%…%%` 注释掉                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| 12  | AI 回滚口径                                                                           | 架构合同 §6：逆命令机制未设计、不承诺，UI 只提供"拒绝"；若未来要回滚，先把逆命令机制写进架构合同再动 UI                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| 12  | AI 回滚口径                                                                           | [架构文档](architecture.md) §6：逆命令机制未设计、不承诺，UI 只提供"拒绝"；若未来要回滚，先把逆命令机制写进 [架构文档](architecture.md) §6 再动 UI                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | 13  | **存储形态：双文档**                                                                | 人类文档 `tasks.md`（一个文档、`# 标题` 分类、一行一条任务）+ 内核属性文档 `.gtd/<id>.md`；**codec 分三个专用件**：`TaskDocumentCodec`（人类文档的多任务篇）、`TaskSidecarCodec`（内核属性文档，另带 digest 接线与登记 metadata 键写回）、`TaskCodec` 只剩旧格式（`md-frontmatter/1`）只读兼容；`MarkdownTaskRepository` 变双文档协调者（行指纹配对 + 归属合并）；`tags`/`completedAt` 升为 Task 正式字段；旧格式只读兼容 + 一次性自动迁移                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | 14  | **`log` 数据单独一个文档**                                                          | `log` 走 `application/event_log.dart`（`EventLogPort` + `EventLog` 订阅者，architecture.md §3.3"新增功能 = 新增订阅者，不改 TaskService"），落盘 `tasks/.gtd/log.md`，append-only；只在主引擎挂                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| 15  | **提醒模式 + 排序算法改为"时间裕度优先"**                                             | `Scheduler.schedule` 增加 `reminderMode`（domain 新增 `ReminderMode`）；新增算法 `slack-priority.v1`（`risk = f(slack)` **非线性**、`priority = risk × importance`）并设为**默认**，旧 `slack.v1` 留在注册表里做对照；`TaskMetric` 增加 `risk`/`priority`/`reminds`，`nextReminderAt` 明确为**锚点**；逐任务提醒开关落 metadata `remind`（架构合同[内核属性文档](formats/sidecar.md) 登记，sidecar 与旧 codec 都要写回）；`TaskService` 增 `reminderMode`/`setTaskReminder`（模式切换命令为 `updateScheduleMode`，见 #16），`nextPointReminder()` 按同一门槛过滤；模式落 `settings.json` 的 `reminder_mode`；设置页加模式开关、编辑表单加『提醒我』开关。**清单构成不受模式影响**（标准/完整两档完全一致；无排序档页底多一段散件、顺序改手动，见 #16）                                                                                                                                                                    |
+| 15  | **提醒模式 + 排序算法改为"时间裕度优先"**                                             | `Scheduler.schedule` 增加 `reminderMode`（domain 新增 `ReminderMode`）；新增算法 `slack-priority.v1`（`risk = f(slack)` **非线性**、`priority = risk × importance`）并设为**默认**，旧 `slack.v1` 留在注册表里做对照；`TaskMetric` 增加 `risk`/`priority`/`reminds`，`nextReminderAt` 明确为**锚点**；逐任务提醒开关落 metadata `remind`（[内核属性文档](formats/sidecar.md) 登记，sidecar 与旧 codec 都要写回）；`TaskService` 增 `reminderMode`/`setTaskReminder`（模式切换命令为 `updateScheduleMode`，见 #16），`nextPointReminder()` 按同一门槛过滤；模式落 `settings.json` 的 `reminder_mode`；设置页加模式开关、编辑表单加『提醒我』开关。**清单构成不受模式影响**（标准/完整两档完全一致；无排序档页底多一段散件、顺序改手动，见 #16）                                                                                                                                                                    |
 | 16  | **调度模式三档：完整 / 标准（默认）/ 无排序**                                       | domain 新增 `ScheduleMode`（取代原先"提醒模式 + 排序模式"两个并列枚举），由它派生**内核门槛**（`ScheduleMode.reminderMode`）与**业务层排序口径**（`isManual`）；新增 metadata `manual_order`（非负整数，拖动整段重编号，[内核属性文档](formats/sidecar.md) 登记，只在无排序档生效）；命令 `setManualOrder(taskIds)` / `updateScheduleMode(mode)` + 领域事件 `manualOrderChanged` / `scheduleModeChanged`；模式落 `settings.json` 的 `schedule_mode`（仍兼容读旧字段 `reminder_mode`）。**内核一行未改**：`Scheduler.schedule` 不收排序口径，`buildTodayView` 收 `scheduleMode`，无排序档下只是不采用 `ScheduleResult.items` 的顺序；**今日可推组的成员三档一致**（仍按锚点准入）；无排序档另把散件段铺到今日页底部（`buildPoolView` 在这一档不返回散件，池子其余照旧按整理序，见 v1.27）。`slack` / `risk` / `priority` / 提醒锚点与间隔 / 逾期与不可行判定 / 提醒门槛**全部不动**                                                               |
 | 17  | **点条目 = 详情卡**                                                                | **纯展示件，契约侧零新增**：不新加命令、不加字段、不加设置项、不动 `Scheduler` 与仓储——展示的都是 `Task` 已有字段与 `ScheduleResult` 已有派生量（`slackMinutes` / `nextReminderAt` / `reminds` / `intervalMinutes`）。UI 层新增 `ui/dialogs/task_detail_sheet.dart`（bottom sheet，与编辑/推迟同款呈现，侧边栏与悬浮面板都没有路由）；动作**复用 `taskMenuEntries` 这一份条目表**（长按菜单与详情卡底部按钮同源，不是两套）。例行实例额外读 `RoutineService.byId`（规则摘要 + 发生日）                                                                                                                                                                                                                                                                                                                                                                                  |
-| 18  | **三无任务默认工作强度'长期'；长期任务只有任务 id**                                 | 工作强度新增特殊值**'长期'**（标记而非分钟数，**不是新任务类型**）：三无任务创建时缺省长期——不估工时、不设优先级、没有时间裕度，**内核属性文档只有一个 `id`**（`work_intensity`/`priority`/`time_slack`/`remaining_load` 全部缺行；'长期'不单独落一行，没有 `work_intensity` 就是长期；`digest`/`status`/`completed_at` 也不落，完成态只认人类文档）。**不变量豁免**（architecture.md §3.2）：A1/A2/A3 对长期任务豁免（同 fixed 豁免 A2 的先例）。**边界**：有截止的可推任务仍必须给数字工时（缺省 30 分钟，进 slack 数学）；'长期'是创建缺省不是不变量——清截止不自动改写工作强度，长期 ↔ 数字工时都在编辑里显式设（不悄悄改语义）；新建对话框**不新增**工时/优先级控件；旧数据不迁移。**代价**：内核文档退化成一行 id，行指纹（digest）也没有 → 两文档配对降到 architecture.md [配对规则](formats/matching.md) 第 2/3 档（任务名/位置），改名且数量不等时按新任务接管并提示 |
+| 18  | **三无任务默认工作强度'长期'；长期任务只有任务 id**                                 | 工作强度新增特殊值**'长期'**（标记而非分钟数，**不是新任务类型**）：三无任务创建时缺省长期——不估工时、不设优先级、没有时间裕度，**内核属性文档只有一个 `id`**（`work_intensity`/`priority`/`time_slack`/`remaining_load` 全部缺行；'长期'不单独落一行，没有 `work_intensity` 就是长期；`digest`/`status`/`completed_at` 也不落，完成态只认人类文档）。**不变量豁免**（architecture.md §3.2）：A1/A2/A3 对长期任务豁免（同 fixed 豁免 A2 的先例）。**边界**：有截止的可推任务仍必须给数字工时（缺省 30 分钟，进 slack 数学）；'长期'是创建缺省不是不变量——清截止不自动改写工作强度，长期 ↔ 数字工时都在编辑里显式设（不悄悄改语义）；新建对话框**不新增**工时/优先级控件；旧数据不迁移。**代价**：内核文档退化成一行 id，行指纹（digest）也没有 → 两文档配对降到 [配对规则](formats/matching.md) 第 2/3 档（任务名/位置），改名且数量不等时按新任务接管并提示 |
 | 19  | **长期任务挂起进行：今日页顶置组**                                                 | domain 只加一个读属性 `Task.inProgressAt`（同 `pinnedAt` 形状，**不加字段**）；新增 metadata 键 `in_progress`（值 = 挂起时刻 ISO，组内排序的载体；[内核属性文档](formats/sidecar.md) 登记，sidecar 与旧 codec 都要写回——漏登记会让标记在命令自己的重锚里蒸发）。TaskService 增 `setInProgress(taskId, enabled)`（**仅长期任务可挂**，取消不受限）/ `setInProgressStack(taskIds)`（拖动后整段重写时刻，一次落盘 + 一个事件 + 一次重算，同插队栈）+ 领域事件 `taskInProgressSet`；`completeTask` 顺手清掉这个标记（"保持到完成或主动取消"）。`buildTodayView` 多分一个**挂起组**（⓿：最顶、逾期组之上、无编号、按挂起时刻降序、三档都在）；`buildPoolView` 把挂起中任务从两段隐藏（与被挑同规则）。UI：今日页顶置组 + 拖把手（复用可推组同款 ReorderableListView）；『挂起进行 / 取消挂起』进 `taskMenuEntries` 共享条目表（长按菜单与详情卡底部按钮同时有，只对长期任务出现）。**内核一行不动**：长期任务没有截止，本来就被 B1/B2 挡在派生之外，两个调度器都跳过；挂起组不经过 `ScheduleResult`（展示层的选择做在展示层） |
 | 20  | **暗黑模式：明暗三选一（跟随系统 / 浅色 / 深黑）**                                | 纯 UI 层，**内核一行不动**（无新命令、新字段、新事件，任务数据与调度零影响）：`AppSettings` 加 `themeMode`（字符串，落 `settings.json` 的 `theme_mode`，缺省 `system`——与 `themePreset` 同款"application 存 id、枚举在 UI 层"模式）；`ui/theme.dart` 加 `AppThemeMode` 枚举 + `ThemeMode` 映射，深色底沿用已有暖深褐黑常量（`darkSurface`/`darkCard`）；`main.dart` 与 `overlay_main.dart` 的 `MaterialApp` 改读设置——悬浮引擎那个原先不监听控制器（预设切换要等引擎重启才生效），包一层 `ListenableBuilder` 顺手修；逾期橙红加暗色提亮变体（时间徽标橙与 blueGrey 系不动）；安卓补 `drawable-night/launch_background.xml`（暗色手机冷启动不白闪） |
 | 21 | **已完成页 + 恢复未完成** | 契约侧只加一个命令：`TaskService.reopenTask(taskId)`（status 回 active、清 `completedAt`、`remainingWork` 回满到 `estimatedWork`、长期任务保持缺位；**例行实例拒绝恢复**）+ 领域事件 `taskReopened`；人类文档那行由 codec 从 `completedAt` 驱动天然复原（`[x]`→`[ ]`、去掉『完成 <时刻>』），不写行逻辑。查询侧加 `buildCompletedView`（application 层，今天/昨天/更早分组，UI 不含逻辑）。UI：新 `panels/completed_panel.dart`；`side_panel.dart` 页名/圆点/PageView/clamp 3→4；`taskMenuEntries` 加 `TaskMenuKind.completed` 分支（恢复未完成/删除）；`AppController` 加 `completedView` getter 与 `reopenTask` 转发；`locateTask` 的已完成分支从 toast 改为跳已完成页高亮。**内核算法一行不动**（存档不参与调度，`Scheduler.schedule` 不收任何新入参） |
@@ -522,7 +457,7 @@ App 主体，桌面上它是侧边栏右边那一栏（[桌面布局](panels/des
   App 内左侧滑呼出，无悬浮把手）；悬浮面板的引擎/窗口起不来 → 回退为"把手打开应用面板"
   （功能不减，只是会跳进应用）；通知被拒 → 提醒只在侧边栏内高亮；
   精确闹钟被拒 → 提醒可能迟到（如实提示用户）。
-- **后台被杀 / Doze**：提醒依赖 AlarmPort 系统闹钟唤醒（architecture.md [formats/](formats/README.md)），不靠 Timer。
+- **后台被杀 / Doze**：提醒依赖 AlarmPort 系统闹钟唤醒（见 [sockets/delivery.md](sockets/delivery.md)），不靠 Timer。
 - **闹钟模式权限**：全屏提醒需要锁屏显示/上层显示权限；被拒则退化为普通通知 + 响铃。
 - **无 AI 配置**：默认策略照常，设置页显示"未接入"。
 - **误触防护**：完成走长按菜单（天然防误触）；**翻页不靠"重手势"**——
@@ -550,85 +485,11 @@ App 主体，桌面上它是侧边栏右边那一栏（[桌面布局](panels/des
 
 ---
 
-## 12. 优先级建议（实施顺序）
-
-> **前置声明（契约对齐）**：本清单从"系统通知快捷按钮"起的所有提醒功能，依赖
-> architecture.md §10 第 9 条（交付类插座 + 安卓适配器）。该条的接口、ReminderDispatcher、
-> NotificationWindowRule、桌面适配器与**安卓适配器均已落地**；
-> 原第 5 条（repository 异步化）已完成。
->
-> **进度：1–16 全部完成（第 7 条 = 把手隐形化与边缘手势；
-> 第 8 条 = 创建对话框去手势化；第 9 条 = 调度模式三档；第 10 条 = 点条目详情卡；
-> 第 11 条 = 长期任务；第 12 条 = 挂起进行；第 13 条 = 已完成页；
-> 第 14 条 = 拖出头快记；第 15 条 = 页序与面板头精简；第 16 条 = 灵感页改名与可编辑，
-> 均已落地）。**
-> 剩余：AI L2。（跨 App 的系统级**面板本体**已落地。）
-
-1. **MVP**：侧边栏今日清单页（编号/长按菜单）+ 创建对话框（常驻档位按钮）
-   + 堆三无（v1.22 撤销，见 §5.2）+ Slack 提醒 + 系统通知快捷按钮；✅
-2. **二期**：任务池（横线分界/散件转正/定期挑）+ 日历弹窗；✅（隐私过头已撤销，v1.24，[已撤销的隐私过头](panels/README.md)）
-3. **三期**：灵感页（原"疑问笔记"只读页）+ 周期任务（设置页）+ AI L2 调参；✅（除 AI L2）
-4. **最后**：主题预设切换 ✅、视觉打磨。
-5. **存储形态**：双文档（人类文档 `tasks.md` + 内核属性 `.gtd/<id>.md`）✅、
-   `log` 单独文档 ✅、旧格式自动迁移与只读兼容 ✅。
-6. **算法层与提醒模式**：时间裕度优先（`priority = risk × importance`，
-   risk 非线性）✅、提醒模式（**默认标准**，已并入第 9 条三档）✅、
-   逐任务提醒开关（`remind`）✅、设置页模式开关 ✅。
-7. **把手隐形化与边缘手势**：原生与应用内两处把手改成贴边半透明白条 ✅、
-   把手窗口声明系统手势排除区 ✅。（v1.21 修订：点按兜底与"点一下白条"文案
-   **已删**——展开只认拖动；热区宽度改为设置项，默认 28 → 12dp。）
-8. **创建对话框去手势化**：删掉长按滑档手势、类型/日期档位改为常驻按钮、
-   默认态 = 三无、确认键纯点按——✅ **已落地**
-   （`create_task_dialog.dart` 重写 + `side_panel.dart` 引导文案同步）。
-9. **调度模式三档**：设置页『提醒与排序』节一组三选一——
-   **完整 / 标准（默认）/ 无排序**。无排序 = 标准的再弱化版：今日可推组的
-   **成员不变**，只把顺序交给手动拖并持久化；裕度、提醒节奏、出不出声全部照旧。
-   v1.27 起这一档另把散件段铺到今日页底部（池子不再显示，[今日清单页](panels/today.md)）。
-   原先独立的『排序模式』一节（自动 / 无排序）**已并入**，不再单独存在。
-   ✅ **已落地**（设置页三选一 + 两个引擎的 `onScheduleModeChanged`；契约侧
-   architecture.md 已同步）。
-10. **点条目 = 详情卡**：今日清单各组 + 任务池两段，点条目展开
-    **只读详情卡**（备注全文 / 全部属性 / 调度派生量），底部动作与长按菜单同源。日历当天列表**不动**（那里点条目仍是改期）。
-    ✅ **已落地**（`ui/dialogs/task_detail_sheet.dart` + 条目表抽成 `taskMenuEntries`
-    供菜单与详情卡共用）。
-11. **长期任务**：三无任务默认工作强度'长期'——'长期'不是分钟数，
-    标长期的任务不估工时、不设优先级、没有时间裕度，内核属性文档只有一个任务 id；
-    有截止的可推任务仍必须给数字工时，'转正' = 补截止 + 换具体工时。
-    ✅ **已落地**（domain/application/repository/ui 四层 + 验收测试）。
-12. **挂起进行**：长期任务可顶置到今日页最顶的**挂起组**——
-    ⓿ 组无编号、在逾期组之上，多件可挂、组内可上下拖动调序；保持到完成或主动取消，
-    不按天过期；挂起中的任务从任务池两段隐藏。'挂起进行 / 取消挂起'进共享条目表
-    （长按菜单与详情卡底部按钮同源）。
-    ✅ **已落地**（domain/application/repository/ui 四层 + 验收测试）。
-13. **已完成页**：侧边栏『已完成』页——按完成日期分今天/昨天/更早三组，
-    点条目看只读详情卡，动作只有两个：恢复未完成 / 删除。补上"误触完成不可逆"
-    这个洞（完成是全 App 唯一没有撤销入口的操作）。通知定位已完成任务的死路
-    （原来只 toast）顺带修掉：直达本页并高亮。
-    ✅ **已落地**（domain/application/repository/ui 四层 + 验收测试）。
-14. **拖出头快记**：把手拖过 0.45 × 屏宽后**拐离水平** → 把手窗口变成跟手方块 →
-    松手方块滑到屏幕中央展开输入条，直接记一条三无任务（[快记](panels/quick-note.md)）。系统级悬浮把手独占，
-    应用内壳与桌面不做；首次引导加第 4 步。
-    ✅ **已落地**（原生手势分岔 + 三条下行事件 + `QuickNoteLayer`）。
-15. **页序与面板头精简**：页序改为**灵感 → 今日清单 → 任务池 → 已完成**（今日清单退到
-    第二页），展开落哪一页由设置项 `default_page` 决定（默认今日清单）；面板头撤掉『隐私』
-    『关闭』，只留右上角『设置』，隐私过头整套撤销（[已撤销的隐私过头](panels/README.md)），防瞟改走快记。代码侧把页序收成
-    一张表（`ui/panel_pages.dart`）：页名、页序圆点数、PageView 顺序、默认页与定位页码全部从
-    它派生；顺带修掉定位到已完成页时 `clamp(0, 2)` 把已完成页挡住的老 bug。
-    ✅ **已落地**（`default_page` + 两个宿主开面板时落默认页 + 设置页四选一）。
-16. **灵感页：改名 + 可编辑**：『疑问笔记』改名**『灵感』**（页序、页 id `notes`、
-    设置键 `notes_path` 全部不动——旧设置无需迁移），从**只读**变**就地可编辑**：
-    页头铅笔进编辑态（全页输入框 + 保存/取消），保存只替换**正文段**，
-    frontmatter 与其余段落逐行原样保留、换行风格照旧（[灵感页](panels/notes.md)）。
-    编辑态显示正文段完整原文（只读态被 `[[` 屏蔽的行在这里可见），避免保存时被抹掉。
-    ✅ **已落地**（`notes_reader.dart` 的写入口 + `applyNotesSection` 纯函数 +
-    `notes_panel.dart` 编辑态）。
-
----
-
-## 13. 范围声明（有意不做 / 边界澄清，防将来被当遗漏）
+## 12. 范围声明（有意不做 / 边界澄清，防将来被当遗漏）
 
 - **性能/尺寸规格**（把手大小、动画时长等）：实现期以手感调参定，不写死数字；**侧边栏宽高是例外**——范围与默认值见 [把手与面板](panels/handle.md)（用户能拖，数字本身就是给用户看的调参入口）；
-- **多设备同步**：v1 单机——任务目录即数据（Obsidian 共享已是事实上的"同步"）；
+- **多设备同步**：只做**同一局域网内**（[局域网同步](sockets/sync.md)）——不经云端、
+  不跨网络、无账号；换网络或异地靠任务目录本身（Obsidian 共享是事实上的同步）；
 - **备份恢复**：交给任务目录本身（文件即备份），App 不另做；`legacy-tasks/`
   （迁移存档）与 `.gtd/.trash/`（回收站）都**只增不自动清理**；
 - **Obsidian 插件 / vault 接管**：不做。与 Obsidian 的连接形式就只有"多一个手机侧边栏
@@ -636,7 +497,7 @@ App 主体，桌面上它是侧边栏右边那一栏（[桌面布局](panels/des
 - **人类文档的任务行里写内核字段**：不做。id/工作强度/优先级/时间裕度/剩余工作量
   只进 `.gtd/`，人类文档保持干净；
 - **提醒的"自动升级"**：不做。标准模式下**不会**因为"快到期了"就自动开始提醒
-  ——要响只能给那一件开提醒，或把模式切成完整。这是"默认安静"的代价，记在架构合同 §12；
+  ——要响只能给那一件开提醒，或把模式切成完整。这是"默认安静"的代价，记在 [架构文档](architecture.md) §11；
 - **用户自选调度算法**：不做（`slack.v1` 留在算法注册表里做对照，但设置页没有切换入口；
   要换得动组装点）。**调度模式三档不是算法选择**：换算法是换"怎么算 risk/priority"，
   而这三者改的是"算完之后用不用它"，两者别混为一谈；也没有往注册表里加

@@ -33,7 +33,7 @@ snoozed_until: 2026-10-11T17:10   # 与 status: snoozed 配套（用户意图，
 | `status`         | enum                  | pending / active / snoozed / completed（overdue 是派生，不写）                                             |
 | `snoozed_until`  | ISO8601，可选         | 用户 snooze 意图（属事实，持久化）                                                                     |
 | `completed_at`   | ISO8601，可选         | 完成时刻（与人类文档 `完成 <时刻>` 同步落一份）                                                            |
-| `schema`         | int（规划）           | 迁移版本号，见 ../architecture.md §3.4 防线三                                                                                 |
+| `schema`         | int（规划）           | 迁移版本号，见 [架构文档](../architecture.md) §3.4 防线三                                                                                 |
 
 **长期任务特例**：工作强度 = '长期'（三无任务的创建缺省）时，本文件只剩：
 
@@ -50,7 +50,7 @@ id: task-004
 长期"无关）。与 routine 实例的"0 工时豁免"是两回事：
 routine 到点发生、本来就不用估；长期是长期存在、估不出来。
 
-**自有 metadata 键登记表**（../architecture.md §3.4 防线二：应用自有键在此登记，编码时**跟随任务对象
+**自有 metadata 键登记表**（[架构文档](../architecture.md) §3.4 防线二：应用自有键在此登记，编码时**跟随任务对象
 改写**——值变则行变、键在 `Task.metadata` 里消失则整行删；其余未知键原样往返）。
 实现载体 = `TaskSidecarCodec.registeredMetaKeys`；**漏登记这批键的写回，等于让
 "插队 / 池序 / 跳过今天 / 只到点响一次 / 类型转换"这些持久意图在命令自己的重锚里
