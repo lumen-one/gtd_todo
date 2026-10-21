@@ -114,6 +114,35 @@ void main() {
     expect(find.text('论文冲刺'), findsOneWidget);
   });
 
+  testWidgets('覆盖页进出都是滑动：途中在落点上方，退场滑完才摘子树', (tester) async {
+    final controller = makeController(prefix: [sample()]);
+    await tester.runAsync(() => controller.mainlineService!.load());
+    await pumpPanel(tester, controller);
+
+    await tester.tap(find.text('论文冲刺'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 80));
+    final midTop = tester.getTopLeft(find.text('写第三章')).dy;
+
+    await tester.pumpAndSettle();
+    final restTop = tester.getTopLeft(find.text('写第三章')).dy;
+
+    // 整块从面板顶边上方滑下来：半路上还离落点一段距离
+    expect(midTop, lessThan(restTop - 40));
+
+    // 退场同一条路：点返回后先滑上去，途中覆盖页仍在树上（编辑态与守卫不能提前撤）
+    await tester.tap(find.byIcon(Icons.arrow_back));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 60));
+    expect(find.text('写第三章'), findsOneWidget);
+    expect(tester.getTopLeft(find.text('写第三章')).dy, lessThan(restTop - 40));
+
+    // 滑完才摘：覆盖页整块消失，回到底下的四页
+    await tester.pumpAndSettle();
+    expect(find.text('写第三章'), findsNothing);
+    expect(find.text('论文冲刺'), findsOneWidget);
+  });
+
   testWidgets('覆盖页铅笔进编辑态：可加一步、保存后进度跟着变', (tester) async {    final controller = makeController(prefix: [sample()]);
     await tester.runAsync(() => controller.mainlineService!.load());
     await pumpPanel(tester, controller);

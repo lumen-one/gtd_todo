@@ -57,9 +57,6 @@ class _SidePanelState extends State<SidePanel> {
   static final List<String> _pageNames =
       [for (final page in PanelPage.values) page.label];
 
-  /// 主线覆盖页是否盖在面板上（§6.9）：它盖住**整块面板**，含面板头。
-  /// 开合状态在控制器里（宿主的返回键也要问它，见 `AppController.mainlineOpen`）。
-
   @override
   void initState() {
     super.initState();
@@ -183,16 +180,21 @@ class _SidePanelState extends State<SidePanel> {
               ],
             ),
           ),
-          if (controller.mainlineOpen)
-            Positioned.fill(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(20),
+          // 主线覆盖页：盖住整块面板（含面板头与圆点，§6.9）。开合状态在控制器里
+          // （宿主的返回键也要问它，见 `AppController.mainlineOpen`），进出过渡
+          // 在 [_MainlineReveal] 里。
+          Positioned.fill(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: _MainlineReveal(
+                open: controller.mainlineOpen,
                 child: MainlineOverlay(
                   controller: controller,
                   onClose: controller.closeMainline,
                 ),
               ),
             ),
+          ),
         ],
       ),
     );
@@ -357,6 +359,95 @@ class PanelActions extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// 主线覆盖页的进出过渡（§6.9）：整块从面板顶边上方滑下来，退场原路滑回。
+///
+/// 动画留在面板层：`AppController` 只翻 `mainlineOpen` 这个布尔值，覆盖页自己
+/// 不知道它在滑——两处宿主（应用内壳 / 系统级悬浮窗）与桌面左栏共用同一个
+/// [SidePanel]，所以不必各接一路。
+///
+/// 退场跑完才摘子树：滑动途中覆盖页仍然活着，它的 State 与编辑态都还在
+/// （提前摘掉的话，滑出的那 200ms 里返回键会穿透到面板，守卫与对话框一起消失）。
+class _MainlineReveal extends StatefulWidget {
+  /// 覆盖页该不该在（= `AppController.mainlineOpen`）。
+  final bool open;
+
+  /// 覆盖页本体。
+  final Widget child;
+
+  const _MainlineReveal({required this.open, required this.child});
+
+  @override
+  State<_MainlineReveal> createState() => _MainlineRevealState();
+}
+
+class _MainlineRevealState extends State<_MainlineReveal>
+    with SingleTickerProviderStateMixin {
+  /// 进场比退场慢：推上来要有分量，收回去要利落。
+  static const Duration _enter = Duration(milliseconds: 260);
+  static const Duration _exit = Duration(milliseconds: 200);
+
+  late final AnimationController _ctrl = AnimationController(
+    vsync: this,
+    duration: _enter,
+    reverseDuration: _exit,
+  )..addStatusListener(_onStatus);
+
+  /// 位移按自身高度的比例算：−1 = 整块躲在面板顶边之上，外面由宿主那层
+  /// `ClipRRect` 裁掉，所以面板外面看不见"露出的半截"。
+  ///
+  /// 退场用 `easeInCubic`：它是 `easeOutCubic` 的时间镜像，退回路径就不会
+  /// 先在原地磨蹭、最后一下窜走。
+  late final Animation<Offset> _slide = Tween<Offset>(
+    begin: const Offset(0, -1),
+    end: Offset.zero,
+  ).animate(CurvedAnimation(
+    parent: _ctrl,
+    curve: Curves.easeOutCubic,
+    reverseCurve: Curves.easeInCubic,
+  ));
+
+  @override
+  void initState() {
+    super.initState();
+    // 一开始就是开的（面板重建时覆盖页正开着）：直接落位，不补放一次进场。
+    if (widget.open) _ctrl.value = 1;
+  }
+
+  void _onStatus(AnimationStatus status) {
+    // 停在"退场跑完"这一刻：setState 让 build 摘掉子树，覆盖页随之 dispose。
+    if (status == AnimationStatus.dismissed && !widget.open && mounted) {
+      setState(() {});
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _MainlineReveal oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.open == oldWidget.open) return;
+    if (widget.open) {
+      _ctrl.forward();
+    } else {
+      _ctrl.reverse();
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.open && _ctrl.isDismissed) return const SizedBox.shrink();
+    return AbsorbPointer(
+      // 退场那 200ms 里不再接手势：这一页正在关，点到的不该是它。
+      absorbing: !widget.open,
+      child: SlideTransition(position: _slide, child: widget.child),
     );
   }
 }
