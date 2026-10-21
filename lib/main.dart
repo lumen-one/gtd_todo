@@ -101,9 +101,9 @@ Future<void> main() async {
     onWorkRuleChanged: (rule) => service.updateWorkRule(rule),
     notificationSurface: notifications.shown,
   );
-  // 疑问笔记路径随设置实时生效（对该文件零写入）。
-  controller.notesReader =
-      FileNotesReaderPort(() => controller.settings.notesPath);
+  // 灵感文件路径随设置实时生效（读写同一篇 Markdown 的正文段）。
+  controller.notesPort =
+      FileNotesPort(() => controller.settings.notesPath);
   // 局域网同步（§4.4）：本机名进 UDP 广播与冲突存档文件名。
   controller.attachSync(sync, Platform.localHostname);
   // 系统级贴屏把手（安卓原生；桌面无此能力）。

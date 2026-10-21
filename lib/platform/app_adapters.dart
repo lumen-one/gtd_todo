@@ -81,12 +81,12 @@ class FileBootstrapPort implements BootstrapPort {
   }
 }
 
-/// 疑问笔记只读适配器：路径由设置注入（getter 形式，设置改动即时生效）。
-/// 对该文件**零写入**——只读 + 提取（§6.2）。
-class FileNotesReaderPort implements NotesReaderPort {
+/// 灵感文件适配器：路径由设置注入（getter 形式，设置改动即时生效）。
+/// 读 = 提取正文段；写 = **只替换正文段**（frontmatter 与其他段落不动，§6.2）。
+class FileNotesPort implements NotesPort {
   final String? Function() pathGetter;
 
-  const FileNotesReaderPort(this.pathGetter);
+  const FileNotesPort(this.pathGetter);
 
   @override
   Future<NotesReadResult> read() async {
@@ -98,6 +98,27 @@ class FileNotesReaderPort implements NotesReaderPort {
     if (!f.existsSync()) return const NotesReadResult(NotesStatus.notFound);
     final raw = await f.readAsString();
     return extractNotesSection(raw);
+  }
+
+  /// 读—改—写；内容没变时不落盘（白写一次会让 Obsidian 那边的同步/历史多一条）。
+  @override
+  Future<NotesWriteStatus> write(String body) async {
+    final path = pathGetter();
+    if (path == null || path.trim().isEmpty) {
+      return NotesWriteStatus.notConfigured;
+    }
+    final f = File(path);
+    if (!f.existsSync()) return NotesWriteStatus.notFound;
+    try {
+      final raw = await f.readAsString();
+      final next = applyNotesSection(raw, body);
+      // null = frontmatter 未闭合，正文段边界不可识别 → 不写
+      if (next == null) return NotesWriteStatus.failed;
+      if (next != raw) await f.writeAsString(next, flush: true);
+      return NotesWriteStatus.ok;
+    } catch (_) {
+      return NotesWriteStatus.failed;
+    }
   }
 }
 

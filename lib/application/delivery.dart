@@ -94,7 +94,7 @@ abstract class AlarmPort {
 abstract class FolderPickerPort {
   Future<String?> pickDirectory();
 
-  /// 挑一个文件（疑问笔记路径，ui §6.2 / §9 第 5 条）；取消或平台不支持 → null。
+  /// 挑一个文件（灵感路径，ui §6.2 / §9 第 5 条）；取消或平台不支持 → null。
   /// [allowedExtensions] 为空 = 不限制类型。
   Future<String?> pickFile({
     required String dialogTitle,

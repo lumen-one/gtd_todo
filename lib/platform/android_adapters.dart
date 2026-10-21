@@ -277,7 +277,7 @@ class AndroidFolderPickerPort implements FolderPickerPort {
     }
   }
 
-  /// 疑问笔记文件（ui §6.2）：同样是"所有文件访问"打底——没它 SAF 只给一个
+  /// 灵感文件（ui §6.2）：同样是"所有文件访问"打底——没它 SAF 只给一个
   /// 缓存副本的路径，改天 Obsidian 里更新了笔记，App 读的还是那份旧快照。
   @override
   Future<String?> pickFile({

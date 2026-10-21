@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../app_controller.dart';
 
-/// 疑问笔记路径编辑（设置页「疑问笔记」区）：Obsidian 里那篇笔记（Markdown）；
-/// App 只读，编辑仍回 Obsidian。
+/// 灵感文件路径编辑（设置页「灵感」区）：Obsidian 里那篇 Markdown；
+/// App 就地改它的**正文段**，frontmatter 与其他段落不动（§6.2）。
 Future<void> showSettingsNotesPathDialog(
     BuildContext context, AppController c) async {
   final ctrl = TextEditingController(text: c.settings.notesPath ?? '');
@@ -16,15 +16,15 @@ Future<void> showSettingsNotesPathDialog(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('疑问笔记路径', style: Theme.of(ctx).textTheme.titleSmall),
+            Text('灵感文件路径', style: Theme.of(ctx).textTheme.titleSmall),
             const SizedBox(height: 4),
-            Text('App 只读，编辑仍回 Obsidian',
+            Text('灵感页可就地编辑正文段，frontmatter 不动',
                 style: Theme.of(ctx).textTheme.bodySmall),
             const SizedBox(height: 10),
             TextField(
               controller: ctrl,
               decoration: const InputDecoration(
-                  labelText: '文件路径', hintText: '/storage/…/疑问笔记.md'),
+                  labelText: '文件路径', hintText: '/storage/…/灵感.md'),
             ),
             const SizedBox(height: 10),
             FilledButton.icon(

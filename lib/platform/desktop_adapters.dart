@@ -71,7 +71,7 @@ class GrantedPermissionPort implements PermissionPort {
 
 /// 桌面选择器（ui §6.2 / §9）：**文件可挑，目录仍不挑**——任务目录在桌面走
 /// 环境变量 `GTD_TASKS_DIR` / 引导配置（v1 不做目录选择 UI，沿用原口径）。
-/// 疑问笔记要挑的是 vault 里的某一个 Markdown，手输路径太容易输错，给选择器。
+/// 灵感要挑的是 vault 里的某一个 Markdown，手输路径太容易输错，给选择器。
 class DesktopFolderPickerPort implements FolderPickerPort {
   @override
   Future<String?> pickDirectory() async => null;

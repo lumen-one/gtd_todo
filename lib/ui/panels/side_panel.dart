@@ -209,7 +209,7 @@ class _SidePanelState extends State<SidePanel> {
   ///
   /// PageView 还没挂上时 `page` 是 null——此时按 `initialPage` 算，别按第一页：
   /// 起始页现在可以是任意一页（默认页设置 / 通知定位），报第一页会让标题先写成
-  /// 疑问笔记再被改掉，看着像闪了一下（v1.24 换页序后实测）。
+  /// 灵感再被改掉，看着像闪了一下（v1.24 换页序后实测）。
   int get _currentPage {
     final ctrl = widget.pageCtrl;
     final page = ctrl.hasClients

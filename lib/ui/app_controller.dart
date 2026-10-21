@@ -35,9 +35,9 @@ class AppController extends ChangeNotifier {
   final RoutineService? routineService;
   final String taskDir;
 
-  /// 疑问笔记只读端口（null = 未装配，UI 显示未接入）。
+  /// 灵感端口（读写那篇 Markdown 的正文段；null = 未装配，UI 显示未接入）。
   /// 由装配点在构造后赋值（路径 getter 依赖本实例的设置）。
-  NotesReaderPort? notesReader;
+  NotesPort? notesPort;
 
   /// 设置存取端口（null = 未装配，全部用默认值）。
   final SettingsPort? settingsPort;
@@ -357,9 +357,9 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 疑问笔记（只读；对该文件零写入）。
+  /// 灵感正文（读；状态里带编辑初值与可编辑标记）。
   Future<void> refreshNotes() async {
-    final port = notesReader;
+    final port = notesPort;
     if (port == null) {
       _notes = const NotesReadResult(NotesStatus.notConfigured);
       notifyListeners();
@@ -375,6 +375,17 @@ class AppController extends ChangeNotifier {
       _notesLoading = false;
       notifyListeners();
     }
+  }
+
+  /// 保存灵感正文（§6.2）：只换正文段，frontmatter 与其他段落不动。
+  /// 返回 true = 真落盘；false 时由调用方给提示（UI 只知道"没存上"）。
+  Future<bool> saveNotes(String body) async {
+    final port = notesPort;
+    if (port == null) return false;
+    final status = await port.write(body);
+    // 无论成败都重读：失败时页面也不能停在"看起来存了"的旧内容上。
+    await refreshNotes();
+    return status == NotesWriteStatus.ok;
   }
 
   // ---- 周期任务（决议 5/12/23）----
@@ -463,13 +474,13 @@ class AppController extends ChangeNotifier {
     await bootstrapPort?.save(BootstrapConfig(taskDir: dir));
   }
 
-  /// 疑问笔记文件（§6.2）：系统选择器挑一个 Markdown；取消/平台不支持 → null，
+  /// 灵感文件（§6.2）：系统选择器挑一个 Markdown；取消/平台不支持 → null，
   /// 此时设置页保留手输兜底。
   Future<String?> pickNotesFile() async {
     final port = folderPicker;
     if (port == null) return null;
     return port.pickFile(
-      dialogTitle: '选择疑问笔记（Markdown）',
+      dialogTitle: '选择灵感文件（Markdown）',
       allowedExtensions: const ['md', 'markdown'],
     );
   }

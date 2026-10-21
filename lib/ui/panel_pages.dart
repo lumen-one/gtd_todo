@@ -7,7 +7,7 @@ import '../application/settings.dart';
 /// 表派生——页序再改一次，只动这几行的先后，别去改散落各处的数字（v1.24 就是
 /// 为了这一条把 `第 N 页` 的写法清掉的）。
 enum PanelPage {
-  notes('疑问笔记'),
+  notes('灵感'),
   today('今日清单'),
   pool('任务池'),
   completed('已完成');

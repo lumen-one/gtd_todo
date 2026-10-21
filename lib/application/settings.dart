@@ -70,7 +70,7 @@ int clampHandleHotWidth(Object? raw) {
   return raw.toInt().clamp(minHandleHotWidth, maxHandleHotWidth).toInt();
 }
 
-/// 应用设置（ui-interaction.md §9）：调度模式、提醒时间段、定期挑、疑问笔记路径等。
+/// 应用设置（ui-interaction.md §9）：调度模式、提醒时间段、定期挑、灵感路径等。
 /// application 只定义形状与缺省值；落盘走 [SettingsPort]（组装点装配，
 /// 本期实现 = 任务目录下 settings.json，Obsidian 目录里多一个文件可接受）。
 class AppSettings {
@@ -95,7 +95,7 @@ class AppSettings {
   final bool pickEnabled;
   final int pickIntervalDays;
 
-  /// 疑问笔记文件路径（§6.2）。
+  /// 灵感文件路径（§6.2）。
   final String? notesPath;
 
   /// 首次引导是否已看过（决议 21）。

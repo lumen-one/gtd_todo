@@ -80,7 +80,7 @@ Widget _hotWidthButton(AppController c, AppSettings s, int dp) {
 /// 固定把手位置 / 固定侧边栏大小 / 把手热区宽度 / 重看首次引导）；
 /// 4. 周期任务管理（routines.md）；5. **工作时间（工作日 + 工作窗，slack 的分母）**；
 /// 6. 提醒与排序（**调度模式三档：完整/标准/无排序** + 时间段多段式 + 闹钟模式）；
-/// 7. 定期挑；8. 疑问笔记路径；9. 周期任务在任务池的显示开关；
+/// 7. 定期挑；8. 灵感文件路径；9. 周期任务在任务池的显示开关；
 /// 10. 主题（**明暗三选一：跟随系统/浅色/深黑** + 强调色预设）；
 /// 11. 回收站；12. 同步（§4.4：主机/从机，局域网文件同步）。
 class SettingsPanel extends StatefulWidget {
@@ -146,7 +146,7 @@ class _SettingsPanelState extends State<SettingsPanel> {
 
         _SectionCard('定期挑', _pickSection(s)),
 
-        _SectionCard('疑问笔记', [_notesSection(s)]),
+        _SectionCard('灵感', [_notesSection(s)]),
 
         _SectionCard('主题', _themeSection(s)),
 
@@ -319,7 +319,7 @@ class _SettingsPanelState extends State<SettingsPanel> {
 
   Widget _notesSection(AppSettings s) => ListTile(
         leading: const Icon(Icons.menu_book_outlined),
-        title: const Text('笔记文件路径'),
+        title: const Text('灵感文件路径'),
         subtitle: Text(s.notesPath ?? '未配置'),
         trailing: const Icon(Icons.edit_outlined),
         onTap: () => showSettingsNotesPathDialog(context, _c),

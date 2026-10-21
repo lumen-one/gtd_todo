@@ -85,8 +85,8 @@ Future<_OverlayCore> _assembleOverlayCore() async {
     // 工时日历同理：面板算的"今天该看哪几件"必须和主引擎用同一份分母。
     onWorkRuleChanged: (rule) => service.updateWorkRule(rule),
   );
-  controller.notesReader =
-      FileNotesReaderPort(() => controller.settings.notesPath);
+  controller.notesPort =
+      FileNotesPort(() => controller.settings.notesPath);
   await controller.bootstrap(); // 读设置 + 当天实例 + 定期挑（幂等）
 
   // Obsidian / 主引擎改了文件 → 面板即时刷新；顺带重读设置（主题、笔记路径

@@ -254,17 +254,17 @@ void main() {
     });
   });
 
-  group('疑问笔记提取（决议 1/19）', () {
+  group('灵感正文读写（决议 1/19；v1.29 从只读改为可编辑）', () {
     test('frontmatter 之后到下一个 --- 之间的正文；[[ 行屏蔽', () {
-      const raw = '---\ntitle: 疑问笔记\n---\n'
-          '第一段疑问。\n'
+      const raw = '---\ntitle: 灵感\n---\n'
+          '第一段想法。\n'
           '[[某任务]] 相关行被屏蔽\n'
-          '第二段疑问。\n'
+          '第二段想法。\n'
           '---\n'
-          '后面不是笔记内容\n';
+          '后面不是正文\n';
       final r = extractNotesSection(raw);
       expect(r.status, NotesStatus.ok);
-      expect(r.lines, ['第一段疑问。', '第二段疑问。']);
+      expect(r.lines, ['第一段想法。', '第二段想法。']);
     });
 
     test('无第二个 --- → 取到文件末尾；全被过滤 → empty', () {
@@ -273,6 +273,39 @@ void main() {
 
       const raw2 = '---\n---\n[[全是链接]]\n';
       expect(extractNotesSection(raw2).status, NotesStatus.empty);
+    });
+
+    test('编辑初值带被屏蔽的行——保存一次不能把它们抹掉', () {
+      const raw = '---\nt: 灵感\n---\n第一段\n[[某任务]]\n第二段\n';
+      final r = extractNotesSection(raw);
+      expect(r.bodyLines, ['第一段', '[[某任务]]', '第二段']);
+      expect(r.lines, ['第一段', '第二段']);
+      expect(r.canEdit, isTrue);
+    });
+
+    test('写入只换正文段：frontmatter 与后面的段落逐行原样', () {
+      const raw = '---\ntitle: x\n---\n旧的一行\n---\n后面的段落\n';
+      final next = applyNotesSection(raw, '新的一行\n第二行');
+      expect(next, '---\ntitle: x\n---\n新的一行\n第二行\n\n---\n后面的段落\n');
+      expect(extractNotesSection(next!).lines, ['新的一行', '第二行']);
+    });
+
+    test('CRLF 文件保存后仍是 CRLF；末尾换行状态照旧', () {
+      const raw = '---\r\ntitle: x\r\n---\r\n旧\r\n';
+      expect(applyNotesSection(raw, '新'), '---\r\ntitle: x\r\n---\r\n新\r\n');
+    });
+
+    test('没有 frontmatter 的文件：整篇就是正文段', () {
+      expect(applyNotesSection('想到一件事\n', '想到了两件事\n再一件'),
+          '想到了两件事\n再一件\n');
+    });
+
+    test('frontmatter 未闭合 → 拒写，也不给编辑（边界本身不确定）', () {
+      const raw = '---\ntitle: 坏的\n正文\n';
+      expect(applyNotesSection(raw, '新'), isNull);
+      final r = extractNotesSection(raw);
+      expect(r.status, NotesStatus.empty);
+      expect(r.canEdit, isFalse);
     });
   });
 

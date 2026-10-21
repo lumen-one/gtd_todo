@@ -419,7 +419,7 @@ void main() {
     // 62dp——页名全被截成 "任…"（2026-10-16 真机截图复现）。v1.24 撤掉两颗
     // 图标之后，这里留着的意义是防回归：页名与右侧图标之间的空间只能由
     // Flexible 吃，不能再引入第二个 flex:1 的子元素。
-    const names = ['疑问笔记', '今日清单', '任务池', '已完成'];
+    const names = ['灵感', '今日清单', '任务池', '已完成'];
     for (var i = 0; i < names.length; i++) {
       pageCtrl.jumpToPage(i);
       await tester.pumpAndSettle();

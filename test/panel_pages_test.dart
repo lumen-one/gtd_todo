@@ -6,15 +6,16 @@ import 'package:gtd_todo/ui/panel_pages.dart';
 /// 都从 [PanelPage] 派生，这里钉住"派生关系"本身。
 void main() {
   group('页序表', () {
-    test('页序：疑问笔记 → 今日清单 → 任务池 → 已完成', () {
+    test('页序：灵感 → 今日清单 → 任务池 → 已完成', () {
       expect(PanelPage.values.map((p) => p.label).toList(),
-          ['疑问笔记', '今日清单', '任务池', '已完成']);
+          ['灵感', '今日清单', '任务池', '已完成']);
     });
 
-    test('页 id 与页一一对应，往返不丢', () {
+    test('页 id 与页一一对应，往返不丢（首屏 v1.29 改名但 id 仍是 notes）', () {
       for (final page in PanelPage.values) {
         expect(panelPageFromId(page.name), page);
       }
+      expect(PanelPage.notes.name, 'notes');
     });
 
     test('缺键 / 手改坏了都回落今日清单', () {

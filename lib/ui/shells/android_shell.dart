@@ -16,7 +16,7 @@ import '../widgets/reminder_listener.dart';
 /// - App 主体 = 设置页（"App 主体几乎不开"）；
 /// - 悬浮侧边栏 = 应用内实现的贴屏把手 + 拖出展开（系统级悬浮窗的
 ///   PermissionPort/原生服务在设备阶段接入，交互协议与本文档一致）；
-/// - 四页**左右横滑**（页序见 `ui/panel_pages.dart`）：疑问笔记 / 今日清单 / 任务池 /
+/// - 四页**左右横滑**（页序见 `ui/panel_pages.dart`）：灵感 / 今日清单 / 任务池 /
 ///   已完成；横方向与列表的纵向滚动正交，互不抢手（v0.15；原先的"竖翻 + 面板头重手势"
 ///   已删）；
 /// - 抽屉兜底（§11）：同一套 panels，App 内左侧滑呼出。
@@ -92,7 +92,7 @@ class _AndroidShellState extends State<AndroidShell>
       _openPanel();
       // 只有"点通知定位"才带着目标页；把手拖出 / 原生降级打开都落默认页
       // （§6.0）——曾经无条件跳 `focusPage`，它的 0 号默认值在旧页序里恰好
-      // 是今日清单，页序一换就变成了疑问笔记。
+      // 是今日清单，页序一换就变成了灵感。
       if (c.focusedTaskId != null) _jumpToPage(c.focusPage);
     }
     final notice = c.consumeNotice();
