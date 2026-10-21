@@ -730,9 +730,6 @@ UI 仅经 AppController 访问，守卫规则 2 拦截回归。
 
 ## 附录 B：Markdown 文件格式约定（索引）
 
-正典已按主题拆到 [`formats/`](formats/README.md)——本节只留索引，不复述正文。
+正典见 [`formats/`](formats/README.md)：目录布局与"为什么双文档"、`tasks.md`、
+`.gtd/<id>.md`、配对与软删除、旧格式兼容与 `routines.md`、`主线.md` 六块。
 改格式（字段、行语法、配对规则、迁移路径）先改那个目录，再改代码。
-
-六块：目录布局与"为什么双文档"（`formats/README.md`）、`tasks.md`、`.gtd/<id>.md`、
-配对与软删除、旧格式兼容与 `routines.md`、`主线.md`。目录与索引表在
-[formats/README.md](formats/README.md)，本节不复述。
