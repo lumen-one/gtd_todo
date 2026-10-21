@@ -65,9 +65,16 @@ include(flutter/generated_plugins.cmake)
 set(BUILD_BUNDLE_DIR "$<TARGET_FILE_DIR:${BINARY_NAME}>")
 # Make the "install" step default, as it's required to run.
 set(CMAKE_VS_INCLUDE_INSTALL_TO_DEFAULT_BUILD 1)
-if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
-  set(CMAKE_INSTALL_PREFIX "${BUILD_BUNDLE_DIR}" CACHE PATH "..." FORCE)
-endif()
+# **无条件**把安装前缀钉在 exe 旁边（模板原本只在 INSTALL_PREFIX 还是默认值时改）。
+#
+# 原因（2026-10-21 实撞）：第一次 configure 若在插件那步就失败（例如 nuget 装不上
+# CppWinRT），cache 里已经写下了 CMake 在 Windows 上的默认前缀
+# `C:/Program Files/<app>`；之后再 configure 时 `INITIALIZED_TO_DEFAULT` 就是
+# FALSE，模板那段条件判断从此不再生效。后果是 INSTALL 把 `data/` 与
+# `flutter_windows.dll` 装到 `C:\Program Files\<app>` 去，而 `flutter build windows`
+# 依然打印"√ Built ...\runner\Debug\gtd_todo.exe"——但那个 exe 旁边没有 data/ 与
+# DLL，一启动就 `Failed to start Flutter engine: error 2` 然后退出。
+set(CMAKE_INSTALL_PREFIX "${BUILD_BUNDLE_DIR}" CACHE PATH "..." FORCE)
 
 set(INSTALL_BUNDLE_DATA_DIR "${CMAKE_INSTALL_PREFIX}/data")
 set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}")
