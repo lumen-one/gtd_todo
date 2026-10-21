@@ -513,9 +513,14 @@ class MarkdownTaskRepository implements TaskRepository { /* … */ }
   每天生成当天实例（origin=system），实例不占工时、不进 ScheduleResult 排序
   【现状：domain/routine.dart + repository/{routine_codec,routine_repository,
   markdown_routine_repository}.dart + application/routine_service.dart】；
-- **NotesReaderPort**：疑问笔记**只读**（frontmatter 闭合后到下一个 `---` 的正文段、
-  含 `[[` 的行屏蔽、对该文件零写入）【现状：application/notes_reader.dart
-  定义接口与提取规则，platform/app_adapters.dart 落盘适配器】；
+- **NotesPort**：灵感页（原"疑问笔记"）的**读写**端口。读 = 取 frontmatter 闭合后到
+  下一个 `---` 的正文段（含 `[[` 的行只由显示层屏蔽）；写 = 用新内容替换**同一区间**，
+  **frontmatter 与正文段前后的一切逐行原样保留**，连文件原有的换行风格（CRLF/LF）与
+  "是否以换行结尾"也照旧。写是"读—改—写"，不做锁、不做合并（同时在改以本次为准）；
+  frontmatter 未闭合时正文段的边界本身不确定，直接拒绝写入。
+  【现状：application/notes_reader.dart 定义接口与两个纯函数
+  （`extractNotesSection` 提取 / `applyNotesSection` 只换正文段），
+  platform/app_adapters.dart 落盘适配器】；
 - **今日视图查询 `buildTodayView()` / 任务池查询 `buildPoolView()`**（application 层）：
   聚合 ScheduleResult（可推/逾期）+ 固定时点组 + 例行实例 + 被挑散件 + 散件段
   （仅无排序档）五种来源，UI 只消费查询结果【现状】；
@@ -527,7 +532,7 @@ class MarkdownTaskRepository implements TaskRepository { /* … */ }
   `buildPoolView` 收 `hideLoose`（由装配点按 `scheduleMode.isManual` 传）：
   这一档不返回散件段，只留 `hiddenLooseCount` 给空状态文案；池子其余照旧是整理序
   （`pool_order`），周期条目按发生日期混排在任何一档都一样；
-- **SettingsPort**：应用设置（通知时间段、定期挑、疑问笔记路径、主题预设与
+- **SettingsPort**：应用设置（通知时间段、定期挑、灵感文件路径（设置键仍是 `notes_path`）、主题预设与
   明暗模式、周期任务是否进池等）的存取端口【现状：application/settings.dart +
   platform 落盘实现】；设置文件仍在任务目录 `settings.json`，
   但"任务目录是哪个"改存应用支持目录的 `bootstrap.json`（`BootstrapPort`），
@@ -585,7 +590,7 @@ abstract class AlarmPort {
 abstract class FolderPickerPort {
   Future<String?> pickDirectory();
   Future<String?> pickFile({required String dialogTitle,
-      required List<String> allowedExtensions});  // 疑问笔记路径（ui §6.2）
+      required List<String> allowedExtensions});  // 灵感文件路径（ui §6.2）
 }  // SAF / 桌面选择器
 
 abstract class PermissionPort {
