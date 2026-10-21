@@ -44,8 +44,7 @@ flutter build windows --release
 同一网络内两台设备同步任务数据：一台当**主机**（通常 Windows），其余当**从机**
 接入；双向同步，冲突由主机裁决——从机被覆盖的版本存档到 `.gtd/conflicts/`，
 不丢数据。设置页 → 同步：开主机 / 扫局域网发现 / 手输 IP / 立即同步 / 看上次
-同步时间与冲突提示。同步范围与冲突规则见 [docs/architecture.md](docs/architecture.md)
-§4.4。
+同步时间与冲突提示。同步范围与冲突规则见 [docs/architecture.md](docs/architecture.md) §4.4。
 
 注意：Windows 首次开主机会弹防火墙对话框，需允许**专用网络**入站（HTTP 49872
 + UDP 49871）；路由器若禁了广播，用手输 IP 兜底。
