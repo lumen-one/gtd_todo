@@ -11,6 +11,7 @@
 | B.3 两条文档怎么对上号 · B.4 软删除 | [matching.md](matching.md) |
 | B.5 旧格式兼容与 `routines.md` | [routines.md](routines.md) |
 | B.6 `主线.md` | [mainline.md](mainline.md) |
+| B.7 `编排.md`（今日编排的时间轴） | [plan.md](plan.md) |
 
 
 ## B.0 目录布局
@@ -26,6 +27,7 @@ tasks/                       ← 任务目录（设置里可选，GTD_TASKS_DIR 
 │   └── .trash/              　软删除的内核属性文件（Obsidian 可见可捞）
 ├── routines.md              ← 周期规则（B.5）
 ├── 主线.md                  ← 主线 / 行为链 / 记录（B.6；应用维护整份）
+├── 编排.md                  ← 今日编排的时间轴（B.7；应用维护整份）
 ├── settings.json            ← 应用设置
 └── legacy-tasks/            ← 旧"一任务一文件"的迁移存档（只进不出）
 ```
