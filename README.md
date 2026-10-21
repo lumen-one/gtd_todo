@@ -5,7 +5,7 @@
 排序 = **时间裕度优先**（`risk × importance`）；调度分**完整 / 标准（默认）/ 无排序**三档（完整 = 排+响，标准 = 排+不响，无排序 = 不排+不响）。
 Markdown 数据是**双文档**：人写人看的 `tasks.md`，内核算的 `.gtd/<id>.md`。
 
-> 文档怎么找、改动落哪一份：见 [docs/README.md](docs/README.md)。
+> 文档怎么找、改动落哪一份：见 [docs/AGENTS.md](docs/AGENTS.md)。
 >
 > 结构与接口契约（分层、插座、import 矩阵、架构守卫）见 [docs/architecture.md](docs/architecture.md)；
 > 数据格式（`tasks.md` / `.gtd/` / `主线.md`）见 [docs/formats/](docs/formats/README.md)。
