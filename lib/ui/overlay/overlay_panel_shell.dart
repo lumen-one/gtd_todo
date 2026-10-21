@@ -146,6 +146,9 @@ class _OverlayPanelShellState extends State<OverlayPanelShell>
   }
 
   Future<void> _collapse() async {
+    // 覆盖页开着就先收它（§6.9）；编辑态由 mainlineCloseGuard 拦一道
+    await widget.controller.closeMainline();
+    if (!mounted) return;
     setState(() {
       _expanded = false;
       _quickDrag = false;
@@ -239,6 +242,7 @@ class _OverlayPanelShellState extends State<OverlayPanelShell>
 
   /// 滑回屏外后收起：与点遮罩收起同一条路（原生摘窗口 + 广播状态）。
   Future<void> _collapseFromDrag() async {
+    widget.controller.closeMainline();
     await widget.bridge.collapse();
     if (mounted) setState(() => _dragProgress = null);
   }
@@ -283,7 +287,13 @@ class _OverlayPanelShellState extends State<OverlayPanelShell>
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) _collapse();
+        if (didPop) return;
+        // 主线覆盖页开着：返回键只收它，面板留在原地（§6.9 两步收）
+        if (widget.controller.mainlineOpen) {
+          widget.controller.closeMainline();
+          return;
+        }
+        _collapse();
       },
       child: Scaffold(
         backgroundColor: Colors.transparent,

@@ -2,10 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'application/mainline_service.dart';
 import 'application/routine_service.dart';
 import 'application/task_service.dart';
 import 'domain/time_context.dart';
 import 'platform/app_adapters.dart';
+import 'repository/markdown_mainline_repository.dart';
 import 'repository/markdown_routine_repository.dart';
 import 'repository/markdown_task_repository.dart';
 import 'scheduler/slack_priority_scheduler.dart';
@@ -73,10 +75,18 @@ Future<_OverlayCore> _assembleOverlayCore() async {
   );
   await routines.load();
 
+  // 主线（§6.9）：悬浮面板也能看行为链、圈记录、勾步骤——与主引擎同一份
+  // `主线.md`，各持一个服务实例（写路径仍是"读整份 → 改一条 → 整份写回"）。
+  final mainlines = MainlineService(
+    repo: MarkdownMainlineRepository(resolved.taskDir),
+  );
+  await mainlines.load();
+
   final controller = AppController(
     service: service,
     taskDir: resolved.taskDir,
     routineService: routines,
+    mainlineService: mainlines,
     settingsPort: FileSettingsPort(resolved.taskDir),
     bootstrapPort: resolved.bootstrap,
     // 调度模式也要跟上（面板不装交付插座，但清单的"排什么顺序、会不会响"口径

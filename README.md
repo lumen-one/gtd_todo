@@ -57,8 +57,14 @@ flutter build windows --release
 ```text
 tasks/
 ├── tasks.md          ← 人类文档：所有任务都在这里，# 标题分类，一行一条
+├── 主线.md           ← 主线：行为链 + 日历上的记录（一个文件装全部主线，含已归档的）
 └── .gtd/<任务id>.md   ← 内核属性文档：应用自己写（任务id/工作强度/优先级/时间裕度/剩余工作量；**长期任务只有 id**）
 ```
+
+**主线**（`主线.md`，侧边栏顶栏第二行那一条）：一件正在推进的大事 = 一串**行为链**
+（勾完文字加横线）+ 日历上**手动拖选连续日期圈出来、往里写文字**的记录。行为链上的
+步骤**不是任务**——不进任务池、不占工时、不参与调度；勾完点『完成主线』归档，
+整条留在同一个文件里可只读回看。格式见 [docs/architecture.md](docs/architecture.md) 附录 B.6。
 
 **人类文档**（`tasks.md`）：人写六个属性——任务名、创建日期、结束日期、完成日期、
 备注、标签。**更多的标签 = 更多的属性**：
@@ -153,7 +159,7 @@ nextReminderAt = 沿用上次锚点（任务自身没变时）否则 addWorkMinu
 
 ```text
 lib/
-├── domain/       纯 Dart：Task / Schedule / TimeContext / Reminder / DomainEvent
+├── domain/       纯 Dart：Task / Routine / Mainline / Schedule / TimeContext / Reminder / DomainEvent
 ├── repository/   TaskRepository 接口 + 双文档 Markdown 实现（人类文档 + 内核属性文档）+ Memory 实现
 ├── scheduler/    Scheduler 接口 + SlackPriorityScheduler（默认：时间裕度优先）
 │                 + SlackScheduler（旧口径，留作对照）+ 注册表

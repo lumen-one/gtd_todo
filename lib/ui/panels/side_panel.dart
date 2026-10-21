@@ -10,6 +10,7 @@ import '../panel_pages.dart';
 import '../theme.dart';
 import 'notes_panel.dart';
 import 'completed_panel.dart';
+import 'mainline_panel.dart';
 import 'pool_panel.dart';
 import 'today_panel.dart';
 
@@ -56,6 +57,37 @@ class _SidePanelState extends State<SidePanel> {
   static final List<String> _pageNames =
       [for (final page in PanelPage.values) page.label];
 
+  /// 主线覆盖页是否盖在面板上（§6.9）：它盖住**整块面板**，含面板头。
+  /// 开合状态在控制器里（宿主的返回键也要问它，见 `AppController.mainlineOpen`）。
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_onControllerChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant SidePanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_onControllerChanged);
+      widget.controller.addListener(_onControllerChanged);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_onControllerChanged);
+    super.dispose();
+  }
+
+  /// 面板头第二行的主线名与进度、覆盖页里的勾选都要跟着控制器变。
+  /// 其他页各自监听（notes_panel / task_list_panel 同款），面板头原先不监听。
+  void _onControllerChanged() {
+    if (!mounted) return;
+    setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -66,84 +98,142 @@ class _SidePanelState extends State<SidePanel> {
       color: theme.scaffoldBackgroundColor,
       elevation: 8,
       shadowColor: Colors.black38,
-      child: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            // 面板头：页名 + 翻页点 + 右端『设置』?（v1.24：隐私 / 关闭两颗
-            // 图标撤掉，见 §6.0）。
-            // 翻页 = **左右横滑**（PageView 自己的物理，v0.15）：横方向与列表的
-            // 纵向滚动正交，两边互不抢手，所以不再需要任何"重手势"。
-            // 圆点是页序指示，同时是可点的跳转靶。
-            // 页名与图标按钮一行；页序圆点回到自己独立的一行（v1.20 改回——
-            // 居中那排圆点是面板的"我在第几页"标识，用户觉得它好看，
-            // 省高度不值得）。
-            // 布局：`spaceBetween` 让页名贴左、设置贴右——**不用 Spacer**：
-            // Spacer 也是 flex:1，会和 Flexible 对半劈掉页名那份空间，窄面板
-            // （240dp 下限）上差 1dp 就被省略号截断（2026-10-16 实测，回归用例
-            // 见 overlay_panel_test）。也不能图省事改 Expanded：标题外层的
-            // AnimatedSwitcher 内部是默认居中的 Stack，紧约束下短页名会离左缘
-            // 23dp。
-            Padding(
-              padding: const EdgeInsets.fromLTRB(10, 2, 4, 0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Flexible(
-                    child: AnimatedBuilder(
-                      animation: widget.pageCtrl,
-                      builder: (context, _) => AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 180),
-                        child: Text(
-                          _pageNames[_currentPage],
-                          key: ValueKey(_pageNames[_currentPage]),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.titleMedium,
+      child: Stack(
+        children: [
+          SafeArea(
+            bottom: false,
+            child: Column(
+              children: [
+                // 面板头：页名 + 翻页点 + 右端『设置』?（v1.24：隐私 / 关闭两颗
+                // 图标撤掉，见 §6.0）。
+                // 翻页 = **左右横滑**（PageView 自己的物理，v0.15）：横方向与列表的
+                // 纵向滚动正交，两边互不抢手，所以不再需要任何"重手势"。
+                // 圆点是页序指示，同时是可点的跳转靶。
+                // 页名与图标按钮一行；页序圆点回到自己独立的一行（v1.20 改回——
+                // 居中那排圆点是面板的"我在第几页"标识，用户觉得它好看，
+                // 省高度不值得）。
+                // 布局：`spaceBetween` 让页名贴左、设置贴右——**不用 Spacer**：
+                // Spacer 也是 flex:1，会和 Flexible 对半劈掉页名那份空间，窄面板
+                // （240dp 下限）上差 1dp 就被省略号截断（2026-10-16 实测，回归用例
+                // 见 overlay_panel_test）。也不能图省事改 Expanded：标题外层的
+                // AnimatedSwitcher 内部是默认居中的 Stack，紧约束下短页名会离左缘
+                // 23dp。
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 2, 4, 0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Flexible(
+                        child: AnimatedBuilder(
+                          animation: widget.pageCtrl,
+                          builder: (context, _) => AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 180),
+                            child: Text(
+                              _pageNames[_currentPage],
+                              key: ValueKey(_pageNames[_currentPage]),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.titleMedium,
+                            ),
+                          ),
                         ),
                       ),
+                      if (widget.onOpenSettings != null)
+                        _headButton(Icons.settings_outlined, '设置',
+                            widget.onOpenSettings!),
+                    ],
+                  ),
+                ),
+                // 第二行：当前主线（v1.30，§6.9）。整行可点，没有主线时是新建入口。
+                _mainlineRow(theme, controller),
+                // 页序圆点：独立一行居中，点哪个跳哪页（§6.0）。
+                AnimatedBuilder(
+                  animation: widget.pageCtrl,
+                  builder: (context, _) => SizedBox(
+                    height: 28,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        for (var i = 0; i < PanelPage.values.length; i++)
+                          _pageDot(i, theme),
+                      ],
                     ),
                   ),
-                  if (widget.onOpenSettings != null)
-                    _headButton(Icons.settings_outlined, '设置',
-                        widget.onOpenSettings!),
-                ],
-              ),
+                ),
+                const Divider(height: 8),
+                Expanded(
+                  child: Stack(
+                    children: [
+                      PageView(
+                        controller: widget.pageCtrl,
+                        children: [
+                          for (final page in PanelPage.values)
+                            _pageBody(page, controller),
+                        ],
+                      ),
+                      // 每页都可添加待办与开日历（§6.1）：右下角双钮
+                      PanelActions(
+                        controller: controller,
+                        onOpenCalendar: widget.onOpenCalendar,
+                        heroTagPrefix: widget.heroTagPrefix,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-            // 页序圆点：独立一行居中，点哪个跳哪页（§6.0）。
-            AnimatedBuilder(
-              animation: widget.pageCtrl,
-              builder: (context, _) => SizedBox(
-                height: 28,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    for (var i = 0; i < PanelPage.values.length; i++)
-                      _pageDot(i, theme),
-                  ],
+          ),
+          if (controller.mainlineOpen)
+            Positioned.fill(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: MainlineOverlay(
+                  controller: controller,
+                  onClose: controller.closeMainline,
                 ),
               ),
             ),
-            const Divider(height: 8),
+        ],
+      ),
+    );
+  }
+
+  /// 面板头第二行：主线名 + 进度（§6.9）。未装配主线时整行不占高度。
+  Widget _mainlineRow(ThemeData theme, AppController controller) {
+    if (!controller.hasMainline) return const SizedBox.shrink();
+    final m = controller.activeMainline;
+    final hint = theme.colorScheme.onSurfaceVariant;
+    return InkWell(
+      onTap: controller.openMainline,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(10, 1, 8, 2),
+        child: Row(
+          children: [
+            Icon(
+              Icons.route,
+              size: 14,
+              color: m == null ? hint.withValues(alpha: 0.7) : AppColors.accent,
+            ),
+            const SizedBox(width: 5),
             Expanded(
-              child: Stack(
-                children: [
-                  PageView(
-                    controller: widget.pageCtrl,
-                    children: [
-                      for (final page in PanelPage.values)
-                        _pageBody(page, controller),
-                    ],
-                  ),
-                  // 每页都可添加待办与开日历（§6.1）：右下角双钮
-                  PanelActions(
-                    controller: controller,
-                    onOpenCalendar: widget.onOpenCalendar,
-                    heroTagPrefix: widget.heroTagPrefix,
-                  ),
-                ],
+              child: Text(
+                m?.title ?? '＋ 新建主线',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: m == null ? hint : theme.colorScheme.onSurface,
+                  fontWeight: m == null ? null : FontWeight.w600,
+                ),
               ),
             ),
+            if (m != null)
+              Text(
+                m.isAllDone ? '可归档' : m.progressText,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: AppColors.accent,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
           ],
         ),
       ),

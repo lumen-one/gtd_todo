@@ -134,11 +134,15 @@ class _AndroidShellState extends State<AndroidShell>
     _maybeOnboard();
   }
 
-  void _closePanel() => setState(() {
-        _panelOpen = false;
-        _panelSliding = false;
-        _panelSlide = 0;
-      });
+  void _closePanel() {
+    // 覆盖页开着就先收它（§6.9）：返回键不该一步把面板从主线页里抽走
+    widget.controller.closeMainline();
+    setState(() {
+      _panelOpen = false;
+      _panelSliding = false;
+      _panelSlide = 0;
+    });
+  }
 
   // ---- 尺寸固定后的跟手推出收起（§6.0）----
 
@@ -204,7 +208,13 @@ class _AndroidShellState extends State<AndroidShell>
       child: PopScope(
         canPop: !_panelOpen,
         onPopInvokedWithResult: (didPop, _) {
-          if (!didPop) _closePanel();
+          if (didPop) return;
+          // 主线覆盖页开着：返回键只收它，面板留在原地（§6.9 两步收）
+          if (controller.mainlineOpen) {
+            controller.closeMainline();
+            return;
+          }
+          _closePanel();
         },
         child: Stack(
           clipBehavior: Clip.hardEdge,

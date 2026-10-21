@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show ThemeMode;
 
 import '../application/delivery.dart';
+import '../application/mainline_service.dart';
 import '../application/notification_window.dart';
 import '../application/notes_reader.dart';
 import '../application/routine_service.dart';
@@ -13,6 +14,7 @@ import '../application/sync.dart';
 import '../application/task_service.dart';
 import '../application/today_view.dart';
 import '../domain/event.dart';
+import '../domain/mainline.dart';
 import '../domain/reminder.dart';
 import '../domain/routine.dart';
 import '../domain/schedule.dart';
@@ -33,6 +35,11 @@ String _dayMark(DateTime d) =>
 class AppController extends ChangeNotifier {
   final TaskService service;
   final RoutineService? routineService;
+
+  /// 主线服务（ui-interaction.md §6.9；null = 未装配，顶栏不显示主线那一行）。
+  ///
+  /// 与 [service] 完全并列、互不依赖：行为链步骤不是任务，主线不参与调度。
+  final MainlineService? mainlineService;
   final String taskDir;
 
   /// 灵感端口（读写那篇 Markdown 的正文段；null = 未装配，UI 显示未接入）。
@@ -174,6 +181,35 @@ class AppController extends ChangeNotifier {
   /// 侧边栏打开请求计数器（增量为"请求打开"；把手拖出/点通知都走它）。
   int get panelOpenRequest => _panelOpenRequest;
 
+  /// 主线覆盖页是否打开（§6.9）。
+  ///
+  /// 状态放控制器而不是覆盖页自己的 State 里：两个宿主（安卓壳 / 悬浮窗壳）都
+  /// 挂了 `PopScope` 处理返回键，覆盖页再挂一个的话，返回键会**同时**触发两个
+  /// 回调（同一条路由上的 PopScope 全部收到通知），面板会跟着一起收起。
+  /// 所以统一由宿主问一句"主线开着吗"来裁决。
+  bool _mainlineOpen = false;
+
+  bool get mainlineOpen => _mainlineOpen;
+
+  void openMainline() {
+    if (_mainlineOpen) return;
+    _mainlineOpen = true;
+    notifyListeners();
+  }
+
+  /// 覆盖页注入的"能不能直接关"（编辑态要先问一句再说）。返回 false = 先别关。
+  Future<bool> Function()? mainlineCloseGuard;
+
+  /// 关掉覆盖页。宿主（返回键 / 收起面板）与覆盖页自己的『返回』都走这里，
+  /// 编辑态由 [mainlineCloseGuard] 决定留不留。
+  Future<void> closeMainline() async {
+    if (!_mainlineOpen) return;
+    final guard = mainlineCloseGuard;
+    if (guard != null && !await guard()) return;
+    _mainlineOpen = false;
+    notifyListeners();
+  }
+
   /// 定位到设置页某条周期规则（决议 23：实例菜单的『编辑规则』）。
   String? get settingsFocusRoutineId => _settingsFocusRoutineId;
 
@@ -184,6 +220,7 @@ class AppController extends ChangeNotifier {
     required this.service,
     required this.taskDir,
     this.routineService,
+    this.mainlineService,
     this.settingsPort,
     this.bootstrapPort,
     this.permissions,
@@ -214,6 +251,11 @@ class AppController extends ChangeNotifier {
     await _loadSettings();
     await syncRoutineInstances();
     await maybePickForToday();
+    try {
+      await mainlineService?.load();
+    } catch (_) {
+      // 主线读失败不阻塞启动：顶栏显示『＋ 新建主线』，下次 refresh 再试
+    }
   }
 
   /// 回到前台：SAF 无文件监听时靠它回流（附录 B），同时补当天的实例，
@@ -386,6 +428,89 @@ class AppController extends ChangeNotifier {
     // 无论成败都重读：失败时页面也不能停在"看起来存了"的旧内容上。
     await refreshNotes();
     return status == NotesWriteStatus.ok;
+  }
+
+  // ---- 主线（ui-interaction.md §6.9）----
+
+  /// 主线是否接入（未装配的宿主 / 老测试为 false：顶栏不渲染第二行）。
+  bool get hasMainline => mainlineService != null;
+
+  List<Mainline> get mainlines => mainlineService?.mainlines ?? const [];
+
+  /// 当前在跑的那一条（顶栏第二行显示的就是它）；没有 → null。
+  Mainline? get activeMainline => mainlineService?.active;
+
+  Mainline? mainlineById(String id) => mainlineService?.byId(id);
+
+  List<Mainline> get archivedMainlines => mainlineService?.archived ?? const [];
+
+  /// 新建主线（创建后自动成为"当前主线"）。
+  Future<Mainline?> createMainline(
+    String title, {
+    List<String> steps = const [],
+  }) async {
+    final svc = mainlineService;
+    if (svc == null) return null;
+    final created = await svc.create(title: title, steps: steps);
+    notifyListeners();
+    return created;
+  }
+
+  Future<void> renameMainline(String id, String title) =>
+      _mainlineCommand((svc) => svc.rename(id, title));
+
+  /// 编辑态一次保存整条行为链（改名 + 顺序 + 步骤文字一起写）。
+  Future<void> setMainlineSteps(String id, List<MainlineStep> steps) =>
+      _mainlineCommand((svc) => svc.setSteps(id, steps));
+
+  Future<void> toggleMainlineStep(String id, int index, {required bool done}) =>
+      _mainlineCommand((svc) => svc.toggleStep(id, index, done: done));
+
+  Future<void> updateMainlineStep(
+    String id,
+    int index, {
+    String? title,
+    String? note,
+  }) =>
+      _mainlineCommand(
+          (svc) => svc.updateStep(id, index, title: title, note: note));
+
+  Future<void> addMainlineStep(String id, String title) =>
+      _mainlineCommand((svc) => svc.addStep(id, title));
+
+  /// 记录（日历上的圈）：拖选一段连续日期后写文字。
+  Future<void> addMainlineLog(
+    String id, {
+    required DateTime start,
+    required DateTime end,
+    String text = '',
+  }) =>
+      _mainlineCommand((svc) =>
+          svc.addLog(id, start: start, end: end, text: text));
+
+  Future<void> updateMainlineLog(
+    String id,
+    int index, {
+    DateTime? start,
+    DateTime? end,
+    String? text,
+  }) =>
+      _mainlineCommand((svc) =>
+          svc.updateLog(id, index, start: start, end: end, text: text));
+
+  Future<void> removeMainlineLog(String id, int index) =>
+      _mainlineCommand((svc) => svc.removeLog(id, index));
+
+  /// 归档（行为链必须全勾完；没勾完会抛 StateError，由 UI 提示）。
+  Future<void> completeMainline(String id) =>
+      _mainlineCommand((svc) => svc.complete(id));
+
+  Future<void> _mainlineCommand(
+      Future<void> Function(MainlineService svc) op) async {
+    final svc = mainlineService;
+    if (svc == null) return;
+    await op(svc);
+    notifyListeners();
   }
 
   // ---- 周期任务（决议 5/12/23）----
@@ -610,7 +735,16 @@ class AppController extends ChangeNotifier {
 
   // ---- 命令（转发；UI 刷新由领域事件驱动）----
 
-  Future<void> refresh() => service.refreshSchedule();
+  Future<void> refresh() async {
+    // 主线也在这条通路上重读：文件监听只知道"目录里有 .md 变了"，
+    // 主引擎与悬浮引擎都靠它把 `主线.md` 的改动捞回来。
+    try {
+      await mainlineService?.load();
+    } catch (_) {
+      // 读失败保留上次内存态（顶栏宁可不更新，也别闪成空）
+    }
+    await service.refreshSchedule();
+  }
 
   Future<void> complete(String id) => service.completeTask(id);
 

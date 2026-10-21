@@ -64,6 +64,7 @@ void main() {
               isSiblingRelative ||
               imp.endsWith('repository/task_repository.dart') ||
               imp.endsWith('repository/routine_repository.dart') ||
+              imp.endsWith('repository/mainline_repository.dart') ||
               imp.endsWith('scheduler/scheduler.dart');
           if (!allowed) violations.add(where);
         }
