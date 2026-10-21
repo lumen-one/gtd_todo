@@ -13,7 +13,7 @@ import '../widgets/task_tile.dart';
 /// 今日清单页（ui-interaction.md §6.1；页序见 `ui/panel_pages.dart`）。
 /// 分组连续编号：⓿ 挂起进行（无编号、最顶，决议 47）→ ① 逾期（无编号）→
 /// ② 固定时点 → ③ 可推（插队件栈式压顶 + 调度序）→ ④ 例行（未落地恒空）→
-/// ⑤ 被挑散件（无编号、弱化）。
+/// ⑤ 被挑散件（无编号、弱化）→ ⑥ 散件段（v1.27，仅无排序档、页底）。
 /// 编号跨 ②③④ 连续；插队拖拽仅对可推组生效，挂起组拖拽仅组内调序（决议 47）。
 class TodayPanel extends StatelessWidget {
   final AppController controller;
@@ -181,6 +181,41 @@ class TodayPanel extends StatelessWidget {
                 kind: TaskMenuKind.picked),
           ),
         ],
+        // ⑥ 散件段（v1.27，仅无排序档）：池子里的三无散件整段铺在本页最底，
+        // 不编号、弱化；拖动只改整理序（`pool_order`），与 ③ 的手动序是两套序号。
+        if (view.loose.isNotEmpty) ...[
+          const _GroupHeader('散件', color: Colors.blueGrey),
+          ReorderableListView(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            buildDefaultDragHandles: false,
+            onReorderItem: (oldIndex, newIndex) =>
+                _onLooseReorder(view.loose, oldIndex, newIndex),
+            children: [
+              for (var i = 0; i < view.loose.length; i++)
+                TaskTile(
+                  key: ValueKey('today-loose-${view.loose[i].id}'),
+                  controller: controller,
+                  task: view.loose[i],
+                  dimmed: true,
+                  highlight: view.loose[i].id == controller.focusedTaskId,
+                  onTap: () => showTaskDetailSheet(context, controller,
+                      view.loose[i],
+                      kind: TaskMenuKind.pool),
+                  onLongPress: () => showTaskMenu(context, controller,
+                      view.loose[i],
+                      kind: TaskMenuKind.pool),
+                  trailing: ReorderableDragStartListener(
+                    index: i,
+                    child: Icon(Icons.drag_handle,
+                        size: 18,
+                        color: theme.colorScheme.onSurfaceVariant
+                            .withValues(alpha: 0.6)),
+                  ),
+                ),
+            ],
+          ),
+        ],
       ],
     );
   }
@@ -232,8 +267,23 @@ class TodayPanel extends StatelessWidget {
     await controller.setPinnedStack([for (final t in stack) t.id]);
   }
 
+  /// ⑥ 散件段拖拽落位（v1.27）：只改整理序（`pool_order`），与 ③ 的手动序无关。
+  /// 被挑中的那件不在这一段里，序号原样留着——明天回池子还在原处。
+  ///
+  /// 走 `onReorderItem`：[newIndex] 已按"移除旧位"调整过，直接就是落点。
+  Future<void> _onLooseReorder(
+      List<Task> loose, int oldIndex, int newIndex) async {
+    final ids = [for (final t in loose) t.id]
+      ..removeAt(oldIndex)
+      ..insert(newIndex, loose[oldIndex].id);
+    await controller.setPoolOrders(ids);
+  }
+
   Future<void> _pickRandom(BuildContext context) async {
-    final loose = controller.poolView.loose;
+    // 无排序档散件段在今日页（池子那边不返回散件），随机挑也从这里取。
+    final loose = controller.isManualSort
+        ? controller.todayView.loose
+        : controller.poolView.loose;
     if (loose.isEmpty) {
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('池子里没有散件可挑')));

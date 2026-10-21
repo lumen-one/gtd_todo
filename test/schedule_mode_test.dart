@@ -10,9 +10,10 @@ import 'package:gtd_todo/scheduler/slack_priority_scheduler.dart';
 
 /// 调度模式三档（v1.12 决议 43 / D17）：完整 → 标准 → 无排序，**逐级弱化**。
 ///
-/// 无排序 = 标准的再弱化版——只把"算法排先后"这一层去掉，**今日清单的成员不变**
-/// （仍按"提醒锚点落在今天 / 今天到期"准入）。内核完全不知道排序模式：
-/// `Scheduler.schedule` 只收 reminderMode，手动序是业务层的查询口径。
+/// 无排序 = 标准的再弱化版——把"算法排先后"这一层去掉，**有截止的任务一件不多**
+/// （仍按"提醒锚点落在今天 / 今天到期"准入）；v1.27 起另把散件段铺到今日页底（⑥）。
+/// 内核完全不知道排序模式：`Scheduler.schedule` 只收 reminderMode，
+/// 手动序与散件段的去留都是业务层的查询口径。
 void main() {
   const rule = WorkTimeRule.standard;
   const scheduler = SlackPriorityScheduler();
@@ -179,6 +180,91 @@ void main() {
       }
       expect(quiet.nextTaskId, full.nextTaskId,
           reason: '"下一站是谁"由门槛与数学定，与列表顺序无关');
+    });
+  });
+
+  group('⑥ 散件段（v1.27）：无排序档把散件铺到今日页底', () {
+    test('标准/完整档：散件不进今日（仍归任务池散件段）', () {
+      for (final mode in [ScheduleMode.standard, ScheduleMode.full]) {
+        final view = buildTodayView(
+          tasks: [task(id: 'loose', deadline: null)],
+          schedule: null,
+          now: now,
+          scheduleMode: mode,
+        );
+        expect(view.loose, isEmpty, reason: '$mode 档一行不变');
+        expect(view.isEmpty, isTrue);
+      }
+    });
+
+    test('无排序档：散件进 ⑥，按整理序（pool_order → 创建时间）', () {
+      final view = buildTodayView(
+        tasks: [
+          task(id: 'newest', deadline: null,
+              created: DateTime(2026, 10, 7, 15, 30)),
+          task(id: 'ordered-1', deadline: null,
+              created: DateTime(2026, 10, 7, 15, 20),
+              metadata: const {'pool_order': '1'}),
+          task(id: 'ordered-0', deadline: null,
+              created: DateTime(2026, 10, 7, 15, 10),
+              metadata: const {'pool_order': '0'}),
+          task(id: 'older', deadline: null,
+              created: DateTime(2026, 10, 7, 14, 0),
+              metadata: const {'manual_order': '0'}),
+        ],
+        schedule: null,
+        now: now,
+        scheduleMode: ScheduleMode.manual,
+      );
+      expect(
+          view.loose.map((t) => t.id).toList(),
+          ['ordered-0', 'ordered-1', 'older', 'newest'],
+          reason: '整理过的在前；manual_order 是 ③ 的序号，对 ⑥ 无效');
+    });
+
+    test('被挑中的那件在 ⑤、不在 ⑥；挂起中的件两段都不占', () {
+      final view = buildTodayView(
+        tasks: [
+          task(id: 'picked-for-today', deadline: null,
+              metadata: const {'picked_for_today': '2026-10-07'}),
+          task(id: 'hanging', deadline: null,
+              metadata: const {'in_progress': '2026-10-06T09:00:00.000'}),
+          task(id: 'plain', deadline: null),
+        ],
+        schedule: null,
+        now: now,
+        scheduleMode: ScheduleMode.manual,
+      );
+      expect(view.picked?.id, 'picked-for-today');
+      expect(view.loose.map((t) => t.id).toList(), ['plain'],
+          reason: '被挑的那件上移到 ⑤，挂起件只在 ⓿');
+      expect(view.inProgress.map((t) => t.id).toList(), ['hanging']);
+    });
+  });
+
+  group('任务池：散件段在无排序档搬去今日页（v1.27）', () {
+    test('hideLoose 时散件不返回，只留计数给空状态文案', () {
+      final all = [
+        task(id: 'loose-1', deadline: null),
+        task(id: 'loose-2', deadline: null),
+      ];
+      final shown = buildPoolView(tasks: all, now: now);
+      expect(shown.loose.map((t) => t.id).toList(), ['loose-1', 'loose-2']);
+
+      final hidden = buildPoolView(tasks: all, now: now, hideLoose: true);
+      expect(hidden.loose, isEmpty);
+      expect(hidden.hiddenLooseCount, 2);
+      expect(hidden.isEmpty, isTrue);
+    });
+
+    test('计划段照旧：搬走的只有散件段', () {
+      final all = [
+        task(id: 'loose', deadline: null),
+        task(id: 'plan', deadline: DateTime(2026, 10, 9, 18, 0)),
+      ];
+      final view = buildPoolView(tasks: all, now: now, hideLoose: true);
+      expect(view.plan.map((t) => t.id).toList(), ['plan']);
+      expect(view.hiddenLooseCount, 1);
     });
   });
 

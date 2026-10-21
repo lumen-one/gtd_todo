@@ -3,13 +3,14 @@ import '../domain/schedule.dart';
 import '../domain/task.dart';
 
 /// 今日清单聚合查询（D12 / ui-interaction.md §6.1）：
-/// 六种来源——挂起组（决议 47）+ ScheduleResult（可推/逾期）+ 固定时点组 +
-/// 例行实例 + 被挑散件。这是查询不是渲染：UI 只消费结果，不含分组逻辑（守住"UI 不含逻辑"）。
+/// 七种来源——挂起组（决议 47）+ ScheduleResult（可推/逾期）+ 固定时点组 +
+/// 例行实例 + 被挑散件 + 散件段（v1.27，仅无排序档）。这是查询不是渲染：UI 只消费
+/// 结果，不含分组逻辑（守住"UI 不含逻辑"）。
 ///
 /// 分组构成（决议 11/12/25/47）：
 /// ⓿ 挂起进行（最顶、无编号、可拖；决议 47）→ ① 逾期（无编号置顶）→
 /// ② 固定时点（时间升序）→ ③ 可推（插队件栈式压顶 + 调度序）→
-/// ④ 例行（周期实例，决议 12）→ ⑤ 被挑散件（尾部）。
+/// ④ 例行（周期实例，决议 12）→ ⑤ 被挑散件 → ⑥ 散件段（v1.27，仅无排序档，页底）。
 /// 编号跨 ②③④ 连续，由 UI 按 fixed→pinned→flex→routines 顺序生成。
 /// 挂起组与调度模式无关（三档都在最顶）：它是持久意图，不是算法排序。
 class TodayView {
@@ -38,6 +39,12 @@ class TodayView {
   /// ⑤ 被挑散件（不编号、弱化呈现，决议 25）。
   final Task? picked;
 
+  /// ⑥ 散件段（v1.27，**仅无排序档**）：池子里的全部三无散件，附在 ⑤ 之后、本页最底。
+  /// 不编号、弱化呈现；拖动只改整理序（`pool_order`），与 ③ 的手动序互不相干。
+  /// 被挑中的那件在 [picked]（⑤），这里不含它——同一件事只有一个显示位置；
+  /// 其余两档恒为空（它们在任务池散件段）。
+  final List<Task> loose;
+
   const TodayView({
     required this.day,
     this.inProgress = const [],
@@ -47,6 +54,7 @@ class TodayView {
     this.flex = const [],
     this.routines = const [],
     this.picked,
+    this.loose = const [],
   });
 
   bool get isEmpty =>
@@ -56,7 +64,8 @@ class TodayView {
       pinned.isEmpty &&
       flex.isEmpty &&
       routines.isEmpty &&
-      picked == null;
+      picked == null &&
+      loose.isEmpty;
 
   /// 今日清单上要编号的条目数（固定时点组 + 可推组 + 插队件；见 §1 名词表）。
   /// **不含提醒门槛**（v1.9）："会不会真的响"要看 `ScheduleResult` 里各任务的
@@ -106,10 +115,15 @@ class PoolView {
   /// （决议 14 + 决议 27；周期条目是否显示由设置 `routineShowInPool` 决定）。
   final List<PoolRow> rows;
 
+  /// 无排序档被搬去今日页底部的散件数（v1.27）：[loose] 在这档为空，
+  /// 这个数只用来区分"池子真空"与"散件都在今日清单底部"。
+  final int hiddenLooseCount;
+
   const PoolView({
     required this.plan,
     required this.loose,
     this.rows = const [],
+    this.hiddenLooseCount = 0,
   });
 
   bool get isEmpty => plan.isEmpty && loose.isEmpty;
@@ -122,12 +136,24 @@ String dayMark(DateTime d) =>
 bool _sameDay(DateTime a, DateTime b) =>
     a.year == b.year && a.month == b.month && a.day == b.day;
 
+/// 整理序（`pool_order` → 创建时间）：任务池散件段与今日页 ⑥ 散件段共用。
+/// 与 ③ 的手动序（`manual_order`）是两套序号，互不参与。
+int compareLooseOrder(Task a, Task b) {
+  final oa = a.poolOrder;
+  final ob = b.poolOrder;
+  if (oa != null && ob != null) return oa.compareTo(ob);
+  if (oa != null) return -1; // 整理过的排前面
+  if (ob != null) return 1;
+  return a.created.compareTo(b.created);
+}
+
 /// 聚合今日清单。[schedule] 为当前调度结果（可推组排序 + "提醒锚点"口径来源）。
 ///
-/// [scheduleMode] 只改**一件**事（v1.12 决议 43 / D17）：可推组的**顺序**——
-/// 标准/完整是"插队件压顶 + 调度序"，无排序是手动序（`manual_order`）。
-/// 可推组的**成员不变**（仍按"锚点落在今天 / 今天到期"准入），
-/// 挂起组置顶、逾期置顶、固定时点按时刻、例行按发生时刻、被挑散件在最后——
+/// [scheduleMode] 只改**两件**事（v1.12 决议 43 / D17 + v1.27）：
+/// ① 可推组的**顺序**——标准/完整是"插队件压顶 + 调度序"，无排序是手动序
+/// （`manual_order`）；② 页底 ⑥ 散件段只在无排序档出现（任务池那边同步隐藏）。
+/// 其余成员不变（仍按"锚点落在今天 / 今天到期"准入），
+/// 挂起组置顶、逾期置顶、固定时点按时刻、例行按发生时刻、被挑散件在倒数第二——
 /// 三档全部一致（挂起组是持久意图，决议 47）。
 TodayView buildTodayView({
   required List<Task> tasks,
@@ -153,6 +179,7 @@ TodayView buildTodayView({
   final flexCandidates = <Task>[];
   final routines = <Task>[];
   final inProgress = <Task>[];
+  final loose = <Task>[];
 
   for (final t in tasks) {
     if (t.isCompleted) continue;
@@ -185,14 +212,20 @@ TodayView buildTodayView({
           overdue.add(t);
           continue;
         }
+        // 无截止散件（v1.27）：**只在无排序档**进页底 ⑥；标准/完整档归任务池
+        // 散件段（或被挑）。这是三档之间唯一的成员差异，其余成员仍按锚点准入。
+        if (deadline == null) {
+          if (scheduleMode.isManual) loose.add(t);
+          continue;
+        }
         // "提醒锚点落在今天"或今天到期（§6.1）；snoozed 到期前不出现，
-        // 到期后下一次重锚自然回来。无截止散件不进今日（进池子/被挑）。
+        // 到期后下一次重锚自然回来。
         // v1.9：锚点是调度计算，**不受提醒模式影响**——标准/完整两种模式下
         // 这一页的构成与顺序完全一样，差别只在会不会真的弹通知（D15）。
         final metric = schedule?.metricOf(t.id);
         final reminderToday = metric?.nextReminderAt != null &&
             _sameDay(metric!.nextReminderAt!, now);
-        final dueToday = deadline != null && _sameDay(deadline, now);
+        final dueToday = _sameDay(deadline, now);
         // 准入**不受排序模式影响**（决议 43 修正）：无排序只是"今天这几件不排序"，
         // 不是"把所有任务都塞进今天"——成员与自动模式完全一致，只有顺序不同。
         if (reminderToday || dueToday) flexCandidates.add(t);
@@ -235,6 +268,8 @@ TodayView buildTodayView({
   // 插队标记（pinned）仍然留在任务上——切回标准/完整时它照旧生效。
   // **挂起组与排序模式无关**（决议 47）：三档下它都在最顶、都按挂起时刻降序。
   if (scheduleMode.isManual) {
+    // ⑥ 散件段（v1.27）：整理序，与池子散件段同一个比较器。
+    loose.sort(compareLooseOrder);
     return TodayView(
       day: now,
       inProgress: List.unmodifiable(inProgress),
@@ -243,6 +278,7 @@ TodayView buildTodayView({
       flex: List.unmodifiable(flexCandidates..sort(compareManualOrder)),
       routines: List.unmodifiable(routines),
       picked: pickedTask,
+      loose: List.unmodifiable(loose),
     );
   }
 
@@ -260,11 +296,16 @@ TodayView buildTodayView({
 
 /// 聚合任务池。[routineOccurrences] = 周期规则的未来发生（决议 27；
 /// [routineShowInPool] = false 时按设置不显示）。
+///
+/// [hideLoose]（v1.27）：无排序档下散件段已整段铺在今日页底部（[TodayView.loose]），
+/// 池子不再显示——返回的 [PoolView.loose] 为空，只留 [PoolView.hiddenLooseCount]
+/// 给空状态文案。同一件任务在无排序档只有一个显示位置。
 PoolView buildPoolView({
   required List<Task> tasks,
   required DateTime now,
   List<RoutineOccurrence> routineOccurrences = const [],
   bool routineShowInPool = true,
+  bool hideLoose = false,
 }) {
   final plan = <Task>[];
   final loose = <Task>[];
@@ -306,7 +347,7 @@ PoolView buildPoolView({
   }
 
   plan.sort(cmp);
-  loose.sort(cmp);
+  loose.sort(compareLooseOrder);
 
   // 计划段显示行：手工整理过的任务在前；其余任务与周期条目按日期混排
   // （决议 27：周期任务按下一次发生日期升序插入对应位置）。
@@ -341,8 +382,9 @@ PoolView buildPoolView({
 
   return PoolView(
     plan: List.unmodifiable(plan),
-    loose: List.unmodifiable(loose),
+    loose: hideLoose ? const [] : List.unmodifiable(loose),
     rows: List.unmodifiable(rows),
+    hiddenLooseCount: hideLoose ? loose.length : 0,
   );
 }
 

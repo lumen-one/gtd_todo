@@ -314,6 +314,8 @@ class AppController extends ChangeNotifier {
         now: DateTime.now(),
         routineOccurrences: upcomingOccurrences(),
         routineShowInPool: _settings.routineShowInPool,
+        // v1.27：无排序档散件段整段铺在今日页底部，池子不再重复显示。
+        hideLoose: _settings.scheduleMode.isManual,
       );
 
   /// 已完成归档（ui 文档 §6.7 已完成页）：今天/昨天/更早三组。

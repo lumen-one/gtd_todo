@@ -27,15 +27,18 @@ class PoolPanel extends StatelessWidget {
     final theme = Theme.of(context);
 
     if (view.isEmpty) {
+      // 无排序档散件段搬去了今日页底部（v1.27）：池子空了不代表没东西，
+      // 文案要说清它们在哪。
+      final looseMoved = view.hiddenLooseCount > 0;
       return Center(
         child: FadeIn(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.water_drop_outlined,
+              Icon(looseMoved ? Icons.today_outlined : Icons.water_drop_outlined,
                   size: 44, color: theme.colorScheme.onSurfaceVariant),
               const SizedBox(height: 8),
-              const Text('池干水清'),
+              Text(looseMoved ? '散件都在今日清单底部' : '池干水清'),
             ],
           ),
         ),
