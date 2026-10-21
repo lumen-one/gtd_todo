@@ -15,6 +15,7 @@
 | 6.8 快记（拖出头第二档） | [quick-note.md](quick-note.md) |
 | 6.9 主线覆盖页 | [mainline.md](mainline.md) |
 | 6.10 桌面（Windows）布局 | [desktop.md](desktop.md) |
+| 过渡时长（面板内每处动画的毫秒数） | 本页 |
 
 ## 跨页共用：页序、默认页、面板头
 
@@ -44,6 +45,25 @@
     关面板靠点遮罩、系统返回键，以及尺寸固定后那条收起把手——三条路都不需要一颗常驻
     图标，而窄面板上每少一颗图标，页名就多留一截；
 - 进应用的唯一入口：面板头『设置』与实例菜单『编辑规则』。
+
+## 过渡时长一览
+
+面板里的动画参数散在各处，这张表是唯一能一眼看全的地方——改了哪个数，
+回来改表中那一行。
+
+| 过渡 | 时长 | 曲线 | 代码位置 |
+|---|---|---|---|
+| 面板滑入 / 滑出（应用内壳，遮罩同步） | 240ms | easeOutCubic | `android_shell.dart` |
+| 跟手松手后补满 / 滑回（两个宿主同一档） | 60–220ms（`60 + 140 × 剩余行程`） | easeOutCubic | `android_shell.dart`、`overlay_panel_shell.dart` |
+| 跳页（点页序圆点 / 通知定位） | 260ms | easeOutCubic | `side_panel.dart`、`android_shell.dart` |
+| 页名切换 | 180ms | 线性淡入淡出 | `side_panel.dart` |
+| 页序圆点换色 | 220ms | easeOutCubic | `side_panel.dart` |
+| 主线覆盖页进 / 退 | 260 / 200ms | easeOutCubic / easeInCubic | `side_panel.dart` |
+| 主线覆盖页内翻页（`1/2`、记录页下半区右滑） | 240ms | easeOutCubic | `mainline_panel.dart` |
+| 快记从方块展开成输入框 | 360ms（前 60% 走位、后 40% 展开） | 两段 easeOutCubic | `side_panel.dart` |
+
+表里只有主线覆盖页进出不对称：进比退慢，因为进场要看清东西从哪儿来，
+退场只是让位。
 
 <a id="privacy-off"></a>
 
