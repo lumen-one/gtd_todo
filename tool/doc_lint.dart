@@ -236,6 +236,61 @@ class DocLint {
       rel.endsWith('docs/AGENTS.md') || rel.contains('docs/references/');
 }
 
+// -------------------------------------------------------------- 从磁盘加载
+
+/// 仓库根 = 从 [from]（默认当前工作目录）往上找 `pubspec.yaml` + `docs/`，
+/// 最多五层；找不到就退回起点。
+///
+/// 判据是"有个 docs 目录的项目根"，不是平台或路径约定——这样从子目录里
+/// 跑测试或脚本也能定位。
+String findRepoRoot([String? from]) {
+  final start = normalizePath(from ?? Directory.current.path);
+  var dir = start;
+  for (var i = 0; i < 5; i++) {
+    if (File('$dir/pubspec.yaml').existsSync() &&
+        Directory('$dir/docs').existsSync()) {
+      return dir;
+    }
+    final parent = Directory(dir).parent.path;
+    if (normalizePath(parent) == dir) break;
+    dir = normalizePath(parent);
+  }
+  return start;
+}
+
+/// 检查范围：根 `README.md` + `docs/**/*.md`，按字典序。
+///
+/// `docs/references/` 也在内（它的死链照查），但不参与状态词检查——
+/// 那是外部参考，不该按本项目的写作规矩要求。
+List<String> collectMarkdown(String root) {
+  final out = <String>[];
+  final rootReadme = File('$root/README.md');
+  if (rootReadme.existsSync()) out.add(normalizePath(rootReadme.path));
+
+  final docs = Directory('$root/docs');
+  if (!docs.existsSync()) return out;
+  for (final e in docs.listSync(recursive: true)) {
+    if (e is File && e.path.toLowerCase().endsWith('.md')) {
+      out.add(normalizePath(e.path));
+    }
+  }
+  out.sort();
+  return out;
+}
+
+/// 读盘并把整个仓库的文档注入检查器。
+///
+/// 命令行（`check_docs.dart`）和文档守卫测试（`test/docs_test.dart`）都用
+/// 这一份——收集规则只能有一处，否则 CLI 绿而测试红这种怪事迟早出现。
+DocLint loadRepoDocs([String? root]) {
+  final r = root == null ? findRepoRoot() : normalizePath(root);
+  final lint = DocLint(root: r);
+  for (final file in collectMarkdown(r)) {
+    lint.add(relativePath(r, file), File(file).readAsStringSync());
+  }
+  return lint;
+}
+
 // -------------------------------------------------------------------- 文本处理
 
 /// 去掉围栏代码块，**保留行号**（删掉的内容用空行占位）。

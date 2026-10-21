@@ -64,10 +64,13 @@
 5. **什么时候写决策卡片**：见 [`decisions/README.md`](decisions/README.md)。
    一句话判据——这个取舍半年后可能被重新提出来。
 
-6. **改完跑一遍检查**：`dart run tool/check_docs.dart`。它查三件事——死链、
-   章节引用指不到东西、正文里出现"这次改成 / 已实现 / 【规划】"。红了就先修再提交；
-   加 `--strict` 时警告也算失败（CI 用）。
+6. **文档坏了 `flutter test` 会红**。`test/docs_test.dart` 扫全部文档，查三件事：
+   死链、章节引用指不到东西、正文里出现"这次改成 / 已实现 / 【规划】"。
+   不用记命令——跑测试就顺带查了。
 
-   改检查规则本身（`tool/doc_lint.dart`）时，另外跑
-   `flutter test test/doc_lint_test.dart`——门禁自己也得被测，否则它只是"看起来
-   在检查"。写新规则时先写反例（断言它会红），不然没法证明它不是永远绿。
+   想只看文档（比全量测试快）：`dart run tool/check_docs.dart`，加 `--strict`
+   时警告也算失败。
+
+   改检查规则本身（`tool/doc_lint.dart`）时跑 `test/doc_lint_test.dart`——门禁
+   自己也得被测，否则它只是"看起来在检查"。写新规则时先写反例（断言它会红），
+   不然没法证明它不是永远绿。
