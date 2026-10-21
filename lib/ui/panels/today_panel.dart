@@ -26,22 +26,30 @@ class TodayPanel extends StatelessWidget {
     final theme = Theme.of(context);
 
     if (view.isEmpty) {
-      return Center(
-        child: FadeIn(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.wb_sunny_outlined,
-                  size: 44, color: theme.colorScheme.onSurfaceVariant),
-              const SizedBox(height: 8),
-              const Text('今天没有会响的事'),
-              const SizedBox(height: 12),
-              FilledButton.tonal(
-                onPressed: () => _pickRandom(context),
-                child: const Text('从池子随机挑一件'),
+      // 空态也要能下拉进编排（§6.11）：所以是一张可滚的列表，不是居中一块——
+      // "今天清单空着"恰恰是最想编排的时候。
+      return _withPlanPull(
+        ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.only(top: 110),
+          children: [
+            FadeIn(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.wb_sunny_outlined,
+                      size: 44, color: theme.colorScheme.onSurfaceVariant),
+                  const SizedBox(height: 8),
+                  const Text('今天没有会响的事'),
+                  const SizedBox(height: 12),
+                  FilledButton.tonal(
+                    onPressed: () => _pickRandom(context),
+                    child: const Text('从池子随机挑一件'),
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       );
     }
@@ -49,7 +57,9 @@ class TodayPanel extends StatelessWidget {
     var number = 0;
     final combined = [...view.pinned, ...view.flex];
 
-    return ListView(
+    final list = ListView(
+      // 内容不满一屏时也要能拖（否则短清单没有 overscroll，编排进不去）。
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(0, 6, 0, 96),
       children: [
         Padding(
@@ -217,6 +227,29 @@ class TodayPanel extends StatelessWidget {
           ),
         ],
       ],
+    );
+    return _withPlanPull(list);
+  }
+
+  /// 今日页是编排的入口（§6.11）：**已经滚到顶**还继续往下拉，就把行程喂给控制器。
+  ///
+  /// 只认手指拖（`dragDetails != null`）：鼠标滚轮与触控板"滚到头继续滚"是常态，
+  /// 认了就是天天误触。`depth != 0` 的是内层 ReorderableListView 的通知，跳过。
+  Widget _withPlanPull(Widget child) {
+    return NotificationListener<ScrollNotification>(
+      onNotification: (n) {
+        if (n.depth != 0) return false;
+        if (n is OverscrollNotification && n.dragDetails != null) {
+          // 顶部继续下拉时 overscroll 是负的（像素已经不能再减）。
+          controller.pullPlan(-n.overscroll);
+        } else if (n is ScrollEndNotification) {
+          // 向下甩（dy > 0）才算"补满"，与把手的快甩同档（§6.0）。
+          controller
+              .settlePlan(n.dragDetails?.velocity.pixelsPerSecond.dy ?? 0);
+        }
+        return false;
+      },
+      child: child,
     );
   }
 

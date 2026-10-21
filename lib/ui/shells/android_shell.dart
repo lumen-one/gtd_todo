@@ -136,8 +136,9 @@ class _AndroidShellState extends State<AndroidShell>
   }
 
   void _closePanel() {
-    // 覆盖页开着就先收它（§6.9）：返回键不该一步把面板从主线页里抽走
+    // 覆盖页开着就先收它（§6.9 / §6.11）：返回键不该一步把面板从覆盖页里抽走
     widget.controller.closeMainline();
+    widget.controller.closePlan();
     setState(() {
       _panelOpen = false;
       _panelSliding = false;
@@ -210,7 +211,11 @@ class _AndroidShellState extends State<AndroidShell>
         canPop: !_panelOpen,
         onPopInvokedWithResult: (didPop, _) {
           if (didPop) return;
-          // 主线覆盖页开着：返回键只收它，面板留在原地（§6.9 两步收）
+          // 覆盖页开着：返回键只收它，面板留在原地（§6.9 / §6.11 两步收）
+          if (controller.planOpen) {
+            controller.closePlan();
+            return;
+          }
           if (controller.mainlineOpen) {
             controller.closeMainline();
             return;

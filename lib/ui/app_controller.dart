@@ -8,6 +8,7 @@ import '../application/delivery.dart';
 import '../application/mainline_service.dart';
 import '../application/notification_window.dart';
 import '../application/notes_reader.dart';
+import '../application/plan_service.dart';
 import '../application/routine_service.dart';
 import '../application/settings.dart';
 import '../application/shell_capabilities.dart';
@@ -16,6 +17,7 @@ import '../application/task_service.dart';
 import '../application/today_view.dart';
 import '../domain/event.dart';
 import '../domain/mainline.dart';
+import '../domain/plan.dart';
 import '../domain/reminder.dart';
 import '../domain/routine.dart';
 import '../domain/schedule.dart';
@@ -41,6 +43,12 @@ class AppController extends ChangeNotifier {
   ///
   /// 与 [service] 完全并列、互不依赖：行为链步骤不是任务，主线不参与调度。
   final MainlineService? mainlineService;
+
+  /// 编排服务（ui-interaction.md §6.11；null = 未装配，下拉不进）。
+  ///
+  /// 同样与 [service] 并列：编排条目不是任务，不参与调度、不响提醒。
+  final PlanService? planService;
+
   final String taskDir;
 
   /// 灵感端口（读写那篇 Markdown 的正文段；null = 未装配，UI 显示未接入）。
@@ -217,6 +225,69 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ---- 今日编排（§6.11）----
+
+  /// 编排覆盖页开着吗。与 [mainlineOpen] 同一套理由：状态在控制器，宿主的返回键
+  /// 与覆盖页自己都问这一句（同一条路由上两个 `PopScope` 会各收一次）。
+  bool _planOpen = false;
+
+  bool get planOpen => _planOpen;
+
+  /// 下拉跟手的行程（逻辑像素，0 = 完全藏起来）。**单独一个 notifier**：拖动时
+  /// 每帧都在变，走 [notifyListeners] 会把整棵面板（含可能很长的清单）一起重建。
+  final ValueNotifier<double> planPull = ValueNotifier<double>(0);
+
+  /// 手指还按着（false = 已松手，覆盖页该补满或弹回）。
+  final ValueNotifier<bool> planDragging = ValueNotifier<bool>(false);
+
+  /// 拉到多少算数（与把手的阈值同一个数字，§6.0）。
+  static const double planPullThreshold = 72;
+
+  /// 今日页在顶部继续下拉时喂进来的行程（只加正的）。
+  void pullPlan(double px) {
+    if (_planOpen || px <= 0) return;
+    planDragging.value = true;
+    planPull.value = (planPull.value + px).clamp(0.0, 4000.0);
+  }
+
+  /// 松手：拉过阈值、或向下快甩（dy > 500 px/s，与把手同档）就补满，否则弹回。
+  void settlePlan(double velocityY) {
+    // 普通滚动结束也会走到这里（每次 ScrollEndNotification）：没在拉就直接走开。
+    if (!planDragging.value && planPull.value == 0) return;
+    final enough = planPull.value >= planPullThreshold || velocityY > 500;
+    planDragging.value = false;
+    if (enough) {
+      openPlan();
+    } else {
+      planPull.value = 0;
+    }
+  }
+
+  void openPlan() {
+    if (_planOpen) {
+      planPull.value = 0;
+      planDragging.value = false;
+      return;
+    }
+    // 先立旗再松手：`_PlanReveal` 在"松手"的那一刻决定往哪边补。
+    _planOpen = true;
+    planPull.value = 0;
+    planDragging.value = false;
+    notifyListeners();
+  }
+
+  void closePlan() {
+    if (!_planOpen) {
+      planPull.value = 0;
+      planDragging.value = false;
+      return;
+    }
+    _planOpen = false;
+    planPull.value = 0;
+    planDragging.value = false;
+    notifyListeners();
+  }
+
   /// 定位到设置页某条周期规则（决议 23：实例菜单的『编辑规则』）。
   String? get settingsFocusRoutineId => _settingsFocusRoutineId;
 
@@ -228,6 +299,7 @@ class AppController extends ChangeNotifier {
     required this.taskDir,
     this.routineService,
     this.mainlineService,
+    this.planService,
     this.settingsPort,
     this.bootstrapPort,
     this.permissions,
@@ -263,6 +335,11 @@ class AppController extends ChangeNotifier {
       await mainlineService?.load();
     } catch (_) {
       // 主线读失败不阻塞启动：顶栏显示『＋ 新建主线』，下次 refresh 再试
+    }
+    try {
+      await planService?.load();
+    } catch (_) {
+      // 编排读失败不阻塞启动：今日页照样能下拉，只是时间轴先空着
     }
   }
 
@@ -331,6 +408,8 @@ class AppController extends ChangeNotifier {
     _sub?.cancel();
     _routineSub?.cancel();
     _notifSub?.cancel();
+    planPull.dispose();
+    planDragging.dispose();
     super.dispose();
   }
 
@@ -516,6 +595,34 @@ class AppController extends ChangeNotifier {
   Future<void> _mainlineCommand(
       Future<void> Function(MainlineService svc) op) async {
     final svc = mainlineService;
+    if (svc == null) return;
+    await op(svc);
+    notifyListeners();
+  }
+
+  // ---- 今日编排（§6.11）----
+
+  bool get hasPlan => planService != null;
+
+  /// 某一天的编排条目（行序就是顺序）；未装配 → 空表。
+  List<PlanEntry> planEntriesFor(DateTime day) =>
+      planService?.entriesFor(day) ?? const [];
+
+  Future<void> addPlanEntry(DateTime day, PlanEntry entry) =>
+      _planCommand((svc) => svc.addEntry(day, entry));
+
+  Future<void> updatePlanEntry(DateTime day, int index, PlanEntry next) =>
+      _planCommand((svc) => svc.updateEntry(day, index, next));
+
+  Future<void> removePlanEntry(DateTime day, int index) =>
+      _planCommand((svc) => svc.removeEntry(day, index));
+
+  /// 整日重写（拖动改顺序）。
+  Future<void> setPlanEntries(DateTime day, List<PlanEntry> entries) =>
+      _planCommand((svc) => svc.setEntries(day, entries));
+
+  Future<void> _planCommand(Future<void> Function(PlanService svc) op) async {
+    final svc = planService;
     if (svc == null) return;
     await op(svc);
     notifyListeners();
@@ -750,6 +857,12 @@ class AppController extends ChangeNotifier {
       await mainlineService?.load();
     } catch (_) {
       // 读失败保留上次内存态（顶栏宁可不更新，也别闪成空）
+    }
+    // 编排同理（`编排.md` 与 `主线.md` 是同一类：整份由应用维护）。
+    try {
+      await planService?.load();
+    } catch (_) {
+      // 读失败保留上次内存态
     }
     await service.refreshSchedule();
   }

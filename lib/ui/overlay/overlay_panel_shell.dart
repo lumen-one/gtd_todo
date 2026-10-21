@@ -146,8 +146,9 @@ class _OverlayPanelShellState extends State<OverlayPanelShell>
   }
 
   Future<void> _collapse() async {
-    // 覆盖页开着就先收它（§6.9）；编辑态由 mainlineCloseGuard 拦一道
+    // 覆盖页开着就先收它（§6.9 / §6.11）；编辑态由 mainlineCloseGuard 拦一道
     await widget.controller.closeMainline();
+    widget.controller.closePlan();
     if (!mounted) return;
     setState(() {
       _expanded = false;
@@ -288,7 +289,11 @@ class _OverlayPanelShellState extends State<OverlayPanelShell>
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
-        // 主线覆盖页开着：返回键只收它，面板留在原地（§6.9 两步收）
+        // 覆盖页开着：返回键只收它，面板留在原地（§6.9 / §6.11 两步收）
+        if (widget.controller.planOpen) {
+          widget.controller.closePlan();
+          return;
+        }
         if (widget.controller.mainlineOpen) {
           widget.controller.closeMainline();
           return;

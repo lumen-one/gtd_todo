@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show ValueListenable;
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 
 import '../../application/settings.dart';
@@ -11,6 +13,7 @@ import '../theme.dart';
 import 'notes_panel.dart';
 import 'completed_panel.dart';
 import 'mainline_panel.dart';
+import 'plan_panel.dart';
 import 'pool_panel.dart';
 import 'today_panel.dart';
 
@@ -195,6 +198,23 @@ class _SidePanelState extends State<SidePanel> {
               ),
             ),
           ),
+          // 今日编排覆盖页（§6.11）：今日页滚到顶再下拉，整块从面板顶边滑下来。
+          // 开合与跟手行程都在控制器里（`planOpen` / `planPull` / `planDragging`），
+          // 但行程走单独的 notifier——拖动时每帧都在变，不该重建整棵面板。
+          Positioned.fill(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: _PlanReveal(
+                open: controller.planOpen,
+                pull: controller.planPull,
+                dragging: controller.planDragging,
+                child: PlanOverlay(
+                  controller: controller,
+                  onClose: controller.closePlan,
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -243,9 +263,17 @@ class _SidePanelState extends State<SidePanel> {
   }
 
   /// 页 → 页面本体：页序由 [PanelPage] 决定，这里只做"哪一页放哪个面板"。
+  ///
+  /// 今日页单独放开鼠标拖拽（§6.11）：桌面没有触屏，编排的入口得靠"按住鼠标
+  /// 拖到顶再往下拖"复现同一条手势；只包这一页，别的列表不受影响。
   Widget _pageBody(PanelPage page, AppController controller) => switch (page) {
         PanelPage.notes => NotesPanel(controller: controller),
-        PanelPage.today => TodayPanel(controller: controller),
+        PanelPage.today => ScrollConfiguration(
+            behavior: ScrollConfiguration.of(context).copyWith(
+              dragDevices: PointerDeviceKind.values.toSet(),
+            ),
+            child: TodayPanel(controller: controller),
+          ),
         PanelPage.pool => PoolPanel(controller: controller),
         PanelPage.completed => CompletedPanel(controller: controller),
       };
@@ -452,6 +480,137 @@ class _MainlineRevealState extends State<_MainlineReveal>
   }
 }
 
+/// 今日编排覆盖页的进出过渡（§6.11）：**跟手**，不是定长动画。
+///
+/// 与 [_MainlineReveal] 的差别只在驱动源：主线是"点一下 → 播 260ms"，
+/// 编排是"手指往下拉多少，它就露多少"，松手才补满或弹回。跟手行程由今日页
+/// 从 `OverscrollNotification` 里喂给控制器（逻辑像素），这里除以自己的高度换成
+/// 0–1；不足一指的高度差看不出来。
+class _PlanReveal extends StatefulWidget {
+  /// 覆盖页该不该在（= `AppController.planOpen`）。
+  final bool open;
+
+  /// 跟手行程（逻辑像素；0 = 完全藏起来）。
+  final ValueListenable<double> pull;
+
+  /// 手指还按着（false = 松手，该补满或弹回）。
+  final ValueListenable<bool> dragging;
+
+  final Widget child;
+
+  const _PlanReveal({
+    required this.open,
+    required this.pull,
+    required this.dragging,
+    required this.child,
+  });
+
+  @override
+  State<_PlanReveal> createState() => _PlanRevealState();
+}
+
+class _PlanRevealState extends State<_PlanReveal>
+    with SingleTickerProviderStateMixin {
+  /// 松手后的补满 / 弹回（与主线的退场同一档）。
+  static const Duration _settle = Duration(milliseconds: 200);
+
+  /// 在 initState 里建：写成 `late final … = AnimationController(...)` 的话，藏起来
+  /// 的时候没人碰过它，第一次碰恰好是 dispose —— 那时元素已经 deactivate，
+  /// `vsync: this` 查 TickerMode 会炸。
+  late final AnimationController _ctrl;
+
+  /// 覆盖页高度：跟手行程是像素，得换成 SlideTransition 要的比例。
+  double _height = 0;
+
+  /// 子树挂没挂上：藏干净之后摘掉，免得面板里同时躺着两块覆盖页
+  /// （返回按钮、`返回` 提示都会重一份，无障碍与测试都会撞上）。
+  bool _visible = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(vsync: this, duration: _settle)
+      ..addStatusListener(_onStatus);
+    // 一开始就是开的（面板重建时覆盖页正开着）：直接落位，不补放一次进场。
+    if (widget.open) {
+      _ctrl.value = 1;
+      _visible = true;
+    }
+    widget.pull.addListener(_onPull);
+    widget.dragging.addListener(_onDragging);
+  }
+
+  void _onStatus(AnimationStatus status) {
+    if (status == AnimationStatus.dismissed && !widget.open && mounted) {
+      setState(() => _visible = false);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _PlanReveal oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.pull != widget.pull) {
+      oldWidget.pull.removeListener(_onPull);
+      widget.pull.addListener(_onPull);
+    }
+    if (oldWidget.dragging != widget.dragging) {
+      oldWidget.dragging.removeListener(_onDragging);
+      widget.dragging.addListener(_onDragging);
+    }
+    if (widget.open != oldWidget.open) {
+      if (widget.open && !_visible) setState(() => _visible = true);
+      _ctrl.animateTo(widget.open ? 1 : 0,
+          duration: _settle, curve: Curves.easeOutCubic);
+    }
+  }
+
+  /// 跟手：手指拉多少就露多少（比例直接由行程算，不再插值）。
+  void _onPull() {
+    if (!mounted || widget.open || !widget.dragging.value || _height <= 0) return;
+    _ctrl.stop();
+    if (!_visible) setState(() => _visible = true);
+    _ctrl.value = (widget.pull.value / _height).clamp(0.0, 1.0);
+  }
+
+  /// 松手：控制器已经决定开还是不开（[AppController.settlePlan]），这里只补动画。
+  void _onDragging() {
+    if (!mounted || widget.dragging.value) return;
+    _ctrl.animateTo(widget.open ? 1 : 0,
+        duration: _settle, curve: Curves.easeOutCubic);
+  }
+
+  @override
+  void dispose() {
+    widget.pull.removeListener(_onPull);
+    widget.dragging.removeListener(_onDragging);
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_visible) return const SizedBox.shrink();
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        _height = constraints.maxHeight;
+        return IgnorePointer(
+          // 还没开（含拖到一半）：这一页不接手势，底下的列表照常滚。
+          // **只能是 IgnorePointer**：AbsorbPointer 在"忽略"时仍会吃掉命中
+          // 测试，整块面板就点不动了。
+          ignoring: !widget.open,
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0, -1),
+              end: Offset.zero,
+            ).animate(_ctrl),
+            child: widget.child,
+          ),
+        );
+      },
+    );
+  }
+}
+
 /// 拖出头快记（§6.8）：方块从松手处滑到屏幕正中，再展开成一条输入框。
 ///
 /// 只在系统级悬浮面板里用（宿主 `OverlayPanelShell`）。**没有遮罩**——底下的 App
@@ -630,7 +789,9 @@ class _QuickNoteLayerState extends State<QuickNoteLayer>
   }
 }
 
-/// 首次拖出引导（决议 21）：一次性四步气泡——展开 / 翻页 / 添加 / 快记。
+/// 首次拖出引导（决议 21）：一次性五步气泡——展开 / 翻页 / 添加 / 快记 / 编排。
+///
+/// 今日编排没有常驻入口行（§6.11），这条引导是它唯一的"这里有东西"的线索。
 class PanelOnboardDialog extends StatelessWidget {
   const PanelOnboardDialog({super.key});
 
@@ -642,9 +803,10 @@ class PanelOnboardDialog extends StatelessWidget {
       (Icons.swap_horiz, '横滑翻页', '疑问 / 今日 / 池子 / 已完成，左右横拖切换'),
       (Icons.add_circle_outline, '右下角两个钮', '「+」新建任务，「日历」看月历'),
       (Icons.edit_note, '拖到顶再拐个弯', '不开面板，直接记一条（悬浮把手上）'),
+      (Icons.timeline, '今日页滚到顶再往下拉', '翻出今日编排：今天几点做什么，一条时间轴'),
     ];
     return AlertDialog(
-      title: const Text('四步上手'),
+      title: const Text('五步上手'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [

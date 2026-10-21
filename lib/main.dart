@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'application/event_log.dart';
 import 'application/mainline_service.dart';
 import 'application/notification_window.dart';
+import 'application/plan_service.dart';
 import 'application/reminder_dispatcher.dart';
 import 'application/routine_service.dart';
 import 'application/shell_capabilities.dart';
@@ -16,6 +17,7 @@ import 'platform/desktop_adapters.dart';
 import 'platform/lan_sync.dart';
 import 'repository/markdown_routine_repository.dart';
 import 'repository/markdown_mainline_repository.dart';
+import 'repository/markdown_plan_repository.dart';
 import 'repository/markdown_task_repository.dart';
 import 'scheduler/scheduler_registry.dart';
 import 'scheduler/slack_priority_scheduler.dart';
@@ -83,6 +85,11 @@ Future<void> main() async {
   );
   await mainlineService.load();
 
+  // 今日编排（§6.11）：第四份数据（`编排.md`），与任务、周期、主线都不相交。
+  // 读失败不阻塞启动（时间轴先空着，回前台再读一次）。
+  final planService = PlanService(repo: MarkdownPlanRepository(taskDir));
+  await planService.load();
+
   // 交付层（§4.2/§4.3）：安卓走自建原生适配器；桌面用前台适配器
   // （Timer 闹钟 + 应用内弹窗回流）。
   final bridge = isAndroid ? AndroidNativeBridge() : null;
@@ -102,6 +109,7 @@ Future<void> main() async {
     taskDir: taskDir,
     routineService: routineService,
     mainlineService: mainlineService,
+    planService: planService,
     settingsPort: FileSettingsPort(taskDir),
     bootstrapPort: bootstrap,
     permissions: permissions,

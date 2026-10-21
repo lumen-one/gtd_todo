@@ -25,7 +25,7 @@ class LanSyncAdapter implements SyncPort {
   static const Duration _ioTimeout = Duration(seconds: 5);
 
   /// 同步范围内的根级文件。
-  static const List<String> _rootFiles = ['tasks.md', 'routines.md', '主线.md'];
+  static const List<String> _rootFiles = ['tasks.md', 'routines.md', '主线.md', '编排.md'];
 
   /// 内核属性目录名（与 MarkdownTaskRepository 对齐；只同步顶层 `<id>.md`）。
   static const String _kernelDir = '.gtd';
