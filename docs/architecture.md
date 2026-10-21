@@ -85,10 +85,10 @@
 │  校验规则 → 变更状态 → 发领域事件 → 重锚调度                     │
 └─────────┬──────────────────────────────────────────────────────┘
 ┌─────────┴──────────── Domain（宪法，纯 Dart）──────────────────┐
-│  词汇表：Task · Routine · ScheduleResult · WorkTimeRule ·      │
-│          Clock · DomainEvent                                  │
+│  词汇表：Task · Routine · Mainline · ScheduleResult ·           │
+│           WorkTimeRule · Clock · DomainEvent                    │
 │  计算类插座：TaskRepository · TaskCodec · RoutineRepository ·   │
-│              RoutineCodec · Scheduler                          │
+│              RoutineCodec · MainlineRepository · Scheduler      │
 └────┬──────────────┬──────────────┬────────────────────────────┘
      ↑实现           ↑实现           ↑实现
   Markdown/       Slack 算法     （未来 SQLite/EDF/…）
@@ -145,6 +145,9 @@
 | `Task`                        | 任务事实：id、title、**created（= 人类文档的「创建」，由人类文档持有）**、**deadline（可空：fixed=时点 / flex=截止 / null=散件）**、**estimatedWork（可表达'长期'：三无缺省，标记而非分钟数；长期任务同时没有 remainingWork 与 importance）**、remainingWork、importance、status、snoozedUntil、description、**tags**、**completedAt**、**remindEnabled（metadata `remind`，标准模式下的逐任务提醒开关）**、metadata；**不可变 + copyWith（由编译器强制写路径唯一）**；类型 TaskType 走 metadata 缓冲带 | 现状          |
 | `TaskType`                    | flex（可推）/ fixed（不可推）/ **routine（周期实例）**——三者的调度与完成语义不同                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | 现状          |
 | `Routine`                     | 周期规则：频率（每天/每周 X）、时点、响不响、启用开关；**不是任务**（住在 `routines.md`），每天生成一个当天实例（TaskType.routine）                                                                                                                                                                                                                                                                                                                                                                                                                       | 现状          |
+| `Mainline` | 主线：当前在推进的一件大事（同时只有一条在跑）。行为链（`MainlineStep`）是它自己的步骤、**不是任务**；记录（`MainlineLog`）是一段连续日期 + 文字。住在 `tasks/主线.md`（附录 B.6） | 现状 |
+| `MainlineStep` | 行为链的一步：标题、完成时刻（`doneAt`，null = 未完成）、写在这一步上的备注（手写 log 挂在这里） | 现状 |
+| `MainlineLog` | 记录（日历上的"圈"）：起始日 + 结束日（含）+ 文字；可跨周、可与别的圈重叠 | 现状 |
 | `RoutineOccurrence`           | 一次具体发生（规则 + 时刻）：任务池计划段插入与日历打点用                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | 现状          |
 | `TaskDocument` / `TaskLine`   | 人类文档 `tasks.md` 的解析结果：整篇行数组 + 识别出的任务行（行号/小节/行指纹/人类那半边字段）                                                                                                                                                                                                                                                                                                                                                                                                                                                            | 现状          |
 | `TaskStatus`                  | pending / active / snoozed / completed / **overdue（派生，不写入存储）**；只增不改                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | 现状          |
@@ -513,6 +516,11 @@ class MarkdownTaskRepository implements TaskRepository { /* … */ }
   每天生成当天实例（origin=system），实例不占工时、不进 ScheduleResult 排序
   【现状：domain/routine.dart + repository/{routine_codec,routine_repository,
   markdown_routine_repository}.dart + application/routine_service.dart】；
+- **MainlineRepository / MainlineCodec**：主线（行为链 + 记录）存独立 `主线.md`，
+  **一个文件装全部主线**（在跑的 + 已归档）。与任务、周期两套完全不相交——步骤不是 Task，
+  不进调度、不占工时；归档 = `completed` 字段有值，只改状态不删数据。
+  【现状：domain/mainline.dart + repository/{mainline_codec,mainline_repository,
+  markdown_mainline_repository}.dart + application/mainline_service.dart】；
 - **NotesPort**：灵感页（原"疑问笔记"）的**读写**端口。读 = 取 frontmatter 闭合后到
   下一个 `---` 的正文段（含 `[[` 的行只由显示层屏蔽）；写 = 用新内容替换**同一区间**，
   **frontmatter 与正文段前后的一切逐行原样保留**，连文件原有的换行风格（CRLF/LF）与
@@ -709,7 +717,7 @@ abstract class SyncPort {
 双向同步，冲突由主机裁决。主机 = HTTP 服务（manifest / file / push 三个端点）
 + UDP 广播报站；从机 = 探询发现 → 连主机 → 双向搬文件；发现失败时支持手输 IP 兜底。
 
-**同步范围 = 核心任务数据**：`tasks.md`、`routines.md`、`.gtd/<任务id>.md`。
+**同步范围 = 核心任务数据**：`tasks.md`、`routines.md`、`主线.md`、`.gtd/<任务id>.md`。
 **不同步**：`.gtd/log.md`（append-only，双写必乱序）、`.gtd/.trash/`（回收站是
 本地操作缓冲，不跨设备）、`.gtd/conflicts/`（冲突存档，本地人工收拾）、
 `settings.json`（设备相关：面板宽高 / 把手位置 / 主题档位）、`legacy-tasks/`（存档）。
@@ -984,6 +992,7 @@ tasks/                       ← 任务目录（设置里可选，GTD_TASKS_DIR 
 │   │                        　内核属性扫描与文件监听都跳过它）
 │   └── .trash/              　软删除的内核属性文件（Obsidian 可见可捞）
 ├── routines.md              ← 周期规则（B-2，形状不变）
+├── 主线.md                  ← 主线 / 行为链 / 记录（B.6；应用维护整份）
 ├── settings.json            ← 应用设置
 └── legacy-tasks/            ← 旧"一任务一文件"的迁移存档（只进不出）
 ```
@@ -1214,3 +1223,42 @@ created: 2026-10-07T09:00
 | `enabled`          | bool         | 启用开关                                  |
 | `created`          | ISO8601      | 创建时间                                  |
 | `schema`           | int（规划）  | 迁移版本号，见 §3.4 防线三                |
+
+---
+
+### B.6 `主线.md`（主线 / 行为链 / 记录）
+
+**一个文件装全部主线**（在跑的 + 已归档的）。与双文档那一套不同：**应用维护整份文件**，
+Obsidian 里可读可改，读进来的改动生效，但下一次保存会按模型重写正文（局限见本节末）。
+
+```markdown
+---
+id: ml-20261021-4f2a
+title: 论文冲刺
+created: 2026-10-18T09:00
+---
+
+### 行为链
+
+- [ ] 列提纲
+- [x] 写第三章 完成 2026-10-19,21:30 备注：卡了两小时，后来用番茄钟推过去
+- [ ] 通读一遍
+
+### 记录
+
+- 2026-10-19 ~ 2026-10-21 连续三天都在写第三章，比预期快
+- 2026-10-20 单天一条就只写一个日期
+```
+
+- 一条主线 = 一个 frontmatter 块：`id`（时间戳 + 随机尾巴）/ `title` / `created` /
+  `completed`（有值 = 已归档，值为归档时刻）。未知字段行**原样保留**（与 B-2 同档）；
+- 正文两段：`### 行为链` 与 `### 记录`（写成 `##` 也认）。**行为链**一条一行复选框，
+  与 `tasks.md` 同族：`- [ ] 标题` / `- [x] 标题 完成 <日期,时间> 备注：文字`；
+  **记录**一条一行：`- <起始日> ~ <结束日> 文字`（单日只写一个日期，`~` 两侧有空格）；
+- **复选标记才是完成判据**，`完成` 是可选时刻（缺 = 勾了但没时刻，自动流水按当天零点算）；
+  自动流水（"几点勾了哪一步"）就是从这一列推出来的，不另存一份；
+- 记录的文字可含除换行外的任意字符；圈可以重叠；
+- 排序：在跑的在前，已归档的按完成时刻从新到旧；归档不删任何数据；
+- **已知局限**（登记在此，不另做）：正文由应用重写，人在这两段里加的自由文字（不属于
+  步骤/记录的行）下次保存会消失；标题里出现 ` 完成 ` 或 ` 备注：` 会被当成字段锚点
+  （与 `tasks.md` 同一类边界）；两个引擎同时改同一份文件按后写者胜（与 `routines.md` 一致）。
