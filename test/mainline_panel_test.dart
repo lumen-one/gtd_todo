@@ -183,6 +183,33 @@ void main() {
     expect(find.text('补记三天'), findsOneWidget);
   });
 
+  testWidgets('记录页下半区向右滑 → 回行为链（日历区域仍归圈日期）', (tester) async {
+    final plain = Mainline(
+      id: 'ml-3',
+      title: '写作',
+      created: DateTime(2026, 10, 1, 9),
+      steps: const [MainlineStep(title: '开头')],
+    );
+    final controller = makeController(prefix: [plain]);
+    await tester.runAsync(() => controller.mainlineService!.load());
+    await pumpPanel(tester, controller);
+
+    await tester.tap(find.text('写作'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('1/2'));
+    await tester.pumpAndSettle();
+    expect(find.text('2026 年 10 月'), findsOneWidget);
+
+    // 空提示那块 = 下半区：向右拖 → 回行为链
+    await tester.drag(
+      find.text('点某一天看当天，或按住拖选一段日期写记录；向右滑回行为链'),
+      const Offset(160, 0),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('开头'), findsOneWidget);
+    expect(find.text('2026 年 10 月'), findsNothing);
+  });
+
   testWidgets('窄面板 240dp：顶栏两行与覆盖页都不溢出', (tester) async {
     final controller = makeController(prefix: [sample()]);
     await tester.runAsync(() => controller.mainlineService!.load());

@@ -220,6 +220,10 @@ class _MainlineOverlayState extends State<MainlineOverlay> {
           controller: widget.controller,
           mainline: m,
           readOnly: !m.isActive,
+          // 日历区域横滑归圈日期，翻页落在下半区（当天详情 / 空提示）
+          onSwipeBack: () => _pages.animateToPage(0,
+              duration: const Duration(milliseconds: 240),
+              curve: Curves.easeOutCubic),
         ),
       ],
     );

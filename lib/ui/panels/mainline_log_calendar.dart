@@ -17,16 +17,23 @@ const List<String> _weekLabels = ['一', '二', '三', '四', '五', '六', '日
 /// 手势全部走一个 [Listener] + 几何换算（行高 = 可用高/周数、列宽 = 宽/7）：
 /// 日历放在**不滚动的**区域里，纵向拖动不会被外面的列表抢走——跨周圈选要的
 /// 就是这条。放不下时压缩行高、每行最多画三条圈，更多的从当天详情里看。
+///
+/// 横滑按区域分工：**日历里 = 圈日期**（这里不能让给翻页），
+/// **下半区（当天详情 / 空提示）= 翻页**（向右滑回行为链，见 [onSwipeBack]）。
 class MainlineLogCalendar extends StatefulWidget {
   final AppController controller;
   final Mainline mainline;
   final bool readOnly;
+
+  /// 下半区向右滑 → 回行为链页（覆盖页用 PageController 翻回去）。
+  final VoidCallback? onSwipeBack;
 
   const MainlineLogCalendar({
     super.key,
     required this.controller,
     required this.mainline,
     this.readOnly = false,
+    this.onSwipeBack,
   });
 
   @override
@@ -71,12 +78,32 @@ class _MainlineLogCalendarState extends State<MainlineLogCalendar> {
           }),
         ),
         const Divider(height: 1),
-        Expanded(flex: 2, child: _buildDayDetail(theme)),
+        Expanded(flex: 2, child: _swipeBackLayer(_buildDayDetail(theme))),
       ],
     );
   }
 
   // ---------- 月头 ----------
+
+  double _detailDx = 0;
+
+  /// 下半区（当天详情 / 空提示）向右滑 = 回行为链。
+  ///
+  /// 日历那块必须留给"拖选日期"，翻页手势只能落在这一半；横向拖动与里面
+  /// ListView 的纵向滚动正交，两边不抢手。
+  Widget _swipeBackLayer(Widget child) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onHorizontalDragStart: (_) => _detailDx = 0,
+      onHorizontalDragUpdate: (d) => _detailDx += d.delta.dx,
+      onHorizontalDragEnd: (d) {
+        final v = d.primaryVelocity ?? 0;
+        if (_detailDx > 48 || v > 500) widget.onSwipeBack?.call();
+        _detailDx = 0;
+      },
+      child: child,
+    );
+  }
 
   Widget _monthHeader(ThemeData theme) {
     return Row(
@@ -350,7 +377,7 @@ class _MainlineLogCalendarState extends State<MainlineLogCalendar> {
       return Padding(
         padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
         child: Text(
-          '点某一天看当天，或按住拖选一段日期写记录',
+          '点某一天看当天，或按住拖选一段日期写记录；向右滑回行为链',
           style: theme.textTheme.bodySmall
               ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
         ),
