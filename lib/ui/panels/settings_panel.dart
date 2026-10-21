@@ -76,13 +76,18 @@ Widget _hotWidthButton(AppController c, AppSettings s, int dp) {
 }
 
 /// 设置页（ui-interaction.md §9，暂定 App 唯一主体页面）：
-/// 1. 权限引导；2. 任务目录；3. 侧边栏（**展开后默认页面** / 系统级贴屏把手 /
-/// 固定把手位置 / 固定侧边栏大小 / 把手热区宽度 / 重看首次引导）；
+/// 1. 权限引导〔悬浮壳〕；2. 任务目录；3. 侧边栏（**展开后默认页面** /
+/// 系统级贴屏把手〔悬浮壳〕 / 固定把手位置〔悬浮壳〕 / 固定侧边栏大小〔悬浮壳〕 /
+/// 把手热区宽度〔悬浮壳〕 / 重看首次引导〔悬浮壳〕）；
 /// 4. 周期任务管理（routines.md）；5. **工作时间（工作日 + 工作窗，slack 的分母）**；
-/// 6. 提醒与排序（**调度模式三档：完整/标准/无排序** + 时间段多段式 + 闹钟模式）；
+/// 6. 提醒与排序（**调度模式三档：完整/标准/无排序** + 时间段多段式 +
+/// 闹钟模式〔悬浮壳〕）；
 /// 7. 定期挑；8. 灵感文件路径；9. 周期任务在任务池的显示开关；
 /// 10. 主题（**明暗三选一：跟随系统/浅色/深黑** + 强调色预设）；
 /// 11. 回收站；12. 同步（§4.4：主机/从机，局域网文件同步）。
+///
+/// 标〔悬浮壳〕的项按 `AppController.caps` 整行裁掉（§9 开头）：桌面上它们
+/// 没有对应物，留着只会点了个没反应。
 class SettingsPanel extends StatefulWidget {
   final AppController controller;
 
@@ -120,7 +125,10 @@ class _SettingsPanelState extends State<SettingsPanel> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 40),
       children: [
-        _SectionCard('权限引导', [SettingsPermissionsSection(controller: _c)]),
+        // 权限只对"贴屏悬浮壳"有意义：桌面窗口不需要悬浮窗/精确闹钟/电池白名单，
+        // 插座本身也是"默认已授予"（§9 开头那张能力表）。
+        if (_c.caps.permissionPrompts)
+          _SectionCard('权限引导', [SettingsPermissionsSection(controller: _c)]),
 
         _SectionCard('任务目录', _taskDirSection(s)),
 
@@ -169,13 +177,19 @@ class _SettingsPanelState extends State<SettingsPanel> {
 
   /// 侧边栏区：默认页面 + 把手与尺寸（都只改"面板长什么样、停在哪儿"，
   /// 不动任何任务数据）。
+  ///
+  /// **按壳能力表裁剪**（§9 开头）：把手、把手参数、可拖尺寸、首次拖出引导
+  /// 都只属于贴屏悬浮壳；桌面上整行不渲染，这一区只剩默认页面一项。
   List<Widget> _panelSection(AppSettings s) => [
         // 四选一（§9 第 12 条）。四个标签都是三到四个字，面板最窄 240dp 的
         // 四等分按钮会把"已完成"挤成省略号，所以用可换行的 chip。
         ListTile(
           leading: const Icon(Icons.tab_unselected_outlined),
           title: const Text('展开后默认页面'),
-          subtitle: const Text('拖动把手展开时落在这一页；点通知定位时按定位目标走'),
+          // 桌面上没有"展开"这一步：它是重新打开窗口时左栏落在哪一页（§6.10）。
+          subtitle: Text(_c.caps.systemHandle
+              ? '拖动把手展开时落在这一页；点通知定位时按定位目标走'
+              : '重新打开窗口时左栏落在这一页；点通知定位时按定位目标走'),
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
@@ -195,55 +209,61 @@ class _SettingsPanelState extends State<SettingsPanel> {
             ),
           ),
         ),
-        SwitchListTile(
-          secondary: const Icon(Icons.view_sidebar_outlined),
-          title: const Text('系统级贴屏把手'),
-          subtitle: const Text('在别的 App 上方也能展开侧边栏'),
-          value: _c.overlayHandleEnabled,
-          onChanged: (v) async {
-            final ok = await _c.setOverlayHandle(v);
-            if (!context.mounted) return;
-            if (v && !ok) {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                  content: Text('悬浮窗权限被拒：已退化为 App 内抽屉')));
-            }
-          },
-        ),
-        SwitchListTile(
-          secondary: const Icon(Icons.lock_outline),
-          title: const Text('固定把手位置'),
-          subtitle: const Text('上锁后把手不再跟着拖动上下移动；长按换边仍可用'),
-          value: s.handleLocked,
-          onChanged: (v) => _c.setHandleLocked(v),
-        ),
-        SwitchListTile(
-          secondary: const Icon(Icons.lock_reset),
-          title: const Text('固定侧边栏大小'),
-          subtitle: const Text(
-              '按当前宽高锁住，不再能拖动改；改宽那条把手改成跟手推出收起'),
-          value: s.panelSizeLocked,
-          onChanged: (v) => v ? _lockPanelSize(context) : _c.unlockPanelSize(),
-        ),
-        ListTile(
-          leading: const Icon(Icons.swipe_right_alt),
-          title: const Text('把手热区宽度'),
-          subtitle: Text(_hotWidthHint(s.handleHotWidth)),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
-          child: Row(
-            children: [
-              // 三档由窄到宽：越宽越好抓，边上那一竖条也越挡路（§6.0）。
-              for (final dp in handleHotWidthOptions)
-                Expanded(child: _hotWidthButton(_c, s, dp)),
-            ],
+        if (_c.caps.systemHandle)
+          SwitchListTile(
+            secondary: const Icon(Icons.view_sidebar_outlined),
+            title: const Text('系统级贴屏把手'),
+            subtitle: const Text('在别的 App 上方也能展开侧边栏'),
+            value: _c.overlayHandleEnabled,
+            onChanged: (v) async {
+              final ok = await _c.setOverlayHandle(v);
+              if (!context.mounted) return;
+              if (v && !ok) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('悬浮窗权限被拒：已退化为 App 内抽屉')));
+              }
+            },
           ),
-        ),
-        ListTile(
-          leading: const Icon(Icons.info_outline),
-          title: const Text('重看首次引导'),
-          onTap: () => _c.updateSettings(s.copyWith(guideSeen: false)),
-        ),
+        if (_c.caps.handleTuning)
+          SwitchListTile(
+            secondary: const Icon(Icons.lock_outline),
+            title: const Text('固定把手位置'),
+            subtitle: const Text('上锁后把手不再跟着拖动上下移动；长按换边仍可用'),
+            value: s.handleLocked,
+            onChanged: (v) => _c.setHandleLocked(v),
+          ),
+        if (_c.caps.resizablePanel)
+          SwitchListTile(
+            secondary: const Icon(Icons.lock_reset),
+            title: const Text('固定侧边栏大小'),
+            subtitle: const Text(
+                '按当前宽高锁住，不再能拖动改；改宽那条把手改成跟手推出收起'),
+            value: s.panelSizeLocked,
+            onChanged: (v) => v ? _lockPanelSize(context) : _c.unlockPanelSize(),
+          ),
+        if (_c.caps.handleTuning) ...[
+          ListTile(
+            leading: const Icon(Icons.swipe_right_alt),
+            title: const Text('把手热区宽度'),
+            subtitle: Text(_hotWidthHint(s.handleHotWidth)),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
+            child: Row(
+              children: [
+                // 三档由窄到宽：越宽越好抓，边上那一竖条也越挡路（§6.0）。
+                for (final dp in handleHotWidthOptions)
+                  Expanded(child: _hotWidthButton(_c, s, dp)),
+              ],
+            ),
+          ),
+        ],
+        if (_c.caps.panelGuide)
+          ListTile(
+            leading: const Icon(Icons.info_outline),
+            title: const Text('重看首次引导'),
+            onTap: () => _c.updateSettings(s.copyWith(guideSeen: false)),
+          ),
       ];
 
   List<Widget> _reminderSection(AppSettings s) => [
@@ -262,13 +282,15 @@ class _SettingsPanelState extends State<SettingsPanel> {
             ],
           ),
         ),
-        SwitchListTile(
-          secondary: const Icon(Icons.alarm),
-          title: const Text('闹钟模式'),
-          subtitle: const Text('到点提醒升级为全屏并持续响铃'),
-          value: s.alarmMode,
-          onChanged: (v) => _c.updateSettings(s.copyWith(alarmMode: v)),
-        ),
+        // 全屏闹钟是安卓的通知渠道；桌面到点只有应用内弹窗（§7.2）。
+        if (_c.caps.alarmChannel)
+          SwitchListTile(
+            secondary: const Icon(Icons.alarm),
+            title: const Text('闹钟模式'),
+            subtitle: const Text('到点提醒升级为全屏并持续响铃'),
+            value: s.alarmMode,
+            onChanged: (v) => _c.updateSettings(s.copyWith(alarmMode: v)),
+          ),
         ListTile(
           leading: const Icon(Icons.timelapse),
           title: const Text('通知时间段（可推任务）'),

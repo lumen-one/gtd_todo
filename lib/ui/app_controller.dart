@@ -10,6 +10,7 @@ import '../application/notification_window.dart';
 import '../application/notes_reader.dart';
 import '../application/routine_service.dart';
 import '../application/settings.dart';
+import '../application/shell_capabilities.dart';
 import '../application/sync.dart';
 import '../application/task_service.dart';
 import '../application/today_view.dart';
@@ -57,6 +58,12 @@ class AppController extends ChangeNotifier {
 
   /// 目录选择插座（null = 平台不支持）。
   final FolderPickerPort? folderPicker;
+
+  /// 壳能力表（§9 开头）：设置页据此裁掉"这套壳没有的东西"。
+  ///
+  /// 默认 [ShellCapabilities.overlayShell]——沿用能力俱全的那一侧，免得测试与
+  /// 未来的新宿主在没填表时少看到几项；桌面由组装点显式传 `plainWindow`。
+  final ShellCapabilities caps;
 
   /// 同步插座（§4.4；null = 未装配，设置页"同步"区显示未接入）。
   SyncPort? _sync;
@@ -225,6 +232,7 @@ class AppController extends ChangeNotifier {
     this.bootstrapPort,
     this.permissions,
     this.folderPicker,
+    this.caps = ShellCapabilities.overlayShell,
     this.onWindowsChanged,
     this.onAlarmModeChanged,
     this.onScheduleModeChanged,

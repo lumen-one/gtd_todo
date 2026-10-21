@@ -7,6 +7,7 @@ import 'application/mainline_service.dart';
 import 'application/notification_window.dart';
 import 'application/reminder_dispatcher.dart';
 import 'application/routine_service.dart';
+import 'application/shell_capabilities.dart';
 import 'application/task_service.dart';
 import 'domain/time_context.dart';
 import 'platform/android_adapters.dart';
@@ -105,6 +106,11 @@ Future<void> main() async {
     bootstrapPort: bootstrap,
     permissions: permissions,
     folderPicker: folderPicker,
+    // 壳能力表（ui-interaction §9 / arch §5.1）：安卓是贴屏悬浮壳，桌面是普通
+    // 窗口——设置页据此把"这套壳没有的东西"整行裁掉，UI 自己不判断平台。
+    caps: isAndroid
+        ? ShellCapabilities.overlayShell
+        : ShellCapabilities.plainWindow,
     onWindowsChanged: (rule) => dispatcher.updateWindows(rule),
     onAlarmModeChanged: (mode) => dispatcher.updateAlarmMode(mode),
     onScheduleModeChanged: (mode) => service.updateScheduleMode(mode),
