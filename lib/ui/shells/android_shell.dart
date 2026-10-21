@@ -487,26 +487,33 @@ class _DrawerFallback extends StatelessWidget {
       // 与悬浮侧边栏同一个宽度设置（没拖过 = 默认公式）
       width: panelWidthFor(
           controller.settings, MediaQuery.of(context).size.width),
-      child: DefaultTabController(
-        length: pages.length,
-        initialIndex: defaultPanelPageIndex(controller.settings),
-        child: Scaffold(
-          appBar: TabBar(
-            // 四页都是三到四个字，抽屉最窄可到 240dp：不滚动会让标签互相挤。
-            isScrollable: true,
-            tabs: [for (final page in pages) Tab(text: page.label)],
-            labelColor: AppColors.accent,
-          ),
-          body: TabBarView(
-            children: [
-              for (final page in pages)
-                _withActions(context, page, switch (page) {
-                  PanelPage.notes => NotesPanel(controller: controller),
-                  PanelPage.today => TodayPanel(controller: controller),
-                  PanelPage.pool => PoolPanel(controller: controller),
-                  PanelPage.completed => CompletedPanel(controller: controller),
-                }),
-            ],
+      // 系统栏留白：抽屉里装的是**它自己的 Scaffold**，而 `appBar` 槽里塞的
+      // 是裸 `TabBar`——那不是 AppBar，没人替它避让状态栏。之前不包这一层，
+      // 四个页名直接压在状态栏的时钟与信号栏底下（OPPO 真机反馈：展开页与
+      // 手机顶部栏重叠），页内容也跟着抬到最顶、右下角双钮压在导航栏上。
+      // 面板那份自己带 SafeArea，抽屉是另一条路，得显式补上。
+      child: SafeArea(
+        child: DefaultTabController(
+          length: pages.length,
+          initialIndex: defaultPanelPageIndex(controller.settings),
+          child: Scaffold(
+            appBar: TabBar(
+              // 四页都是三到四个字，抽屉最窄可到 240dp：不滚动会让标签互相挤。
+              isScrollable: true,
+              tabs: [for (final page in pages) Tab(text: page.label)],
+              labelColor: AppColors.accent,
+            ),
+            body: TabBarView(
+              children: [
+                for (final page in pages)
+                  _withActions(context, page, switch (page) {
+                    PanelPage.notes => NotesPanel(controller: controller),
+                    PanelPage.today => TodayPanel(controller: controller),
+                    PanelPage.pool => PoolPanel(controller: controller),
+                    PanelPage.completed => CompletedPanel(controller: controller),
+                  }),
+              ],
+            ),
           ),
         ),
       ),
