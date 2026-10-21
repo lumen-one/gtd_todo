@@ -5,8 +5,12 @@
 排序 = **时间裕度优先**（`risk × importance`）；调度分**完整 / 标准（默认）/ 无排序**三档（完整 = 排+响，标准 = 排+不响，无排序 = 不排+不响）。
 Markdown 数据是**双文档**：人写人看的 `tasks.md`，内核算的 `.gtd/<id>.md`。
 
-> 结构与接口契约（分层、插座、import 矩阵、演进路线、文件格式）见 [docs/architecture.md](docs/architecture.md)。
-> UI 与交互需求（安卓悬浮侧边栏、创建流程、提醒呈现）见 [docs/ui-interaction.md](docs/ui-interaction.md)。
+> 文档怎么找、改动落哪一份：见 [docs/README.md](docs/README.md)。
+>
+> 结构与接口契约（分层、插座、import 矩阵、架构守卫）见 [docs/architecture.md](docs/architecture.md)；
+> 数据格式（`tasks.md` / `.gtd/` / `主线.md`）见 [docs/formats/](docs/formats/README.md)。
+> UI 与交互需求（安卓悬浮侧边栏、创建流程、提醒呈现）见 [docs/ui-interaction.md](docs/ui-interaction.md)；
+> 侧边栏各页面各自的规则见 [docs/panels/](docs/panels/README.md)。
 > 结构或接口变更先改契约文档，再改代码。
 
 ## 运行
@@ -64,7 +68,7 @@ tasks/
 **主线**（`主线.md`，侧边栏顶栏第二行那一条）：一件正在推进的大事 = 一串**行为链**
 （勾完文字加横线）+ 日历上**手动拖选连续日期圈出来、往里写文字**的记录。行为链上的
 步骤**不是任务**——不进任务池、不占工时、不参与调度；勾完点『完成主线』归档，
-整条留在同一个文件里可只读回看。格式见 [docs/architecture.md](docs/architecture.md) 附录 B.6。
+整条留在同一个文件里可只读回看。格式见 [docs/formats/mainline.md](docs/formats/mainline.md)。
 
 **人类文档**（`tasks.md`）：人写六个属性——任务名、创建日期、结束日期、完成日期、
 备注、标签。**更多的标签 = 更多的属性**：
@@ -90,7 +94,7 @@ status: active
 ---
 ```
 
-约定（详见 [docs/architecture.md](docs/architecture.md) 附录 B）：
+约定（详见 [docs/formats/](docs/formats/README.md)）：
 
 - **应用只改人类文档里自己那一行**（插入/打勾/补完成时刻），其余行、标题、空行、
   正文**一字不动**，而且**永不重排行**；
