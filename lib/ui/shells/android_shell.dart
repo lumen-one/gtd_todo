@@ -19,7 +19,8 @@ import '../widgets/reminder_listener.dart';
 /// - 四页**左右横滑**（页序见 `ui/panel_pages.dart`）：灵感 / 今日清单 / 任务池 /
 ///   已完成；横方向与列表的纵向滚动正交，互不抢手（v0.15；原先的"竖翻 + 面板头重手势"
 ///   已删）；
-/// - 抽屉兜底（§11）：同一套 panels，App 内左侧滑呼出。
+/// - 抽屉兜底（§11）：同一套 panels，App 内左侧滑呼出；
+/// - 右下角『侧边栏』FAB 已撤（v1.31，§6.0）：入口只剩把手拖出与抽屉两条。
 class AndroidShell extends StatefulWidget {
   final AppController controller;
 
@@ -231,12 +232,8 @@ class _AndroidShellState extends State<AndroidShell>
               ),
               drawer: _DrawerFallback(controller: controller),
               body: SettingsPanel(controller: controller),
-              floatingActionButton: FloatingActionButton.extended(
-                heroTag: 'open-sidebar',
-                onPressed: _openPanel,
-                icon: const Icon(Icons.view_sidebar),
-                label: const Text('侧边栏'),
-              ),
+              // 右下角『侧边栏』FAB 撤掉（v1.31，§6.0）：把手拖出与抽屉已经
+              // 是两条常驻入口，它是唯一一颗压在设置页内容上的按钮。
             ),
             ..._overlay(context),
           ],
