@@ -67,6 +67,48 @@ void main() {
     });
   });
 
+  // -------------------------------------------------------------- 自指链接
+
+  group('自指链接', () {
+    // 反例来自真事：拆文档时把"附录 B.6"机械换成了本文件名，
+    // `[主线文件](mainline.md)` 写在 mainline.md 里，点进去还是这一页。
+    test('链到自己报错误', () {
+      final lint = _lint({'docs/a.md': '- 存储：一个文件装全部（[主线文件](a.md)）。'});
+      final p = lint.run().single;
+      expect(p.severity, LintSeverity.error);
+      expect(p.line, 1);
+      expect(p.message, contains('自指'));
+    });
+
+    test('绕一圈回到自己也算：./ 与 ../ 都归一化', () {
+      final lint = _lint({
+        'docs/panels/a.md': '[一](./a.md) 与 [二](../panels/a.md)',
+      });
+      expect(lint.run(), hasLength(2));
+      expect(lint.run().every((p) => p.severity == LintSeverity.error), isTrue);
+    });
+
+    test('带锚点的自指是冗余，降一档警告', () {
+      final lint = _lint({'docs/a.md': '[局限](a.md#已知局限)'});
+      final p = lint.run().single;
+      expect(p.severity, LintSeverity.warning);
+      expect(p.message, contains('(#'));
+    });
+
+    test('指别的文件不报（正例）', () {
+      final lint = _lint({
+        'docs/a.md': '[格式](formats/f.md)',
+        'docs/formats/f.md': '# 格式',
+      });
+      expect(lint.run(), isEmpty);
+    });
+
+    test('行内代码里的自指示例不算', () {
+      final lint = _lint({'docs/a.md': '写法：`[本文](a.md)` 不要这样。'});
+      expect(lint.run(), isEmpty);
+    });
+  });
+
   // -------------------------------------------------------------- 章节引用
 
   group('章节引用', () {

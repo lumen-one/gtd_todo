@@ -6,7 +6,7 @@ import 'dart:io';
 /// 存在吗"由 [FileExists] 回调回答。真实运行时用磁盘实现，测试里换成假的，
 /// 于是每条规则都能在内存里验证，不必在临时目录里造一堆文件。
 ///
-/// 三条检查的共同前提是**先剥掉代码**：文档里教人写链接的示例
+/// 各项检查的共同前提是**先剥掉代码**：文档里教人写链接的示例
 /// （`` `[x](y.md)` ``）不是链接。剥的时候用空行占位，行号才守恒。
 
 /// 判断某个路径是否存在。默认走磁盘，测试里替换掉。
@@ -132,6 +132,19 @@ class DocLint {
         if (!_exists(resolved)) {
           problems.add(LintProblem(rel, i + 1, LintSeverity.error,
               '死链：$raw → ${relativePath(root, resolved)}'));
+          continue;
+        }
+        // 自指：链接的目标就是本文，点下去还在原地。多半是拆文档/搬家时把
+        // "附录 B.6" 这类节号机械换成了本文件名——门禁只查"目标在不在"，
+        // 这种错它原来看不见。带 `#锚点` 的还能跳到本文某节，算冗余降一档。
+        if (normalizePath(resolved) == normalizePath(abs)) {
+          problems.add(LintProblem(
+              rel,
+              i + 1,
+              raw.contains('#') ? LintSeverity.warning : LintSeverity.error,
+              raw.contains('#')
+                  ? '自指链接：$raw 指向本文，锚点直接写 (#…)'
+                  : '自指链接：$raw 指回本文，链接不到任何东西'));
         }
       }
     }
