@@ -8,6 +8,7 @@ import 'package:gtd_todo/overlay_main.dart';
 import 'package:gtd_todo/repository/memory_task_repository.dart';
 import 'package:gtd_todo/scheduler/slack_scheduler.dart';
 import 'package:gtd_todo/ui/app_controller.dart';
+import 'package:gtd_todo/ui/panel_pages.dart';
 import 'package:gtd_todo/ui/panels/side_panel.dart';
 
 /// 系统级悬浮面板宿主（overlay_main.dart）的契约测试：
@@ -122,6 +123,50 @@ void main() {
     }));
     await tester.pumpAndSettle();
 
+    expect(find.text('任务池'), findsOneWidget);
+  });
+
+  testWidgets('默认页面：设置里改完默认页，跟手拖出的那一路立刻落在新默认页',
+      (tester) async {
+    // 真机顺序：悬浮窗引擎先按当时的设置建好起手页，用户再去设置里改默认页
+    // （主引擎写盘 → 本引擎读到 → 通知）。起手页是 PageController.initialPage，
+    // 建完就定死了——不对齐的话，跟手拖出来的那几帧仍是老默认页（今日清单），
+    // 要等松手补满广播 expanded 才跳走（2026-10-21 报的就是这个）。
+    final controller = makeController();
+    await tester.runAsync(controller.bootstrap);
+    await tester.pumpWidget(MediaQuery(
+      data: const MediaQueryData(size: Size(800, 600)),
+      child: MaterialApp(
+        home:
+            OverlayPanelShell(controller: controller, bridge: OverlayBridge()),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    sendOverlayCall(const MethodCall('state', {
+      'expanded': false,
+      'dockedRight': true,
+      'handle_center_y': 300,
+    }));
+    await tester.pumpAndSettle();
+
+    await controller.setDefaultPage(PanelPage.pool);
+    await tester.pumpAndSettle();
+
+    // 只拖到一半、**还没松手**：这时显示的必须是新默认页。
+    sendOverlayCall(const MethodCall('panelDrag', {'dx': 180.0}));
+    await tester.pumpAndSettle();
+    expect(find.text('任务池'), findsOneWidget);
+    expect(find.text('今日清单'), findsNothing);
+
+    // 松手补满后仍然是它（不会再跳一次）。
+    sendOverlayCall(const MethodCall('panelDragEnd', {'open': true}));
+    sendOverlayCall(const MethodCall('state', {
+      'expanded': true,
+      'dockedRight': true,
+      'handle_center_y': 300,
+    }));
+    await tester.pumpAndSettle();
     expect(find.text('任务池'), findsOneWidget);
   });
 

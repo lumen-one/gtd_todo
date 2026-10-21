@@ -27,7 +27,13 @@ class _OverlayPanelShellState extends State<OverlayPanelShell>
     with SingleTickerProviderStateMixin {
   /// 起手页 = 设置里的默认页（§9 第 12 条）。装配点在装配完核心（含设置）之后
   /// 才建这个宿主，所以构造时读到的就是真值，没有"先落今日再跳走"的闪。
-  late final PageController _pageCtrl;
+  ///
+  /// 但 `initialPage` 是建控制器那一刻定死的：设置里改过默认页之后它不会跟着
+  /// 变，而收起时 PageView 会被拆掉、拖出来是重新挂上的——于是跟手拖出的那几帧
+  /// 落在**老**默认页上，直到松手补满广播 expanded 才被 [_landOnDefaultPage]
+  /// 纠正（现象：拖的时候是今日清单，一松手变任务池）。所以拖动起手时要
+  /// [_syncLandingPage] 一次。
+  late PageController _pageCtrl;
   StreamSubscription<OverlayWindowState>? _stateSub;
   StreamSubscription<OverlayDragEvent>? _dragSub;
 
@@ -79,8 +85,9 @@ class _OverlayPanelShellState extends State<OverlayPanelShell>
           _dragProgress = null;
         }
       });
-      // 每次展开都落一遍默认页：收起时 PageView 被拆掉，再挂上会恢复上一次
-      // 停的那页——不落一次，设置里选的默认页只在第一次生效。
+      // 每次展开都落一遍默认页：跟手拖出那一路的起手页已由 [_syncLandingPage]
+      // 摆对，但原生也可能不经拖动直接广播展开（降级打开 / 通知拉起），
+      // 那一路上没有拖动起手——这里兜住。
       if (s.expanded && !wasExpanded) _landOnDefaultPage();
       if (s.expanded) _maybeOnboard();
     });
@@ -125,6 +132,19 @@ class _OverlayPanelShellState extends State<OverlayPanelShell>
     });
   }
 
+  /// 把控制器的起手页对齐到当前设置（§9 第 12 条）。
+  ///
+  /// 只在 PageView **没挂上**时换（收起态 / 拖动起手那一瞬）：起手页是
+  /// `initialPage` 的一部分，换不了只能换控制器；正开着面板时不动——用户可能
+  /// 正看着某一页，改设置不该当场把他甩走。
+  void _syncLandingPage() {
+    final target = defaultPanelPageIndex(_c.settings);
+    if (_pageCtrl.hasClients || target == _pageCtrl.initialPage) return;
+    final stale = _pageCtrl;
+    _pageCtrl = PageController(initialPage: target);
+    stale.dispose();
+  }
+
   Future<void> _collapse() async {
     setState(() {
       _expanded = false;
@@ -140,6 +160,9 @@ class _OverlayPanelShellState extends State<OverlayPanelShell>
   void _onDrag(OverlayDragEvent e) {
     if (!mounted) return;
     if (e is PanelDragProgress) {
+      // 面板即将挂上（收起时 PageView 是拆掉的）：先把起手页摆对，跟手拖出来
+      // 的第一帧就落在设置里的默认页，别等松手补满才纠（§9 第 12 条）。
+      if (_dragProgress == null) _syncLandingPage();
       setState(() => _dragProgress = _progressFor(e.dx));
     } else if (e is PanelDragEnd) {
       _settle(e.open);
