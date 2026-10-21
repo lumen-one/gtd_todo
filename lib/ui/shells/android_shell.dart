@@ -484,6 +484,11 @@ class _DrawerFallback extends StatelessWidget {
       // 与悬浮侧边栏同一个宽度设置（没拖过 = 默认公式）
       width: panelWidthFor(
           controller.settings, MediaQuery.of(context).size.width),
+      // 底色跟面板本体一个值（§8）：Drawer 默认吃 M3 的 `surfaceContainerLow`
+      // （被种子色染过一层），而页面内容是纸白——SafeArea 露出的状态栏那条 +
+      // `appBar` 槽里的页名条就压在抽屉底色上，与下面的内容区肉眼有色差
+      // （真机截图确认：上 255,242,236 / 下 250,247,242）。
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       // 系统栏留白：抽屉里装的是**它自己的 Scaffold**，而 `appBar` 槽里塞的
       // 是裸 `TabBar`——那不是 AppBar，没人替它避让状态栏。之前不包这一层，
       // 四个页名直接压在状态栏的时钟与信号栏底下（OPPO 真机反馈：展开页与
@@ -497,6 +502,12 @@ class _DrawerFallback extends StatelessWidget {
             appBar: TabBar(
               // 四页都是三到四个字，抽屉最窄可到 240dp：不滚动会让标签互相挤。
               isScrollable: true,
+              // 左对齐页内容（§8）：可滚动标签的默认对齐是 `startOffset`——
+              // 那 52dp 是给 AppBar 左侧头像留位的，抽屉里没有头像，留着就是
+              // 页名条左边一截空当（比下面的日期行缩进 50dp 还多）。
+              tabAlignment: TabAlignment.start,
+              // 18dp = 四页页内容的左右留白：页名左缘与日期行/标题左缘对齐。
+              labelPadding: const EdgeInsets.symmetric(horizontal: 18),
               tabs: [for (final page in pages) Tab(text: page.label)],
               labelColor: AppColors.accent,
             ),

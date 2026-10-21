@@ -74,6 +74,29 @@ void main() {
     expect(fabs, findsWidgets);
     expect(tester.getRect(fabs.last).bottom, lessThanOrEqualTo(800 - navBar));
   });
+
+  testWidgets('抽屉底色与页面内容同一个值（不吃 M3 的 surfaceContainerLow）',
+      (tester) async {
+    await pumpShell(tester);
+    await openDrawer(tester);
+
+    // 抽屉底（SafeArea 露出的状态栏那条 + 页名条都压在它上面）与内容区
+    // 必须同色，否则中间横着一条色差（v1.31，§8）。
+    final drawer = tester.widget<Drawer>(find.byType(Drawer));
+    final theme = Theme.of(tester.element(find.byType(Drawer)));
+    expect(drawer.backgroundColor, theme.scaffoldBackgroundColor);
+  });
+
+  testWidgets('页名条左缘对齐页内容留白（不吃 52dp 起始偏移）', (tester) async {
+    await pumpShell(tester);
+    await openDrawer(tester);
+
+    // 四页页内容横向留白都是 18dp（today/pool/completed/notes）：
+    // 页名左缘落在 18dp，下面日期行才不会显得"缩进对不上"。
+    final label = find.descendant(
+        of: find.byType(TabBar), matching: find.text('灵感'));
+    expect(tester.getRect(label).left, closeTo(18, 1.5));
+  });
 }
 
 class _MemorySettingsPort implements SettingsPort {
