@@ -183,11 +183,13 @@ void main() {
       expect(lint.run(), isEmpty);
     });
 
-    test('开头的标注约定定义行不算使用', () {
-      final lint = _lint({
-        'docs/a.md': '> - **【规划】** = 还没落地的部分\n',
-      });
-      expect(lint.run(), isEmpty);
+    test('方括号状态标记也报（【现状】/【待细化：…】）', () {
+      // 这套标记 2026-10-21 已从文档里整套删掉：逐行标"现状"等于没标，
+      // 而"未标注默认规划"会让整份文档默认过期。词表留在这里防回潮。
+      for (final s in ['该节【现状】。', '字段【待细化：清单】。', '【已落地】的规则。']) {
+        final p = _lint({'docs/a.md': s}).run().single;
+        expect(p.severity, LintSeverity.warning, reason: s);
+      }
     });
 
     test('开头 20 行内的引用块整体豁免，之后不再豁免', () {

@@ -88,3 +88,64 @@
   其余条目两者一致。
 
 真要动其中任何一条，先改这两节，再动代码。
+
+## 附录：AI 接口设计草案
+
+> 从 `architecture.md` §6 搬出：它是设计，不是现状。契约侧只剩两条仍生效的约束
+> （写路径唯一 C1、无第二条写路径 C3），见 [架构文档](architecture.md) §6。
+> **开始实现时**：先落一张 `decisions/` 卡片，改 `architecture.md` §6 成契约，
+> 然后删掉本节。
+
+四级权限，默认只开 L0/L1：
+
+| 等级      | 能力                       | 机制                                                              |
+| --------- | -------------------------- | ----------------------------------------------------------------- |
+| L0 读     | 看任务、调度结果、参数     | `SystemSnapshot`（只读投影）                                      |
+| L1 提案   | 估工时、拆任务、建议改截止 | 产出 `Proposal`，进 UI 待确认列表，**人确认后才执行**             |
+| L2 软控制 | 微调调度参数               | 只许改 `params` 声明范围内的值；记事件（origin=ai）；可见、可拒绝 |
+| L3 硬控制 | 换算法、改规则             | 默认锁死，永不自动执行                                            |
+
+类型定义：
+
+```dart
+abstract class AiProvider {
+  String get id;
+  /// 每个快照返回的提案数不得超过 proposalCap（上限值未定，
+  /// 接口按此约束实现方）。
+  Future<List<Proposal>> propose(SystemSnapshot snapshot);
+}
+
+/// Command = 一次参数化的 UserAction（architecture.md §3.2 规则 C1 的命令封装）。
+/// CommandKind 与 payload 字段未定，落地 AI 前补全。
+class Command { final CommandKind kind; final String taskId; final Map<String, Object?> payload; }
+
+class Proposal {
+  ProposalKind kind;        // estimate / decompose / retune / suggestDeadline
+  String rationale;         // 给人看的理由
+  List<Command> commands;
+  ProposalStatus status;    // pending / approved / rejected / expired
+}
+
+class SystemSnapshot {
+  final List<TaskView> tasks;          // 只读投影，非可变 Task
+  final ScheduleResult schedule;
+  final String activeSchedulerId;
+  final Map<String, num> schedulerParams;
+  final DateTime generatedAt;
+}
+// 裁剪规则：不含正文 description 全文与 metadata 自由字段，
+// 除非 Provider 声明需要并在快照请求中显式开启。TaskView 字段清单未定
+
+/// 提案确认入口（与人类点击共用同一命令通道）：
+/// TaskService.applyCommands(List<Command>, {required EventOrigin origin})
+```
+
+**承诺边界（有机制的才承诺）**：
+
+| 声明                  | 机制                                                                   | 状态                                                     |
+| --------------------- | ---------------------------------------------------------------------- | -------------------------------------------------------- |
+| AI 变更可审计、可追溯 | `DomainEvent.origin = ai` 进事件流                                     | 随事件流落地                                     |
+| AI 污染面上限         | 写路径唯一（architecture.md §3.2 C1）成立 + 提案须人工确认 + 提案数受 proposalCap 约束 | 依赖 C1 强制化与守卫落地                                 |
+| 回滚                  | 逆命令机制                                                             | **未设计，不承诺**；落地前 UI 只提供"拒绝"，不提供"回滚" |
+
+前提声明：以上全部依赖 architecture.md §3.2 的 C1 强制化；C1 仅为约定时，本节保证同步降级为约定。

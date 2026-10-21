@@ -58,12 +58,12 @@ abstract class PermissionPort {
 }
 ```
 
-桌面适配器（`lib/platform/desktop_adapters.dart`【现状】）：`TimerAlarmPort`（前台 Timer，
+桌面适配器（`lib/platform/desktop_adapters.dart`）：`TimerAlarmPort`（前台 Timer，
 系统闹钟在桌面的等价物）、`StreamNotificationPort`（应用内弹窗回流）、
 `GrantedPermissionPort`、`DesktopFolderPickerPort`（**文件可挑，目录仍不挑**——
 桌面任务目录走环境变量 `GTD_TASKS_DIR` / 引导配置，不做目录选择 UI）。
 
-安卓适配器（`lib/platform/android_adapters.dart` + `android/…/gtd/` 原生侧【现状】）：
+安卓适配器（`lib/platform/android_adapters.dart` + `android/…/gtd/` 原生侧）：
 `AndroidAlarmPort` / `AndroidNotificationPort`（系统精确闹钟 AlarmManager + 通知渠道
 `gtd_normal`/`gtd_alarm`/`gtd_overlay` + 通知按钮 + full-screen intent）、
 `AndroidPermissionPort`（permission_handler + 原生全屏 intent/悬浮窗查询）、

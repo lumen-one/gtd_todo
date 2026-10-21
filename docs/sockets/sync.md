@@ -12,7 +12,7 @@
 不靠共享内存态）。
 
 ```dart
-/// 同步：只管"把文件搬到对端"，不管文件里是什么。【现状】
+/// 同步：只管"把文件搬到对端"，不管文件里是什么。
 abstract class SyncPort {
   SyncState get state;                    // 角色 / 连接 / 上次同步 / 冲突存档
   Stream<SyncState> get changes;          // 状态广播（UI 订阅）
