@@ -19,6 +19,7 @@
 | [`ui-interaction.md`](ui-interaction.md) | 入口、任务模型、创建流程、提醒系统、视觉、设置页、边界 | 交互需求变更 |
 | [`panels/`](panels/README.md) | 侧边栏每个页面各自的规则（把手、今日、灵感、池子、日历、已完成、快记、主线、桌面） | 改某个页面的行为 |
 | [`formats/`](formats/README.md) | 持久化契约：`tasks.md` / `.gtd/` / `routines.md` / `主线.md` | 改数据格式 |
+| [`sockets/`](sockets/README.md) | 插座契约：每个插座的接口、适配器、引擎边界 | 加插座，或改某个插座的行为 |
 | [`decisions/`](decisions/README.md) | 决策卡片：为什么这么做、当时否了什么、代价 | 做了一个半年后可能被重新质疑的取舍 |
 | [`roadmap.md`](roadmap.md) | 未来方向：只差动手的、等触发条件的、已留插座未接的 | 想到新方向，或某个触发条件成立了 |
 | [`references/`](references/) | 外部项目参考（不是本项目口径，别引用来改代码） | 基本不动 |
@@ -30,7 +31,10 @@
 | 改代码前先读什么 | `architecture.md` §0–§2 |
 | 某个类型/字段什么意思 | `architecture.md` §3.1 词汇表 |
 | 有哪些命令、各自的规则 | `architecture.md` §3.5 命令清单 |
-| 加一个插座实现（存储 / 算法 / 通知 / 同步） | `architecture.md` §4 对应那一类 |
+| 加一个插座实现（存储 / 算法 / 通知 / 同步） | [`sockets/`](sockets/README.md) 总表 → 对应那页；接口草图在 `architecture.md` §4.1 |
+| 两个引擎怎么分工、悬浮面板怎么装配 | [`sockets/delivery.md`](sockets/delivery.md) |
+| 什么时候会响、为什么这一条被顺延 | [`sockets/reminder.md`](sockets/reminder.md) |
+| 同步哪些文件、冲突了谁赢 | [`sockets/sync.md`](sockets/sync.md) |
 | 某个面板怎么动 | `panels/` 下对应那一页 |
 | 页序、默认打开哪页、面板头显示什么 | `panels/README.md` |
 | 数据文件长什么样、怎么配对、怎么迁移 | `formats/` |

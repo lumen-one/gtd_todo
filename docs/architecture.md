@@ -455,10 +455,8 @@ class RepositoryEvent { final RepoChangeType type; final String path; final Date
 /// 纯函数、无 IO；文件里的每一行原样持有（行级保真的载体）。
 class TaskDocumentCodec {
   static const String formatId = 'md-taskdoc/1';
-  static const String createKeyword = '创建';   // 行格式锚点（必填字段）
-  static const String endKeyword = '结束';      // 截止
-  static const String doneKeyword = '完成';     // 完成时刻
-  static const String noteKeyword = '备注';     // 备注（也可省略标记直接跟在日期后）
+  // 行格式的关键词（创建 / 结束 / 完成 / 备注）与各列语义不在此重复：
+  // 正典见 [tasks.md 行格式](formats/tasks-md.md)。
 
   TaskDocument parse(String raw);               // 永不抛：坏行进 warnings
   static String encodeLine(Task task);          // 任务 → 一行（唯一行格式真相）
@@ -473,18 +471,11 @@ class TaskDocumentCodec {
 /// 注意：它**不是** TaskCodec 实现（多了 digest 接线 + 登记键写回，见上）。
 class TaskSidecarCodec {
   static const String formatId = 'md-taskkernel/1';
-  /// 内核自己算的字段：原地改写，`null` → 整行移除。
-  static const List<String> ownedKeys = [
-    'id', 'digest', 'work_intensity', 'remaining_load', 'priority',
-    'time_slack', 'status', 'snoozed_until', 'completed_at',
-  ];
-  /// 应用自有 metadata 键（[内核属性文档](formats/sidecar.md) 登记表）：**跟随任务对象改写**
-  /// （值变则行变、键在 metadata 里消失则整行删）；其余未知键原样往返。
-  static const List<String> registeredMetaKeys = [
-    'type', 'pinned', 'picked_for_today', 'pool_order',
-    'routine', 'routine_date', 'routine_remind', 'routine_skipped',
-    'point_fired', 'remind', 'manual_order', 'in_progress',
-  ];
+  // 键的**全集**（内核自有 9 个 + 应用 metadata 12 个）与各自语义见
+  // [内核属性文档](formats/sidecar.md) 的登记表——这里不复制列表，因为漏登记
+  // 一批键的写回，等于让用户手写的那几行下次保存时消失。
+  // 此处只留改写规则：内核键原地改写（`null` → 整行移除）；metadata 键跟随
+  // 任务对象改写（值变则行变、键消失则整行删）；其余未知键原样往返。
 }
 
 /// 双文档仓储：读 = 人类文档 ∩ 内核属性（按行指纹配对；长期任务没有指纹，
@@ -509,235 +500,34 @@ class MarkdownTaskRepository implements TaskRepository { /* … */ }
   入参——这一档改的是"清单按什么顺序展示"，属业务层查询（见下条）。注册表里
   仍然只有那两个 `id`。
 
-**UI 文档带来的新座位**：
+**UI 文档带来的新座位**：下面每个座位都有独立实现与独立契约页，改其中一个
+不必读完整节。
 
-- **RoutineRepository / RoutineCodec**：周期规则存独立 `routines.md`（非 Task 文件，
-  TaskRepository/TaskCodec 不覆盖；一条规则一个 frontmatter 条目，Obsidian 可改）；
-  每天生成当天实例（origin=system），实例不占工时、不进 ScheduleResult 排序
-  【现状：domain/routine.dart + repository/{routine_codec,routine_repository,
-  markdown_routine_repository}.dart + application/routine_service.dart】；
-- **MainlineRepository / MainlineCodec**：主线（行为链 + 记录）存独立 `主线.md`，
-  **一个文件装全部主线**（在跑的 + 已归档）。与任务、周期两套完全不相交——步骤不是 Task，
-  不进调度、不占工时；归档 = `completed` 字段有值，只改状态不删数据。
-  【现状：domain/mainline.dart + repository/{mainline_codec,mainline_repository,
-  markdown_mainline_repository}.dart + application/mainline_service.dart】；
-- **NotesPort**：灵感页（原"疑问笔记"）的**读写**端口。读 = 取 frontmatter 闭合后到
-  下一个 `---` 的正文段（含 `[[` 的行只由显示层屏蔽）；写 = 用新内容替换**同一区间**，
-  **frontmatter 与正文段前后的一切逐行原样保留**，连文件原有的换行风格（CRLF/LF）与
-  "是否以换行结尾"也照旧。写是"读—改—写"，不做锁、不做合并（同时在改以本次为准）；
-  frontmatter 未闭合时正文段的边界本身不确定，直接拒绝写入。
-  【现状：application/notes_reader.dart 定义接口与两个纯函数
-  （`extractNotesSection` 提取 / `applyNotesSection` 只换正文段），
-  platform/app_adapters.dart 落盘适配器】；
-- **今日视图查询 `buildTodayView()` / 任务池查询 `buildPoolView()`**（application 层）：
-  聚合 ScheduleResult（可推/逾期）+ 固定时点组 + 例行实例 + 被挑散件 + 散件段
-  （仅无排序档）五种来源，UI 只消费查询结果【现状】；
-  计划段以 `PoolRow`（任务行 / 周期条目）按日期混排；
-  **`buildTodayView` 收 `ScheduleMode`**：**无排序**这一档换两件事——今日可推组改按
-  `Task.manualOrder`（无序号者按 id 升序沉末尾）、插队压顶那一层取消（顺序本身就由人定，
-  不需要补丁）；另返回 `loose`（全部三无散件，按 `pool_order` → 创建时间排，页底 ⑥）。
-  **可推组的成员不变**——三档都用提醒锚点筛"今天该看哪几件"（见 [今日清单页](panels/today.md)）；
-  `buildPoolView` 收 `hideLoose`（由装配点按 `scheduleMode.isManual` 传）：
-  这一档不返回散件段，只留 `hiddenLooseCount` 给空状态文案；池子其余照旧是整理序
-  （`pool_order`），周期条目按发生日期混排在任何一档都一样；
-- **SettingsPort**：应用设置（通知时间段、定期挑、灵感文件路径（设置键仍是 `notes_path`）、主题预设与
-  明暗模式、周期任务是否进池等）的存取端口【现状：application/settings.dart +
-  platform 落盘实现】；设置文件仍在任务目录 `settings.json`，
-  但"任务目录是哪个"改存应用支持目录的 `bootstrap.json`（`BootstrapPort`），
-  否则改目录会把设置本身弄丢。
-- **EventLogPort**：操作流水的**只追加**落盘插座——
-  `application/event_log.dart` 定义 `EventLogPort` + `EventLog` 订阅者，
-  落盘任务目录 `.gtd/log.md`（append-only，应用从不重写历史行）
-  【现状：platform/app_adapters.dart 的 `FileEventLogPort`】。
-  **只在主引擎装配**（两个引擎都挂会把同一件事记两遍，理由同 §4.2 边界 1）；
-  `.gtd/log.md` **不是内核属性文档**——内核属性扫描与文件监听都要跳过它，
-  否则每次读盘都会多出一条"属性文档无法解析"的假警告，
-  监听它更会自激成环（写日志 → 文件变化 → 重锚 → 又写日志）。
+| 座位 | 定义层 | 契约页 |
+|---|---|---|
+| 周期任务 | domain（`RoutineRepository` / `RoutineCodec`） | [routine.md](sockets/routine.md) |
+| 主线 | domain（`MainlineRepository` / `MainlineCodec`） | [mainline.md](sockets/mainline.md) |
+| 灵感 / 设置 / 操作流水 | application（`NotesPort` / `SettingsPort` / `EventLogPort`） | [app-ports.md](sockets/app-ports.md) |
+| 今日与池子查询 | application（`buildTodayView` / `buildPoolView`） | [views.md](sockets/views.md) |
 
-### 4.2 交付类插座（application 定义）【接口 + 桌面适配器 + 安卓适配器现状】
+### 4.2 交付类插座（application 定义）
 
-```dart
-enum ReminderChannel { normal, alarm }   // alarm = 闹钟渠道：全屏 + 持续响铃
-enum PermissionKind {
-  notifications, exactAlarm, batteryExemption,
-  overlayWindow,        // 悬浮侧边栏（SYSTEM_ALERT_WINDOW）
-  showOnLockScreen,     // 全屏提醒（锁屏/上层显示）
-  folderAccess,         // 任务目录（所有文件访问 或 SAF）
-}
+通知、闹钟、权限、目录选择四类 Port，桌面与安卓两套适配器，以及系统级悬浮面板
+（第二个 Flutter 引擎）的层职责与引擎边界——见 [sockets/delivery.md](sockets/delivery.md)。
 
-class NotificationAction { final String id; final String label; }  // 如 done / snooze1h
+§4.1 里那句"`EventLog` 只在主引擎挂"的理由（两个引擎会把同一件事记两遍）也写在
+那份契约的边界表里。
 
-/// 交付内容草案：挂闹钟时就把"到点交付什么"定下来。
-/// 桌面不需要（到点由应用自己 show）；安卓需要——系统闹钟到点时应用可能已被杀，
-/// 原生接收器只能照这份草案自己弹通知。
-class ReminderDraft {
-  final String taskId; final String title; final String? body;
-  final ReminderChannel channel; final bool fullScreen;
-  final List<NotificationAction> actions;
-}
+### 4.3 送达策略与提醒协调者
 
-abstract class NotificationPort {
-  Future<void> show(ReminderEvent event, {
-    List<NotificationAction> actions = const [],
-    ReminderChannel channel = ReminderChannel.normal,
-    bool fullScreen = false,        // full-screen intent（闹钟模式）
-    ReminderDraft? draft,           // 系统通知实现用它渲染文案
-  });
-  /// 桌面的"托盘"就是应用窗口：适配器把 show 回流给 UI 渲染弹窗；
-  /// 系统通知实现返回空流（安卓的按钮/点击走原生事件回传，见 4.3）。
-  Stream<ShownNotification> get shown;
-}
+`NotificationWindowRule`（什么时候真正打扰用户）与 `ReminderDispatcher`（单闹钟
+怎么协调两个提醒源）：见 [sockets/reminder.md](sockets/reminder.md)。
 
-abstract class AlarmPort {
-  /// 全局唯一闹钟。[draft] 供"应用被杀时也能自己弹通知"的实现使用。
-  Future<void> scheduleNext(DateTime at, String taskId, {ReminderDraft? draft});
-  Future<void> cancel();
-  Stream<String> get fired;    // 到点（安卓=系统闹钟回调；桌面=Timer）
-}
+### 4.4 同步类插座（application 定义）
 
-abstract class FolderPickerPort {
-  Future<String?> pickDirectory();
-  Future<String?> pickFile({required String dialogTitle,
-      required List<String> allowedExtensions});  // 灵感文件路径（[灵感页](panels/notes.md)）
-}  // SAF / 桌面选择器
+局域网同步的契约、拓扑、范围裁决与冲突规则：见 [sockets/sync.md](sockets/sync.md)。
 
-abstract class PermissionPort {
-  Future<bool> ensure(PermissionKind kind);   // 申请（必要时弹系统界面）
-  Future<bool> granted(PermissionKind kind);  // 只查询（设置页展示，不弹界面）
-}
-```
-
-桌面适配器（`lib/platform/desktop_adapters.dart`【现状】）：`TimerAlarmPort`（前台 Timer，
-系统闹钟在桌面的等价物）、`StreamNotificationPort`（应用内弹窗回流）、
-`GrantedPermissionPort`、`DesktopFolderPickerPort`（**文件可挑，目录仍不挑**——
-桌面任务目录走环境变量 `GTD_TASKS_DIR` / 引导配置，不做目录选择 UI）。
-
-安卓适配器（`lib/platform/android_adapters.dart` + `android/…/gtd/` 原生侧【现状】）：
-`AndroidAlarmPort` / `AndroidNotificationPort`（系统精确闹钟 AlarmManager + 通知渠道
-`gtd_normal`/`gtd_alarm`/`gtd_overlay` + 通知按钮 + full-screen intent）、
-`AndroidPermissionPort`（permission_handler + 原生全屏 intent/悬浮窗查询）、
-`AndroidFolderPickerPort`（所有文件访问 + 系统目录选择器 / 文件选择器）；
-原生侧另有 `OverlayHandleService`（贴屏把手，前台服务 + WindowManager）。
-`platform/` 不受 §2 矩阵约束（组装点装配），但不得被 domain/scheduler/application import。
-
-**系统级悬浮面板（第二个 Flutter 引擎）**：文档 §0 的产品定位是"日常操作发生在
-悬浮侧边栏里，App 主体几乎不开"，所以把手拖出必须**在当前 App 上方就地展开面板**，
-而不是跳进应用。实现：
-
-| 层                | 位置                                                    | 职责                                                                                                     |
-| ----------------- | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| 原生命令/事件通道 | `gtd/overlay`（MethodChannel）                          | 上行：`notifyReady` / `collapse` / `expand` / `openApp{target,routineId}` / `panelWidth{dp}`；下行：`state{expanded,dockedRight,handleCenterY}` / `panelDrag{dx}` / `panelDragEnd{open}` / `quickNoteStart` / `quickNoteCancel` / `quickNoteOpen{x,y}` |
-| 第二个引擎入口    | `lib/overlay_main.dart`（DartEntrypoint `overlayMain`） | 只剩入口与装配：装配**同一套** domain/application（自己的实例）；通道桥与面板宿主壳 `OverlayBridge` / `OverlayPanelShell` 在 `lib/ui/overlay/`                        |
-| 面板本体          | `lib/ui/panels/side_panel.dart`                         | `SidePanel` / `PanelActions` / `PanelPrivacyBar` / `QuickNoteLayer`（拖出头快记）/ `PanelOnboardDialog`：**应用内壳与悬浮窗共用同一份**（快记只在悬浮窗用） |
-| 窗口              | 原生 `OverlayHandleService`                             | 全屏**透明** `TYPE_APPLICATION_OVERLAY` 窗口承载引擎的 FlutterView；展开时隐藏原生把手                   |
-
-> `handleCenterY`（逻辑像素）= 原生把手的中心 Y：面板垂直居中于它（ui-interaction.md
-> [把手与面板](panels/handle.md)）；字段缺失（老版本原生 / 桌面）时 Dart 侧贴顶展开，向后兼容。
-
-边界（写死，避免两个引擎打架）：
-
-1. **交付类插座与观察类订阅者只在主引擎装配**：全局单闹钟归主引擎那一份，悬浮引擎
-   不起 ReminderDispatcher（两个引擎各自挂闹钟会互相覆盖）；`EventLog`（操作流水）
-   同理只在主引擎挂，否则同一件事会被记两遍；
-2. **写路径仍然唯一**：悬浮面板的命令同样走它自己的 `TaskService`（C1 不变），
-   两个引擎之间的状态同步走**文件**——两边都 `watch()` 任务目录（与"Obsidian 手改
-   回流"同一条通路），并发写由字段归属合并兜底；
-3. **进应用的唯一入口**是面板头部的『设置』与实例菜单的『编辑规则』
-   （`openApp{target,routineId}`），其余交互全部就地完成。
-
-**单闹钟职责归属（条款有主语）**：全局任一时刻只挂一个下一站闹钟。调用方 =
-application 层的 **ReminderDispatcher**（见 §4.3）。装配点负责把 AlarmPort 注入。
-**适配器无自主权**：只执行"取消旧的、挂新的"，不得自行重排或补挂。
-
-### 4.3 送达策略与提醒协调者【现状（接口 + 桌面适配器 + 安卓适配器）】
-
-**NotificationWindowRule（通知时间段）**：与 WorkTimeRule（工时产能，domain）
-**解耦**——slack 数学不动，"什么时候真正打扰用户"由它裁决，归 application 层。
-
-- 多段式（默认 9:00–21:00 一段）；空段列表 = 不限制（原样送达）；
-- 映射规则：nextReminderAt（或相对档位推算出的时刻）落在段内 → 原样；
-  落在段外 → **顺延到下一时段开头（只顺延、不吞掉）**；
-  绝对档位（明早 9 点 / 自选）原样响（见 ui-interaction.md）；
-- 与工时窗口交集为空属用户自选配置：同样按顺延处理，不报错、不静默丢弃。
-
-**ReminderDispatcher（单闹钟协调者）**：订阅 `scheduleReanchored` →
-`alarm.cancel()` → 计算送达时刻（两个提醒源，见下）→ `alarm.scheduleNext()`（带草案）；
-订阅 `alarm.fired` → `TaskService.pollReminder()` → `NotificationPort.show(...)`
-（带 actions：完成 / 推迟1小时）→ 再排下一站（链路自续）。
-
-**门槛在算法/服务那一层，协调者不必知道模式。** 标准模式下
-`ScheduleResult.nextReminderAt` 为 null（除非有任务手动开了提醒），于是 `_reschedule()`
-自然算不出软提醒那一站；时点提醒同理——`TaskService.nextPointReminder()` 按同一门槛过滤
-（标准模式下只返回手动开了提醒的 fixed 与设了响的周期实例）。
-"默认不打扰"因此不需要在通知实现里各写一遍 if，也不会出现"调度算出下一站、通知层再吞掉"
-这种两处口径。
-
-**两个提醒源**：
-
-| 源               | 谁                            | 送达时刻                                          | 渠道                                  |
-| ---------------- | ----------------------------- | ------------------------------------------------- | ------------------------------------- |
-| **Slack 软提醒** | 可推任务（flex + 截止）       | 经 NotificationWindowRule（段外顺延到下一段开头） | 永远普通通知                          |
-| **时点性提醒**   | 不可推到点 + 设了响的周期实例 | 原样响（不受静默段限制）                 | 闹钟模式开 → alarm 渠道 + full-screen |
-
-- 单闹钟取两者中更早的一个（`ScheduleResult.nextReminderAt` vs
-  `TaskService.nextPointReminder()`）。**比的是"送达时刻"**：软提醒先按
-  NotificationWindowRule 顺延、再参与比较——拿原始锚点去比，会把一个被顺延到
-  次日上午的软提醒排在今晚的时点闹钟前面，那一晚的闹钟就被跳过了（v1.26 修）；
-- **`pollReminder` 不可重入**：20 秒 tick 与闹钟回调会同时打进来，而软提醒没有
-  `point_fired` 那样的幂等标记——上一次还在跑时这一次直接返回 null
-  （少发一条，好过同一件事弹两次，v1.26）；
-- **只到点响一次**：响过写 metadata `point_fired`（持久），改期/推迟会清掉它；
-  错过超过 30 分钟（`pointReminderGrace`）不再补响（已知局限见 §12）；
-- 安卓的"应用被杀"路径：挂闹钟时留下 `ReminderDraft`，到点由原生接收器
-  `ReminderReceiver` 自己弹通知（同一 taskId 的通知 id 相同 → Dart 侧再 show 时是替换，
-  不会重复）；按钮点击走 `ActionReceiver` → 事件回传（应用不在则入队，启动后 `drainEvents` 补做）。
-
-### 4.4 同步类插座（application 定义）【现状】
-
-**局域网同步**：同一网络内的两台设备（Windows + 安卓）同步任务数据。同步器只是
-"**又一个写文件的人**"——它只搬文件，写完由既有的 `watch() → refresh()` 链路重锚，
-内核、调度、UI 数据流零改动（与悬浮窗第二引擎同一条边界精神：数据一致靠文件，
-不靠共享内存态）。
-
-```dart
-/// 同步：只管"把文件搬到对端"，不管文件里是什么。【现状】
-abstract class SyncPort {
-  SyncState get state;                    // 角色 / 连接 / 上次同步 / 冲突存档
-  Stream<SyncState> get changes;          // 状态广播（UI 订阅）
-
-  Future<void> startHost(String deviceName);                        // 当主机
-  Future<List<SyncPeer>> discover({Duration timeout});              // 扫局域网内的主机
-  Future<SyncOutcome> connectTo(SyncPeer peer, String deviceName);  // 接入并同步
-  Future<SyncOutcome> syncNow();                                    // 手动同步一次
-  Future<void> stop();
-}
-```
-
-**拓扑 = 主机/从机**（不做无主机 P2P）：一台（通常 Windows）起服务，其余接入；
-双向同步，冲突由主机裁决。主机 = HTTP 服务（manifest / file / push 三个端点）
-+ UDP 广播报站；从机 = 探询发现 → 连主机 → 双向搬文件；发现失败时支持手输 IP 兜底。
-
-**同步范围 = 核心任务数据**：`tasks.md`、`routines.md`、`主线.md`、`.gtd/<任务id>.md`。
-**不同步**：`.gtd/log.md`（append-only，双写必乱序）、`.gtd/.trash/`（回收站是
-本地操作缓冲，不跨设备）、`.gtd/conflicts/`（冲突存档，本地人工收拾）、
-`settings.json`（设备相关：面板宽高 / 把手位置 / 主题档位）、`legacy-tasks/`（存档）。
-
-**方向裁决 = 逐文件比指纹**：从机存一份"上次握手时主机的清单"（path → 内容指纹）。
-主机清单里有的文件，指纹不同 → 拉取；只在从机本地有的文件，或指纹与上次清单
-不同（从机改过）→ 推送；主机清单里**消失**的路径 = 主机删了 → 从机本地一并删
-（镜像删除，恢复由主机回收站负责）。跨设备 mtime 只作同轮参考，不作长期依据。
-
-**冲突 = 主机覆盖 + 从机版本存档**：推送带 `baseSha`（从机动手前那一版的指纹）。
-主机照收的条件 = 主机当前版本 == baseSha（只有从机改过）；主机也改过 → 不静默
-覆盖，从机版本存档到 `.gtd/conflicts/<相对路径>.<设备名>.<时刻>`，从机随即拉取
-主机版本收敛（不会每轮重复存档）。UI 提示人工收拾。
-
-**已知取舍**（记录在案，见 §12）：跨设备时钟可能偏差，mtime 参考值会骗人；主机
-同时只应对一个从机的推送（两个从机同轮推同一文件按到达顺序覆盖，与"双开实例"
-同级的已知局限）。
-
-**装配**：只在主引擎挂（`main.dart`），悬浮引擎不挂（它没有写入职责，主机服务
-也只需一份）。Windows 首次当主机会弹防火墙对话框，需允许专用网络入站。
+装配只在主引擎（`main.dart`）——悬浮引擎没有写入职责，主机服务也只需一份。
 
 ---
 
