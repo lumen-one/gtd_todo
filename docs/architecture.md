@@ -812,6 +812,9 @@ DOWN…UP 要么整个归把手、要么整个归底下的 App，没有"识别�
 （§4.2），不挂这一层 `StreamNotificationPort` 发出的事件就没人渲染（旧桌面壳的
 遗留缺陷，v1.32 修掉）。窗口窄于 720 逻辑像素时退回单栏：只摆面板，设置页从标题栏
 那颗『设置』按钮 push 成独立页面。交互细节见 ui-interaction.md §6.10。
+**设置页里只属于悬浮壳的项**（权限引导 / 贴屏把手 / 把手与面板尺寸 / 闹钟渠道）
+在桌面上**整行不渲染**，判据是组装点注入的 `ShellCapabilities` 能力表
+（`lib/application/shell_capabilities.dart`）——UI 读表、不问平台，与 §5.3 的口诀一致。
 
 安卓 shell 用 Drawer 摆面板，Windows shell 用侧边栏摆**同样的面板**。
 布局上允许 `Platform.isAndroid` 分支——那是摆法不同；能力差异必须走插座。
