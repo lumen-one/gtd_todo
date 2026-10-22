@@ -439,6 +439,7 @@ App 主体，桌面上它是侧边栏右边那一栏（[桌面布局](panels/des
 | 20  | **暗黑模式：明暗三选一（跟随系统 / 浅色 / 深黑）**                                | 纯 UI 层，**内核一行不动**（无新命令、新字段、新事件，任务数据与调度零影响）：`AppSettings` 加 `themeMode`（字符串，落 `settings.json` 的 `theme_mode`，缺省 `system`——与 `themePreset` 同款"application 存 id、枚举在 UI 层"模式）；`ui/theme.dart` 加 `AppThemeMode` 枚举 + `ThemeMode` 映射，深色底沿用已有暖深褐黑常量（`darkSurface`/`darkCard`）；`main.dart` 与 `overlay_main.dart` 的 `MaterialApp` 改读设置——悬浮引擎那个原先不监听控制器（预设切换要等引擎重启才生效），包一层 `ListenableBuilder` 顺手修；逾期橙红加暗色提亮变体（时间徽标橙与 blueGrey 系不动）；安卓补 `drawable-night/launch_background.xml`（暗色手机冷启动不白闪） |
 | 21 | **已完成页 + 恢复未完成** | 契约侧只加一个命令：`TaskService.reopenTask(taskId)`（status 回 active、清 `completedAt`、`remainingWork` 回满到 `estimatedWork`、长期任务保持缺位；**例行实例拒绝恢复**）+ 领域事件 `taskReopened`；人类文档那行由 codec 从 `completedAt` 驱动天然复原（`[x]`→`[ ]`、去掉『完成 <时刻>』），不写行逻辑。查询侧加 `buildCompletedView`（application 层，今天/昨天/更早分组，UI 不含逻辑）。UI：新 `panels/completed_panel.dart`；`side_panel.dart` 页名/圆点/PageView/clamp 3→4；`taskMenuEntries` 加 `TaskMenuKind.completed` 分支（恢复未完成/删除）；`AppController` 加 `completedView` getter 与 `reopenTask` 转发；`locateTask` 的已完成分支从 toast 改为跳已完成页高亮。**内核算法一行不动**（存档不参与调度，`Scheduler.schedule` 不收任何新入参） |
 | 22 | **今日编排：今日页下拉 → 时间轴覆盖页** | 新增 `PlanService`（读写 `tasks/编排.md`，一个文件装所有日子，[编排文件格式](formats/plan.md)）与命令 `setEntries(day, entries)`（整日重写：一次落盘，与主线整条链同一套"读整份 → 改一处 → 整份写回"）；domain 加 `PlanEntry`（时刻可空 + 标题，**无 id、无完成态**）。**内核零改动**：不进 `Scheduler`、不改 `Task`、不写 sidecar、不发领域事件、不产生提醒，今日清单分组与页序都不变（编排是覆盖页，不是第五页）。UI：新 `ui/panels/plan_panel.dart`；`today_panel.dart` 接下拉（`OverscrollNotification`，`dragDetails` 非空才认，拉过 72dp 或快甩补满）；`side_panel.dart` 加第二块 reveal，开合与跟手行程在 `AppController.planOpen` / `planPull` / `planDragging`；桌面今日页局部放开鼠标拖拽以复用同一手势。同步范围加 `编排.md`（[局域网同步](sockets/sync.md)） |
+| 23 | **多选（批量完成 / 批量删除）** | 契约侧只加三条命令：`completeTasks(ids)` / `deleteTasks(ids)` / `restoreTasks(ids)`，都走 `_persistBatch`（内存态先换终态 → 一个事件 → 逐条落盘 → 重算一次），**不新增字段、不加设置项、不动 `Scheduler`、不发新事件类型**（复用 taskCompleted / taskDeleted / taskRestored）；`completeTasks` 跳过已完成项。UI：选择模式是**纯 UI 临时态**（`TaskSelection`，挂在 `SidePanel` 上，不进 `AppController`、不落盘、不跨引擎）——`selecting` + 选中 id 集合；`TaskTile` 加选择模式渲染（勾选替换编号、拖把手不渲染）；`PanelActions` 在选择模式下换成批处理条；长按菜单与池子菜单各加最后一行『多选』（**不进 `taskMenuEntries`**：那张表装命令，多选是模式切换），详情卡不出现；四个面板把选择器传下去。选中**跨页保留**，动作固定为完成/删除两颗，完成的计数只数未完成的。**内核算法一行不动**（批量只是把 N 次命令压成一次重算） |
 
 ---
 
@@ -456,6 +457,7 @@ App 主体，桌面上它是侧边栏右边那一栏（[桌面布局](panels/des
   纵向唯一的越界是**今日页到顶之后再下拉**（[今日编排](panels/plan.md)）：列表没到顶时
   它不存在，而且要拉过一截（72dp 或快甩）才算数，浏览中不会误触；
   通知上的"完成"按钮点击后提示完成，误触可去『已完成』页『恢复未完成』（[已完成页](panels/completed.md)）。
+  **批量动作不走这条防线**：它靠自己两步（长按 → 菜单『多选』→ 勾选 → 按动作）；删除仍是软删除 + 撤销 toast，一次删多件时恢复整批；批量完成不进回收站，反悔去『已完成』页逐条恢复。
   **新建确认是纯点按，不承担
   防误触职责**：误建的代价很低（直接进散件段，长按就能改能删）。
 - **详情卡是打开那一刻的快照**：它不订阅控制器的后续刷新（后台重锚、别的
