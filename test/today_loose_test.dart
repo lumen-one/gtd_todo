@@ -10,6 +10,7 @@ import 'package:gtd_todo/scheduler/slack_scheduler.dart';
 import 'package:gtd_todo/ui/app_controller.dart';
 import 'package:gtd_todo/ui/panels/pool_panel.dart';
 import 'package:gtd_todo/ui/panels/today_panel.dart';
+import 'package:gtd_todo/ui/widgets/task_selection.dart';
 
 /// ⑥ 散件段（v1.27）：无排序档把三无散件铺到今日页最底，池子那边不再显示。
 void main() {
@@ -50,8 +51,10 @@ void main() {
   testWidgets('无排序档：⑤ 在上、⑥ 在最底，池子说"散件都在今日清单底部"',
       (tester) async {
     final controller = await build(tester, ScheduleMode.manual);
+    final selection = TaskSelection();
+    addTearDown(selection.dispose);
 
-    await pump(tester, TodayPanel(controller: controller));
+    await pump(tester, TodayPanel(controller: controller, selection: selection));
     expect(find.text('被挑散件'), findsOneWidget);
     expect(find.text('散件'), findsOneWidget);
     expect(find.text('收拾房间'), findsOneWidget);
@@ -62,7 +65,7 @@ void main() {
       reason: '散件段在页底、被挑散件之下',
     );
 
-    await pump(tester, PoolPanel(controller: controller));
+    await pump(tester, PoolPanel(controller: controller, selection: selection));
     expect(find.text('散件都在今日清单底部'), findsOneWidget);
     expect(find.text('收拾房间'), findsNothing);
     expect(find.text('写笔记'), findsNothing);
@@ -71,11 +74,13 @@ void main() {
   testWidgets('标准档：今日页没有散件段，两件散件都在池子里（一行不变）',
       (tester) async {
     final controller = await build(tester, ScheduleMode.standard);
+    final selection = TaskSelection();
+    addTearDown(selection.dispose);
 
-    await pump(tester, TodayPanel(controller: controller));
+    await pump(tester, TodayPanel(controller: controller, selection: selection));
     expect(find.text('散件'), findsNothing);
 
-    await pump(tester, PoolPanel(controller: controller));
+    await pump(tester, PoolPanel(controller: controller, selection: selection));
     expect(find.text('写笔记'), findsOneWidget);
     expect(find.text('散件都在今日清单底部'), findsNothing);
   });

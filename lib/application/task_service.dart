@@ -302,6 +302,29 @@ class TaskService {
     return updated;
   }
 
+  /// 批量完成（选择模式，ui 文档 §10#23）：**一次手势 = 一个事件 + 一次重算**——
+  /// 逐条调 [completeTask] 会让 N 件任务各触发一次全量重算，清单一条条闪。
+  ///
+  /// 已完成的跳过（不改写人写在 Obsidian 里的完成时刻），所以重复调用无害；
+  /// 同一批共用一个完成时刻，人类文档里那一列时间才对齐。
+  Future<List<Task>> completeTasks(List<String> ids,
+      {EventOrigin origin = EventOrigin.user}) async {
+    final stamp = now();
+    final updated = <Task>[];
+    for (final id in ids) {
+      final cur = byId(id);
+      if (cur == null || cur.isCompleted) continue;
+      updated.add(_clearInProgress(cur.copyWith(
+        status: TaskStatus.completed,
+        remainingWork: cur.isLongTerm ? null : 0,
+        completedAt: cur.completedAt ?? stamp,
+        clearSnooze: true,
+      )));
+    }
+    if (updated.isEmpty) return const [];
+    return _persistBatch(updated, DomainEventType.taskCompleted, origin);
+  }
+
   /// 恢复未完成（撤销一次完成，ui 文档 §6.7『已完成』页）：已完成任务的兜底动作。
   ///
   /// - **例行实例不能恢复**：实例是临时的，恢复一个往日实例它会从所有清单里

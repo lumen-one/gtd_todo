@@ -10,7 +10,9 @@ import '../panels/side_panel.dart';
 import '../panels/settings_panel.dart';
 import '../panels/today_panel.dart';
 import '../theme.dart';
+import '../widgets/panel_dock.dart';
 import '../widgets/reminder_listener.dart';
+import '../widgets/task_selection.dart';
 
 /// 安卓壳（§5.1 shells / ui-interaction.md §6）：
 /// - App 主体 = 设置页（"App 主体几乎不开"）；
@@ -475,10 +477,28 @@ class _HandleState extends State<_Handle> {
 }
 
 /// 抽屉兜底（§11）：悬浮窗被拒时，同一套 panels 在 App 内左侧滑呼出。
-class _DrawerFallback extends StatelessWidget {
+///
+/// 有状态是因为多选（§10#23）：抽屉与侧边栏是同一份功能的两条入口，
+/// 选择模式也得有一份自己的临时态（跨页保留到抽屉关掉为止）。
+class _DrawerFallback extends StatefulWidget {
   final AppController controller;
 
   const _DrawerFallback({required this.controller});
+
+  @override
+  State<_DrawerFallback> createState() => _DrawerFallbackState();
+}
+
+class _DrawerFallbackState extends State<_DrawerFallback> {
+  final TaskSelection _selection = TaskSelection();
+
+  AppController get controller => widget.controller;
+
+  @override
+  void dispose() {
+    _selection.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -521,9 +541,12 @@ class _DrawerFallback extends StatelessWidget {
                 for (final page in pages)
                   _withActions(context, page, switch (page) {
                     PanelPage.notes => NotesPanel(controller: controller),
-                    PanelPage.today => TodayPanel(controller: controller),
-                    PanelPage.pool => PoolPanel(controller: controller),
-                    PanelPage.completed => CompletedPanel(controller: controller),
+                    PanelPage.today =>
+                      TodayPanel(controller: controller, selection: _selection),
+                    PanelPage.pool =>
+                      PoolPanel(controller: controller, selection: _selection),
+                    PanelPage.completed => CompletedPanel(
+                        controller: controller, selection: _selection),
                   }),
               ],
             ),
@@ -540,8 +563,9 @@ class _DrawerFallback extends StatelessWidget {
   Widget _withActions(BuildContext context, PanelPage page, Widget body) =>
       Stack(children: [
         body,
-        PanelActions(
+        PanelDock(
           controller: controller,
+          selection: _selection,
           onOpenCalendar: () => showCalendarDialog(context, controller),
           heroTagPrefix: 'drawer-${page.name}',
         ),

@@ -16,6 +16,36 @@ extension TaskServiceTrash on TaskService {
     await recomputeSchedule(origin: origin);
   }
 
+  /// 批量软删除（选择模式，ui 文档 §10#23）：回收站的文件搬移本来就是逐条 IO，
+  /// 但**事件与重算只做一次**——逐条调 [deleteTask] 会让清单一条条闪。
+  Future<void> deleteTasks(List<String> ids,
+      {EventOrigin origin = EventOrigin.user}) async {
+    final targets = [
+      for (final id in ids)
+        if (byId(id) != null) id,
+    ];
+    if (targets.isEmpty) return;
+    for (final id in targets) {
+      await repo.moveToTrash(id);
+    }
+    final gone = targets.toSet();
+    _tasks = _tasks.where((t) => !gone.contains(t.id)).toList();
+    _emit(DomainEventType.taskDeleted, targets.first, origin);
+    await recomputeSchedule(origin: origin);
+  }
+
+  /// 批量撤销删除（一次删多件的撤销 toast）：恢复完统一回读一次再发一个事件。
+  Future<void> restoreTasks(List<String> ids,
+      {EventOrigin origin = EventOrigin.user}) async {
+    if (ids.isEmpty) return;
+    for (final id in ids) {
+      await repo.restore(id);
+    }
+    // 回收站里的任务不在内存 `_tasks` 中，必须回读（同 [restoreTask]）。
+    await refreshSchedule(origin: origin);
+    _emit(DomainEventType.taskRestored, ids.first, origin);
+  }
+
   /// 从回收站恢复（撤销窗口 / 设置页回收列表）。
   Future<void> restoreTask(String id,
       {EventOrigin origin = EventOrigin.user}) async {

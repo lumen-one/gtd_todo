@@ -8,6 +8,7 @@ import '../app_controller.dart';
 import '../dialogs/task_detail_sheet.dart';
 import '../theme.dart';
 import '../widgets/task_actions.dart';
+import '../widgets/task_selection.dart';
 import '../widgets/task_tile.dart';
 
 /// 今日清单页（ui-interaction.md §6.1；页序见 `ui/panel_pages.dart`）。
@@ -15,13 +16,28 @@ import '../widgets/task_tile.dart';
 /// ② 固定时点 → ③ 可推（插队件栈式压顶 + 调度序）→ ④ 例行（未落地恒空）→
 /// ⑤ 被挑散件（无编号、弱化）→ ⑥ 散件段（v1.27，仅无排序档、页底）。
 /// 编号跨 ②③④ 连续；插队拖拽仅对可推组生效，挂起组拖拽仅组内调序（决议 47）。
+///
+/// 多选（§10#23）：[selection] 由面板持有（跨页保留），这里只把它落到条目上——
+/// 选择模式下点条目 = 勾选、拖把手不渲染、下拉进编排也不接。
 class TodayPanel extends StatelessWidget {
   final AppController controller;
+  final TaskSelection selection;
 
-  const TodayPanel({super.key, required this.controller});
+  const TodayPanel({
+    super.key,
+    required this.controller,
+    required this.selection,
+  });
 
   @override
   Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: selection,
+      builder: (context, _) => _build(context),
+    );
+  }
+
+  Widget _build(BuildContext context) {
     final view = controller.todayView;
     final theme = Theme.of(context);
 
@@ -84,19 +100,13 @@ class TodayPanel extends StatelessWidget {
                   controller: controller,
                   task: view.inProgress[i],
                   highlight: view.inProgress[i].id == controller.focusedTaskId,
-                  onTap: () => showTaskDetailSheet(context, controller,
-                      view.inProgress[i],
-                      kind: TaskMenuKind.inProgress),
-                  onLongPress: () => showTaskMenu(context, controller,
-                      view.inProgress[i],
-                      kind: TaskMenuKind.inProgress),
-                  trailing: ReorderableDragStartListener(
-                    index: i,
-                    child: Icon(Icons.drag_handle,
-                        size: 18,
-                        color: theme.colorScheme.onSurfaceVariant
-                            .withValues(alpha: 0.6)),
-                  ),
+                  selecting: selection.selecting,
+                  selected: selection.contains(view.inProgress[i].id),
+                  onTap:
+                      _tap(context, view.inProgress[i], TaskMenuKind.inProgress),
+                  onLongPress: _longPress(
+                      context, view.inProgress[i], TaskMenuKind.inProgress),
+                  trailing: _grip(i, theme),
                 ),
             ],
           ),
@@ -108,10 +118,10 @@ class TodayPanel extends StatelessWidget {
             TaskTile(
               controller: controller,
               task: t,
-              onTap: () => showTaskDetailSheet(context, controller, t,
-                  kind: TaskMenuKind.overdue),
-              onLongPress: () => showTaskMenu(context, controller, t,
-                  kind: TaskMenuKind.overdue),
+              selecting: selection.selecting,
+              selected: selection.contains(t.id),
+              onTap: _tap(context, t, TaskMenuKind.overdue),
+              onLongPress: _longPress(context, t, TaskMenuKind.overdue),
             ),
         ],
         // ② 固定时点组：时间升序、组内不可拖（时间就是序）
@@ -122,10 +132,10 @@ class TodayPanel extends StatelessWidget {
               controller: controller,
               task: t,
               number: ++number,
-              onTap: () => showTaskDetailSheet(context, controller, t,
-                  kind: TaskMenuKind.fixed),
-              onLongPress: () => showTaskMenu(context, controller, t,
-                  kind: TaskMenuKind.fixed),
+              selecting: selection.selecting,
+              selected: selection.contains(t.id),
+              onTap: _tap(context, t, TaskMenuKind.fixed),
+              onLongPress: _longPress(context, t, TaskMenuKind.fixed),
             ),
         ],
         // ③ 可推组：插队件（栈式压顶）+ 调度序；拖把手插队
@@ -145,19 +155,12 @@ class TodayPanel extends StatelessWidget {
                 task: combined[i],
                 number: ++number,
                 highlight: combined[i].id == controller.focusedTaskId,
-                onTap: () => showTaskDetailSheet(context, controller,
-                    combined[i],
-                    kind: TaskMenuKind.flex),
-                onLongPress: () => showTaskMenu(context, controller,
-                    combined[i],
-                    kind: TaskMenuKind.flex),
-                trailing: ReorderableDragStartListener(
-                  index: i,
-                  child: Icon(Icons.drag_handle,
-                      size: 18,
-                      color: theme.colorScheme.onSurfaceVariant
-                          .withValues(alpha: 0.6)),
-                ),
+                selecting: selection.selecting,
+                selected: selection.contains(combined[i].id),
+                onTap: _tap(context, combined[i], TaskMenuKind.flex),
+                onLongPress:
+                    _longPress(context, combined[i], TaskMenuKind.flex),
+                trailing: _grip(i, theme),
               ),
           ],
         ),
@@ -171,10 +174,10 @@ class TodayPanel extends StatelessWidget {
               task: t,
               number: ++number,
               highlight: t.id == controller.focusedTaskId,
-              onTap: () => showTaskDetailSheet(context, controller, t,
-                  kind: TaskMenuKind.routine),
-              onLongPress: () => showTaskMenu(context, controller, t,
-                  kind: TaskMenuKind.routine),
+              selecting: selection.selecting,
+              selected: selection.contains(t.id),
+              onTap: _tap(context, t, TaskMenuKind.routine),
+              onLongPress: _longPress(context, t, TaskMenuKind.routine),
             ),
         ],
         // ⑤ 被挑散件：弱化呈现、无编号（决议 25）
@@ -185,10 +188,10 @@ class TodayPanel extends StatelessWidget {
             task: view.picked!,
             dimmed: true,
             highlight: view.picked!.id == controller.focusedTaskId,
-            onTap: () => showTaskDetailSheet(context, controller, view.picked!,
-                kind: TaskMenuKind.picked),
-            onLongPress: () => showTaskMenu(context, controller, view.picked!,
-                kind: TaskMenuKind.picked),
+            selecting: selection.selecting,
+            selected: selection.contains(view.picked!.id),
+            onTap: _tap(context, view.picked!, TaskMenuKind.picked),
+            onLongPress: _longPress(context, view.picked!, TaskMenuKind.picked),
           ),
         ],
         // ⑥ 散件段（v1.27，仅无排序档）：池子里的三无散件整段铺在本页最底，
@@ -209,19 +212,12 @@ class TodayPanel extends StatelessWidget {
                   task: view.loose[i],
                   dimmed: true,
                   highlight: view.loose[i].id == controller.focusedTaskId,
-                  onTap: () => showTaskDetailSheet(context, controller,
-                      view.loose[i],
-                      kind: TaskMenuKind.pool),
-                  onLongPress: () => showTaskMenu(context, controller,
-                      view.loose[i],
-                      kind: TaskMenuKind.pool),
-                  trailing: ReorderableDragStartListener(
-                    index: i,
-                    child: Icon(Icons.drag_handle,
-                        size: 18,
-                        color: theme.colorScheme.onSurfaceVariant
-                            .withValues(alpha: 0.6)),
-                  ),
+                  selecting: selection.selecting,
+                  selected: selection.contains(view.loose[i].id),
+                  onTap: _tap(context, view.loose[i], TaskMenuKind.pool),
+                  onLongPress:
+                      _longPress(context, view.loose[i], TaskMenuKind.pool),
+                  trailing: _grip(i, theme),
                 ),
             ],
           ),
@@ -231,11 +227,37 @@ class TodayPanel extends StatelessWidget {
     return _withPlanPull(list);
   }
 
+  /// 点条目：选择模式下是勾选，平时是详情卡（"点击看、长按做"）。
+  VoidCallback _tap(BuildContext context, Task t, TaskMenuKind kind) =>
+      selection.selecting
+          ? () => selection.toggle(t.id)
+          : () => showTaskDetailSheet(context, controller, t, kind: kind);
+
+  /// 长按：选择模式下不给菜单（`null` → InkWell 不响应长按）；平时弹菜单，
+  /// 菜单最后一行『多选』把这条一并选上（§10#23）。
+  VoidCallback? _longPress(BuildContext context, Task t, TaskMenuKind kind) =>
+      selection.selecting
+          ? null
+          : () => showTaskMenu(context, controller, t,
+              kind: kind, onSelectMode: () => selection.begin(t.id));
+
+  /// 拖把手：选择模式下不渲染 = 那一段不可拖（勾选时没有"调顺序"的意图）。
+  Widget? _grip(int index, ThemeData theme) => selection.selecting
+      ? null
+      : ReorderableDragStartListener(
+          index: index,
+          child: Icon(Icons.drag_handle,
+              size: 18,
+              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
+        );
+
   /// 今日页是编排的入口（§6.11）：**已经滚到顶**还继续往下拉，就把行程喂给控制器。
   ///
   /// 只认手指拖（`dragDetails != null`）：鼠标滚轮与触控板"滚到头继续滚"是常态，
   /// 认了就是天天误触。`depth != 0` 的是内层 ReorderableListView 的通知，跳过。
+  /// 选择模式下整条手势不接：手上正拿着"选中"的意图，下拉只会误触（§10#23）。
   Widget _withPlanPull(Widget child) {
+    if (selection.selecting) return child;
     return NotificationListener<ScrollNotification>(
       onNotification: (n) {
         if (n.depth != 0) return false;

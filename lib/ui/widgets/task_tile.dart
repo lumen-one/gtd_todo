@@ -29,6 +29,11 @@ class TaskTile extends StatelessWidget {
   /// 定位高亮（§7.2：点通知 / 编辑规则跳转后高亮目标行）。
   final bool highlight;
 
+  /// 选择模式（多选，§10#23）：左侧编号位换成圆形勾选、整行可勾选。
+  /// [selected] 只在 [selecting] 为真时有意义。
+  final bool selecting;
+  final bool selected;
+
   const TaskTile({
     super.key,
     required this.controller,
@@ -39,6 +44,8 @@ class TaskTile extends StatelessWidget {
     this.dimmed = false,
     this.trailing,
     this.highlight = false,
+    this.selecting = false,
+    this.selected = false,
   });
 
   @override
@@ -56,7 +63,11 @@ class TaskTile extends StatelessWidget {
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-      color: dimmed ? theme.cardTheme.color?.withValues(alpha: 0.55) : null,
+      color: selected
+          ? AppColors.accent.withValues(alpha: 0.10)
+          : dimmed
+              ? theme.cardTheme.color?.withValues(alpha: 0.55)
+              : null,
       shape: highlight
           ? RoundedRectangleBorder(
               side: BorderSide(color: AppColors.accent, width: 1.6),
@@ -72,7 +83,10 @@ class TaskTile extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              if (number != null) ...[
+              if (selecting) ...[
+                _SelectMark(selected: selected),
+                const SizedBox(width: 10),
+              ] else if (number != null) ...[
                 SizedBox(
                   width: 30,
                   child: Text('$number', style: numberStyle(theme.textTheme)),
@@ -157,6 +171,37 @@ class TaskTile extends StatelessWidget {
       ));
     }
     return badges;
+  }
+}
+
+/// 选择模式下的勾选圈（替代编号位，§10#23）：选中填强调色 + 白勾。
+class _SelectMark extends StatelessWidget {
+  final bool selected;
+
+  const _SelectMark({required this.selected});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutCubic,
+      width: 22,
+      height: 22,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: selected ? AppColors.accent : Colors.transparent,
+        border: Border.all(
+          color: selected
+              ? AppColors.accent
+              : theme.colorScheme.outlineVariant,
+          width: 1.6,
+        ),
+      ),
+      child: selected
+          ? const Icon(Icons.check, size: 14, color: Colors.white)
+          : null,
+    );
   }
 }
 

@@ -920,6 +920,17 @@ class AppController extends ChangeNotifier {
 
   Future<void> deleteTask(String id) => service.deleteTask(id);
 
+  /// 批量命令（多选，ui 文档 §10#23）：一次落盘一个事件一次重算，
+  /// 不逐条转发单条命令（那会让清单一条条闪）。
+  Future<void> completeTasks(List<String> ids) => service.completeTasks(ids);
+
+  Future<void> deleteTasks(List<String> ids) => service.deleteTasks(ids);
+
+  Future<void> restoreTasks(List<String> ids) async {
+    await service.restoreTasks(ids);
+    await refreshTrash();
+  }
+
   Future<void> restoreTask(String id) async {
     await service.restoreTask(id);
     await refreshTrash();

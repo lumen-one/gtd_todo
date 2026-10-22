@@ -7,9 +7,10 @@ import 'package:flutter/material.dart';
 
 import '../../application/settings.dart';
 import '../app_controller.dart';
-import '../dialogs/create_task_dialog.dart';
 import '../panel_pages.dart';
 import '../theme.dart';
+import '../widgets/panel_dock.dart';
+import '../widgets/task_selection.dart';
 import 'notes_panel.dart';
 import 'completed_panel.dart';
 import 'mainline_panel.dart';
@@ -60,6 +61,11 @@ class _SidePanelState extends State<SidePanel> {
   static final List<String> _pageNames =
       [for (final page in PanelPage.values) page.label];
 
+  /// 多选（§10#23）：整块面板一份、**跨页保留**——翻页不清空选中，
+  /// 因为一次收拾"今日剩的 + 池子里堆的"是主要场景。纯 UI 临时态，
+  /// 跟着这个 State 一起生灭。
+  final TaskSelection _selection = TaskSelection();
+
   @override
   void initState() {
     super.initState();
@@ -78,6 +84,7 @@ class _SidePanelState extends State<SidePanel> {
   @override
   void dispose() {
     widget.controller.removeListener(_onControllerChanged);
+    _selection.dispose();
     super.dispose();
   }
 
@@ -171,9 +178,11 @@ class _SidePanelState extends State<SidePanel> {
                             _pageBody(page, controller),
                         ],
                       ),
-                      // 每页都可添加待办与开日历（§6.1）：右下角双钮
-                      PanelActions(
+                      // 每页都可添加待办与开日历（§6.1）：右下角双钮；
+                      // 选择模式下整块换成批处理条（§10#23）。
+                      PanelDock(
                         controller: controller,
+                        selection: _selection,
                         onOpenCalendar: widget.onOpenCalendar,
                         heroTagPrefix: widget.heroTagPrefix,
                       ),
@@ -272,10 +281,12 @@ class _SidePanelState extends State<SidePanel> {
             behavior: ScrollConfiguration.of(context).copyWith(
               dragDevices: PointerDeviceKind.values.toSet(),
             ),
-            child: TodayPanel(controller: controller),
+            child: TodayPanel(controller: controller, selection: _selection),
           ),
-        PanelPage.pool => PoolPanel(controller: controller),
-        PanelPage.completed => CompletedPanel(controller: controller),
+        PanelPage.pool =>
+          PoolPanel(controller: controller, selection: _selection),
+        PanelPage.completed =>
+          CompletedPanel(controller: controller, selection: _selection),
       };
 
   /// 页序圆点（v1.20 改回原本的形）：7dp 圆点、当前页强调色，切换时颜色
@@ -344,50 +355,6 @@ class _SidePanelState extends State<SidePanel> {
     widget.pageCtrl.animateToPage(page.clamp(0, PanelPage.values.length - 1),
         duration: const Duration(milliseconds: 260),
         curve: Curves.easeOutCubic);
-  }
-}
-
-/// 面板右下角的浮出区：日历 + 添加待办（§6.1 每页都有）。
-/// [heroTagPrefix] 区分面板/抽屉/悬浮窗几处实例，避免 Hero 标签冲突。
-class PanelActions extends StatelessWidget {
-  final AppController controller;
-  final VoidCallback onOpenCalendar;
-  final String heroTagPrefix;
-
-  const PanelActions({
-    super.key,
-    required this.controller,
-    required this.onOpenCalendar,
-    this.heroTagPrefix = 'panel',
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Positioned(
-      right: 14,
-      bottom: 14,
-      child: FadeIn(
-        offset: 14,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            FloatingActionButton.small(
-              heroTag: '$heroTagPrefix-calendar',
-              tooltip: '日历',
-              onPressed: () => onOpenCalendar(),
-              child: const Icon(Icons.calendar_month_outlined),
-            ),
-            const SizedBox(width: 8),
-            FloatingActionButton(
-              heroTag: '$heroTagPrefix-create-task',
-              tooltip: '添加待办',
-              onPressed: () => showCreateFlow(context, controller),
-              child: const Icon(Icons.add),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }
 

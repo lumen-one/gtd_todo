@@ -5,6 +5,7 @@ import '../app_controller.dart';
 import '../dialogs/task_detail_sheet.dart';
 import '../theme.dart';
 import '../widgets/task_actions.dart';
+import '../widgets/task_selection.dart';
 import '../widgets/task_tile.dart';
 
 /// 已完成页（ui-interaction.md §6.7；页序见 `ui/panel_pages.dart`）。
@@ -17,11 +18,21 @@ import '../widgets/task_tile.dart';
 /// 逻辑，与今日页/任务池同规则。与调度模式三档无关：存档不参与排序。
 class CompletedPanel extends StatelessWidget {
   final AppController controller;
+  final TaskSelection selection;
 
-  const CompletedPanel({super.key, required this.controller});
+  const CompletedPanel({
+    super.key,
+    required this.controller,
+    required this.selection,
+  });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => AnimatedBuilder(
+        animation: selection,
+        builder: (context, _) => _build(context),
+      );
+
+  Widget _build(BuildContext context) {
     final view = controller.completedView;
     final theme = Theme.of(context);
 
@@ -65,10 +76,18 @@ class CompletedPanel extends StatelessWidget {
         task: task,
         dimmed: true,
         highlight: task.id == controller.focusedTaskId,
-        onTap: () => showTaskDetailSheet(context, controller, task,
-            kind: TaskMenuKind.completed),
-        onLongPress: () => showTaskMenu(context, controller, task,
-            kind: TaskMenuKind.completed),
+        selecting: selection.selecting,
+        selected: selection.contains(task.id),
+        // 选择模式下点条目 = 勾选（批量动作只给删除，见 §10#23）。
+        onTap: selection.selecting
+            ? () => selection.toggle(task.id)
+            : () => showTaskDetailSheet(context, controller, task,
+                kind: TaskMenuKind.completed),
+        onLongPress: selection.selecting
+            ? null
+            : () => showTaskMenu(context, controller, task,
+                kind: TaskMenuKind.completed,
+                onSelectMode: () => selection.begin(task.id)),
       );
 }
 

@@ -7,16 +7,22 @@ import '../dialogs/snooze_sheet.dart';
 import '../theme.dart';
 
 /// 长按菜单（决议 23/25：按组上下文相关）+ 软删除撤销 toast（决议 15）。
+///
+/// [onSelectMode] 不为空时，菜单最后多一行『多选』（§10#23）：它是**模式切换**
+/// 不是命令，所以不进 [taskMenuEntries] 那份共享条目表——那张表长按菜单与详情卡
+/// 共用，而详情卡是"看单件"的场景，不该出现批量的入口。
 Future<void> showTaskMenu(
   BuildContext context,
   AppController controller,
   Task task, {
   required TaskMenuKind kind,
+  VoidCallback? onSelectMode,
 }) {
   // ④ 例行实例（决议 23）：完成 / 跳过今天 / 编辑规则 / 删除规则；无『推迟』
   // （实例默认不响，改节奏去编辑规则），也没有"编辑实例"。
   if (kind == TaskMenuKind.routine) {
-    return _showRoutineInstanceMenu(context, controller, task);
+    return _showRoutineInstanceMenu(context, controller, task,
+        onSelectMode: onSelectMode);
   }
 
   return _showMenuSheet(
@@ -31,6 +37,7 @@ Future<void> showTaskMenu(
       _ => null,
     },
     entries: taskMenuEntries(context, controller, task, kind),
+    onSelectMode: onSelectMode,
   );
 }
 
@@ -134,12 +141,14 @@ List<TaskMenuEntry> _routineEntries(
 
 /// 例行实例菜单（决议 23）。
 Future<void> _showRoutineInstanceMenu(
-    BuildContext context, AppController controller, Task instance) {
+    BuildContext context, AppController controller, Task instance,
+    {VoidCallback? onSelectMode}) {
   return _showMenuSheet(
     context,
     title: instance.title,
     tag: '例行',
     entries: _routineEntries(context, controller, instance),
+    onSelectMode: onSelectMode,
   );
 }
 
@@ -171,49 +180,75 @@ Future<void> _showMenuSheet(
   required String title,
   required List<TaskMenuEntry> entries,
   String? tag,
+  VoidCallback? onSelectMode,
 }) {
   return showModalBottomSheet<void>(
     context: context,
     builder: (ctx) => SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(ctx).textTheme.titleSmall,
+      // 可滚：今日页那个菜单本来就有五六行（完成 / 推迟 / 挂起 / 插队 / 编辑 /
+      // 删除），再加『多选』在矮屏上会顶出 sheet 的限高——溢出的那几行点不到。
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(ctx).textTheme.titleSmall,
+                    ),
                   ),
-                ),
-                if (tag != null) _MenuTag(tag),
-              ],
+                  if (tag != null) _MenuTag(tag),
+                ],
+              ),
             ),
-          ),
-          for (final (label, icon, action) in entries)
-            ListTile(
-              leading: Icon(icon, color: AppColors.accent),
-              title: Text(label),
-              onTap: () async {
-                Navigator.of(ctx).pop();
-                try {
-                  await action();
-                } catch (e) {
-                  if (ctx.mounted) {
-                    ScaffoldMessenger.of(ctx).showSnackBar(
-                        SnackBar(content: Text('操作失败：$e')));
+            for (final (label, icon, action) in entries)
+              ListTile(
+                leading: Icon(icon, color: AppColors.accent),
+                title: Text(label),
+                onTap: () async {
+                  Navigator.of(ctx).pop();
+                  try {
+                    await action();
+                  } catch (e) {
+                    if (ctx.mounted) {
+                      ScaffoldMessenger.of(ctx).showSnackBar(
+                          SnackBar(content: Text('操作失败：$e')));
+                    }
                   }
-                }
-              },
-            ),
-        ],
+                },
+              ),
+            if (onSelectMode != null) ...[
+              const Divider(height: 1),
+              _SelectModeTile(onTap: () {
+                Navigator.of(ctx).pop();
+                onSelectMode();
+              }),
+            ],
+          ],
+        ),
       ),
     ),
   );
+}
+
+/// 菜单最后一行『多选』：模式切换，单独放在分隔线下面，与上面的命令分开。
+class _SelectModeTile extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _SelectModeTile({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) => ListTile(
+        leading: Icon(Icons.checklist, color: AppColors.accent),
+        title: const Text('多选'),
+        onTap: onTap,
+      );
 }
 
 /// 条目所在的位置：决定长按菜单与详情卡给哪些动作（决议 23/25/44）。
@@ -291,55 +326,21 @@ List<TaskMenuEntry> _poolEntries(
   ];
 }
 
-/// 任务池条目菜单（决议 13）。
+/// 任务池条目菜单（决议 13）。与今日页那份走同一个 sheet（tag 规则不同），
+/// 不再各写一遍——两份手写 sheet 迟早分叉。
 Future<void> showPoolMenu(
-    BuildContext context, AppController controller, Task task) {
-  final entries = taskMenuEntries(context, controller, task, TaskMenuKind.pool);
-
-  return showModalBottomSheet<void>(
-    context: context,
-    builder: (ctx) => SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    task.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(ctx).textTheme.titleSmall,
-                  ),
-                ),
-                if (task.type == TaskType.flex && task.deadline == null)
-                  const _MenuTag('三无')
-                else if (task.type == TaskType.fixed)
-                  const _MenuTag('固定时点'),
-              ],
-            ),
-          ),
-          for (final (label, icon, action) in entries)
-            ListTile(
-              leading: Icon(icon, color: AppColors.accent),
-              title: Text(label),
-              onTap: () async {
-                Navigator.of(ctx).pop();
-                try {
-                  await action();
-                } catch (e) {
-                  if (ctx.mounted) {
-                    ScaffoldMessenger.of(ctx).showSnackBar(
-                        SnackBar(content: Text('操作失败：$e')));
-                  }
-                }
-              },
-            ),
-        ],
-      ),
-    ),
+    BuildContext context, AppController controller, Task task,
+    {VoidCallback? onSelectMode}) {
+  return _showMenuSheet(
+    context,
+    title: task.title,
+    tag: task.type == TaskType.flex && task.deadline == null
+        ? '三无'
+        : task.type == TaskType.fixed
+            ? '固定时点'
+            : null,
+    entries: taskMenuEntries(context, controller, task, TaskMenuKind.pool),
+    onSelectMode: onSelectMode,
   );
 }
 

@@ -7,6 +7,7 @@ import '../dialogs/routine_edit_dialog.dart';
 import '../dialogs/task_detail_sheet.dart';
 import '../theme.dart';
 import '../widgets/task_actions.dart';
+import '../widgets/task_selection.dart';
 import '../widgets/task_tile.dart';
 
 /// 任务池页（ui-interaction.md §6.3；页序见 `ui/panel_pages.dart`）。
@@ -16,13 +17,26 @@ import '../widgets/task_tile.dart';
 ///
 /// 周期条目（决议 27）：按下一次发生日期升序插入计划段对应位置，是否显示
 /// 由设置『周期任务在任务池的显示』决定；条目本身只读，点它跳『编辑规则』。
+///
+/// 多选（§10#23）：[selection] 由面板持有（跨页保留），周期条目**不可勾选**
+/// （它不是任务，动作只有"编辑规则"）。
 class PoolPanel extends StatelessWidget {
   final AppController controller;
+  final TaskSelection selection;
 
-  const PoolPanel({super.key, required this.controller});
+  const PoolPanel({
+    super.key,
+    required this.controller,
+    required this.selection,
+  });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => AnimatedBuilder(
+        animation: selection,
+        builder: (context, _) => _build(context),
+      );
+
+  Widget _build(BuildContext context) {
     final view = controller.poolView;
     final theme = Theme.of(context);
 
@@ -76,11 +90,10 @@ class PoolPanel extends StatelessWidget {
                   controller: controller,
                   task: view.loose[i],
                   highlight: view.loose[i].id == controller.focusedTaskId,
-                  onTap: () => showTaskDetailSheet(context, controller,
-                      view.loose[i],
-                      kind: TaskMenuKind.pool),
-                  onLongPress: () =>
-                      showPoolMenu(context, controller, view.loose[i]),
+                  selecting: selection.selecting,
+                  selected: selection.contains(view.loose[i].id),
+                  onTap: _tap(context, view.loose[i]),
+                  onLongPress: _longPress(context, view.loose[i]),
                   trailing: _grip(i, theme),
                 ),
             ],
@@ -123,19 +136,35 @@ class PoolPanel extends StatelessWidget {
       controller: controller,
       task: task,
       highlight: task.id == controller.focusedTaskId,
-      onTap: () =>
-          showTaskDetailSheet(context, controller, task, kind: TaskMenuKind.pool),
-      onLongPress: () => showPoolMenu(context, controller, task),
+      selecting: selection.selecting,
+      selected: selection.contains(task.id),
+      onTap: _tap(context, task),
+      onLongPress: _longPress(context, task),
       trailing: _grip(index, theme),
     );
   }
 
-  Widget _grip(int i, ThemeData theme) => ReorderableDragStartListener(
-        index: i,
-        child: Icon(Icons.drag_handle,
-            size: 18,
-            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
-      );
+  /// 点条目：选择模式下是勾选，平时是详情卡（与今日页同款）。
+  VoidCallback _tap(BuildContext context, Task task) => selection.selecting
+      ? () => selection.toggle(task.id)
+      : () => showTaskDetailSheet(context, controller, task,
+          kind: TaskMenuKind.pool);
+
+  VoidCallback? _longPress(BuildContext context, Task task) =>
+      selection.selecting
+          ? null
+          : () => showPoolMenu(context, controller, task,
+              onSelectMode: () => selection.begin(task.id));
+
+  /// 拖把手：选择模式下不渲染 = 那两段不可拖。
+  Widget? _grip(int i, ThemeData theme) => selection.selecting
+      ? null
+      : ReorderableDragStartListener(
+          index: i,
+          child: Icon(Icons.drag_handle,
+              size: 18,
+              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
+        );
 
   /// 拖拽整理 = 仅显示序（决议 14）：整段重编 pool_order，重启保留。
   /// 周期条目不可拖：拖动后取"任务行的相对顺序"落盘。
