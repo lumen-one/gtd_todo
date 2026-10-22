@@ -562,6 +562,27 @@ class TaskService {
     return updated;
   }
 
+  /// 散件的家（无排序档）：`pool` = 住任务池散件段，`false` = 回今日页 ⑥。
+  ///
+  /// 互逆的两个菜单动作共用这一条，只写/删 metadata `loose_home`。命令层不校验
+  /// 任务类型——只有三无散件会出现在能呼出这个动作的菜单里（今日页 ⑥ 与无排序档的
+  /// 池子散件段），再拦一次只是把"UI 漏了一处"变成异常。切档不迁移：标记留着，
+  /// 标准/完整档下不参与分区。
+  Future<Task> setLooseHome(String id,
+      {required bool pool, EventOrigin origin = EventOrigin.user}) async {
+    final updated = _withMeta(_require(id), (m) {
+      final next = Map<String, String>.from(m);
+      if (pool) {
+        next['loose_home'] = 'pool';
+      } else {
+        next.remove('loose_home');
+      }
+      return next;
+    });
+    await _persist(updated, origin, DomainEventType.looseHomeChanged);
+    return updated;
+  }
+
   /// 挑到今日（决议 8/13）：不转正，附今日尾部；当日手动挑标记生效。
   Future<Task> pickForToday(String id,
       {EventOrigin origin = EventOrigin.user}) async {

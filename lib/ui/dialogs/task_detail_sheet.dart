@@ -168,7 +168,13 @@ List<Widget> _facts(
   // 人的持久意图与标记（都是存在任务上的事实，算不出来的那一类）。
   if (task.pinnedAt != null) rows.add(('插队', '已插队，压在最前'));
   if (task.inProgressAt != null) rows.add(('挂起', '挂起中'));
-  if (task.pickedForDate != null) rows.add(('今日', '被挑到今天'));
+  // 无排序档不跑定期挑：标记可能还留在任务上（切档不迁移），但不代表什么。
+  if (task.pickedForDate != null && !controller.isManualSort) {
+    rows.add(('今日', '被挑到今天'));
+  }
+  if (controller.isManualSort && task.looseHomeIsPool) {
+    rows.add(('散件', '住在任务池'));
+  }
   if (controller.isManualSort && task.manualOrder != null) {
     rows.add(('手动序', '第 ${task.manualOrder! + 1} 位'));
   }

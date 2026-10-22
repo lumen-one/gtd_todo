@@ -214,9 +214,9 @@ class TodayPanel extends StatelessWidget {
                   highlight: view.loose[i].id == controller.focusedTaskId,
                   selecting: selection.selecting,
                   selected: selection.contains(view.loose[i].id),
-                  onTap: _tap(context, view.loose[i], TaskMenuKind.pool),
+                  onTap: _tap(context, view.loose[i], TaskMenuKind.loose),
                   onLongPress:
-                      _longPress(context, view.loose[i], TaskMenuKind.pool),
+                      _longPress(context, view.loose[i], TaskMenuKind.loose),
                   trailing: _grip(i, theme),
                 ),
             ],
@@ -335,10 +335,21 @@ class TodayPanel extends StatelessWidget {
   }
 
   Future<void> _pickRandom(BuildContext context) async {
-    // 无排序档散件段在今日页（池子那边不返回散件），随机挑也从这里取。
-    final loose = controller.isManualSort
-        ? controller.todayView.loose
-        : controller.poolView.loose;
+    // 无排序档没有"挑"这一层（⑤ 不存在）：把池子里的那件搬回 ⑥ 就是
+    // "今天做它"——搬过池子的散件此刻只在池子那一段里。
+    if (controller.isManualSort) {
+      final moved = controller.poolView.loose;
+      if (moved.isEmpty) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('池子里没有散件可挑')));
+        return;
+      }
+      await controller.setLooseHome(
+          moved[Random().nextInt(moved.length)].id,
+          pool: false);
+      return;
+    }
+    final loose = controller.poolView.loose;
     if (loose.isEmpty) {
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('池子里没有散件可挑')));

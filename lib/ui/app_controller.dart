@@ -218,6 +218,31 @@ class AppController extends ChangeNotifier {
   /// 覆盖页注入的"能不能直接关"（编辑态要先问一句再说）。返回 false = 先别关。
   Future<bool> Function()? mainlineCloseGuard;
 
+  /// 上滑退出的跟手行程（逻辑像素 = 从"全开"往上推掉了多少）。
+  ///
+  /// 与编排那对 notifier 同一套：拖动时每帧在变，不能走 [notifyListeners]
+  /// （会把整棵面板包括行为链一起重建）。
+  final ValueNotifier<double> mainlineExit = ValueNotifier<double>(0);
+
+  /// 手指还按着（false = 已松手，该补满或弹回）。
+  final ValueNotifier<bool> mainlineExiting = ValueNotifier<bool>(false);
+
+  void pullMainlineExit(double px) {
+    if (!_mainlineOpen || px <= 0) return;
+    mainlineExiting.value = true;
+    mainlineExit.value = (mainlineExit.value + px).clamp(0.0, 4000.0);
+  }
+
+  /// 松手：推过阈值或向上快甩（dy < −500 px/s）才关，否则弹回。
+  Future<void> settleMainlineExit(double velocityY) async {
+    if (!mainlineExiting.value) return;
+    final enough = mainlineExit.value >= planPullThreshold || velocityY < -500;
+    mainlineExiting.value = false;
+    if (enough) await closeMainline();
+    // 关成了由覆盖层的退场动画接手；没关成（编辑态守卫拦下）就弹回原位。
+    if (_mainlineOpen) mainlineExit.value = 0;
+  }
+
   /// 关掉覆盖页。宿主（返回键 / 收起面板）与覆盖页自己的『返回』都走这里，
   /// 编辑态由 [mainlineCloseGuard] 决定留不留。
   Future<void> closeMainline() async {
@@ -225,6 +250,8 @@ class AppController extends ChangeNotifier {
     final guard = mainlineCloseGuard;
     if (guard != null && !await guard()) return;
     _mainlineOpen = false;
+    mainlineExit.value = 0;
+    mainlineExiting.value = false;
     notifyListeners();
   }
 
@@ -242,6 +269,13 @@ class AppController extends ChangeNotifier {
 
   /// 手指还按着（false = 已松手，覆盖页该补满或弹回）。
   final ValueNotifier<bool> planDragging = ValueNotifier<bool>(false);
+
+  /// 上滑退出的跟手行程（= 从"全开"往上推掉了多少），与 [planPull] 同一个轴：
+  /// 进是露出量增加，出是露出量减少，两边共用 `_PlanReveal` 的同一个进度。
+  final ValueNotifier<double> planExit = ValueNotifier<double>(0);
+
+  /// 手指还按着（false = 已松手，该补满或弹回）。
+  final ValueNotifier<bool> planExiting = ValueNotifier<bool>(false);
 
   /// 拉到多少算数（与把手的阈值同一个数字，§6.0）。
   static const double planPullThreshold = 72;
@@ -283,12 +317,35 @@ class AppController extends ChangeNotifier {
     if (!_planOpen) {
       planPull.value = 0;
       planDragging.value = false;
+      planExit.value = 0;
+      planExiting.value = false;
       return;
     }
     _planOpen = false;
     planPull.value = 0;
     planDragging.value = false;
+    planExit.value = 0;
+    planExiting.value = false;
     notifyListeners();
+  }
+
+  /// 编排页时间轴滚到底后继续上滑（逻辑像素，只加正的）。
+  void pullPlanExit(double px) {
+    if (!_planOpen || px <= 0) return;
+    planExiting.value = true;
+    planExit.value = (planExit.value + px).clamp(0.0, 4000.0);
+  }
+
+  /// 松手：推过阈值或向上快甩（dy < −500 px/s）就关，否则弹回。
+  void settlePlanExit(double velocityY) {
+    if (!planExiting.value) return;
+    final enough = planExit.value >= planPullThreshold || velocityY < -500;
+    planExiting.value = false;
+    if (enough) {
+      closePlan();
+    } else {
+      planExit.value = 0;
+    }
   }
 
   /// 面板展开、落在今日清单页时调一次：今天已经有编排就直接展开它（§6.11）——
@@ -430,6 +487,10 @@ class AppController extends ChangeNotifier {
     _notifSub?.cancel();
     planPull.dispose();
     planDragging.dispose();
+    planExit.dispose();
+    planExiting.dispose();
+    mainlineExit.dispose();
+    mainlineExiting.dispose();
     super.dispose();
   }
 
@@ -463,8 +524,8 @@ class AppController extends ChangeNotifier {
         now: DateTime.now(),
         routineOccurrences: upcomingOccurrences(),
         routineShowInPool: _settings.routineShowInPool,
-        // v1.27：无排序档散件段整段铺在今日页底部，池子不再重复显示。
-        hideLoose: _settings.scheduleMode.isManual,
+        // 无排序档散件按 `loose_home` 分家：池子只收搬过来的那些。
+        splitLoose: _settings.scheduleMode.isManual,
       );
 
   /// 已完成归档（ui 文档 §6.7 已完成页）：今天/昨天/更早三组。
@@ -823,6 +884,10 @@ class AppController extends ChangeNotifier {
   Future<void> maybePickForToday() async {
     final s = _settings;
     if (!s.pickEnabled) return;
+    // 无排序档不跑：散件本来就整段在今日页 ⑥，再挑一件只是同一堆里换个位置。
+    // 不记 `last_pick_date`——切回标准/完整档时按间隔照常挑（不会因为"这几周
+    // 没挑过"而记账错乱）。
+    if (s.scheduleMode.isManual) return;
     final mark = _dayMark(DateTime.now());
     if (s.lastPickDate != null) {
       final last = DateTime.tryParse('${s.lastPickDate!}T00:00:00');
@@ -914,6 +979,10 @@ class AppController extends ChangeNotifier {
   Future<void> pickForToday(String id) => service.pickForToday(id);
 
   Future<void> returnToPool(String id) => service.returnToPool(id);
+
+  /// 散件的家（无排序档）：`pool` = 搬到池子散件段，`false` = 搬回今日页 ⑥。
+  Future<void> setLooseHome(String id, {required bool pool}) =>
+      service.setLooseHome(id, pool: pool);
 
   /// 池子拖拽后的整段重排（决议 14：顺序持久化）。批量落盘 + 一次重锚——
   /// 逐条写会让中间态被渲染出来，表现为清单闪动。

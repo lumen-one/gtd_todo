@@ -206,27 +206,50 @@ class _MainlineOverlayState extends State<MainlineOverlay> {
   Widget _body(ThemeData theme, Mainline? m) {
     if (m == null) return _emptyState(theme);
     if (_editing) return _editor(theme, m);
-    return PageView(
-      controller: _pages,
-      // 记录页里横滑属于日历（拖选日期圈一段），翻页交给页头那颗 `1/2`：
-      // 两套横滑抢同一个手势，谁都不肯让，只能按页分工。
-      physics: _page == 1
-          ? const NeverScrollableScrollPhysics()
-          : const PageScrollPhysics(),
-      onPageChanged: (i) => setState(() => _page = i),
-      children: [
-        _chainPage(theme, m),
-        MainlineLogCalendar(
-          controller: widget.controller,
-          mainline: m,
-          readOnly: !m.isActive,
-          // 日历区域横滑归圈日期，翻页落在下半区（当天详情 / 空提示）
-          onSwipeBack: () => _pages.animateToPage(0,
-              duration: const Duration(milliseconds: 240),
-              curve: Curves.easeOutCubic),
-        ),
-      ],
+    // 上滑退出只接两页里"内容到底之后"的一下（§6.9）：编辑态不接——那时页面
+    // 有自己的一套输入意图，收了会把没保存的东西一起推走。
+    return NotificationListener<ScrollNotification>(
+      onNotification: _onScroll,
+      child: PageView(
+        controller: _pages,
+        // 记录页里横滑属于日历（拖选日期圈一段），翻页交给页头那颗 `1/2`：
+        // 两套横滑抢同一个手势，谁都不肯让，只能按页分工。
+        physics: _page == 1
+            ? const NeverScrollableScrollPhysics()
+            : const PageScrollPhysics(),
+        onPageChanged: (i) => setState(() => _page = i),
+        children: [
+          _chainPage(theme, m),
+          MainlineLogCalendar(
+            controller: widget.controller,
+            mainline: m,
+            readOnly: !m.isActive,
+            // 日历区域横滑归圈日期，翻页落在下半区（当天详情 / 空提示）
+            onSwipeBack: () => _pages.animateToPage(0,
+                duration: const Duration(milliseconds: 240),
+                curve: Curves.easeOutCubic),
+          ),
+        ],
+      ),
     );
+  }
+
+  /// 内容到底后继续上滑 = 退出（与编排页同一条规则）。
+  ///
+  /// 只认纵向：PageView 的横滑也会从这里过，跟着认就会"翻一页就把页面关了"。
+  /// 不能按 `depth` 过滤——两页的列表都嵌在 PageView 里，通知的 depth 是 1。
+  /// 只认手指拖出来的 overscroll（滚轮滚到底继续滚是常态）。
+  bool _onScroll(ScrollNotification n) {
+    if (n.metrics.axis != Axis.vertical) return false;
+    if (n is OverscrollNotification &&
+        n.dragDetails != null &&
+        n.overscroll > 0) {
+      widget.controller.pullMainlineExit(n.overscroll);
+    } else if (n is ScrollEndNotification) {
+      widget.controller
+          .settleMainlineExit(n.dragDetails?.velocity.pixelsPerSecond.dy ?? 0);
+    }
+    return false;
   }
 
   void _togglePage() {
@@ -282,6 +305,8 @@ class _MainlineOverlayState extends State<MainlineOverlay> {
     final nextIndex = m.nextStepIndex;
     final archived = widget.controller.archivedMainlines;
     return ListView(
+      // 不满一屏也要能 overscroll：上滑退出发生在"末尾之后"。
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(10, 6, 10, 20),
       children: [
         if (!m.isActive) _archivedBanner(theme, m),

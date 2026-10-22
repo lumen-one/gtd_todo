@@ -18,6 +18,7 @@ enum DomainEventType {
   manualOrderChanged, // 手动序改写（v1.12 决议 43：无排序模式下的拖动定序）
   poolOrderChanged,   // 池子整理序整段改写（决议 14：一次拖动批量落盘）
   taskInProgressSet,  // 挂起进行开关 / 挂起组整段重写（v1.18 决议 47：长期任务顶置今日页）
+  looseHomeChanged,   // 散件在两个家之间搬家（无排序档：今日页 ⑥ ↔ 池子散件段）
   scheduleModeChanged, // 调度模式切换（v1.12 决议 43：只重算视图，不动数据）
   scheduleReanchored,
   // ---- 周期任务（决议 5/10/12/23）----

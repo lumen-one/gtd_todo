@@ -200,6 +200,8 @@ class _SidePanelState extends State<SidePanel> {
               borderRadius: BorderRadius.circular(20),
               child: _MainlineReveal(
                 open: controller.mainlineOpen,
+                exit: controller.mainlineExit,
+                exiting: controller.mainlineExiting,
                 child: MainlineOverlay(
                   controller: controller,
                   onClose: controller.closeMainline,
@@ -217,6 +219,8 @@ class _SidePanelState extends State<SidePanel> {
                 open: controller.planOpen,
                 pull: controller.planPull,
                 dragging: controller.planDragging,
+                exit: controller.planExit,
+                exiting: controller.planExiting,
                 child: PlanOverlay(
                   controller: controller,
                   onClose: controller.closePlan,
@@ -370,10 +374,21 @@ class _MainlineReveal extends StatefulWidget {
   /// 覆盖页该不该在（= `AppController.mainlineOpen`）。
   final bool open;
 
+  /// 上滑退出的跟手行程（逻辑像素，0 = 没推）。
+  final ValueListenable<double> exit;
+
+  /// 手指还按着（false = 松手，该补满或弹回）。
+  final ValueListenable<bool> exiting;
+
   /// 覆盖页本体。
   final Widget child;
 
-  const _MainlineReveal({required this.open, required this.child});
+  const _MainlineReveal({
+    required this.open,
+    required this.exit,
+    required this.exiting,
+    required this.child,
+  });
 
   @override
   State<_MainlineReveal> createState() => _MainlineRevealState();
@@ -384,6 +399,9 @@ class _MainlineRevealState extends State<_MainlineReveal>
   /// 进场比退场慢：推上来要有分量，收回去要利落。
   static const Duration _enter = Duration(milliseconds: 260);
   static const Duration _exit = Duration(milliseconds: 200);
+
+  /// 覆盖页高度：上滑行程是像素，得换成 SlideTransition 要的比例。
+  double _height = 0;
 
   late final AnimationController _ctrl = AnimationController(
     vsync: this,
@@ -410,6 +428,23 @@ class _MainlineRevealState extends State<_MainlineReveal>
     super.initState();
     // 一开始就是开的（面板重建时覆盖页正开着）：直接落位，不补放一次进场。
     if (widget.open) _ctrl.value = 1;
+    widget.exit.addListener(_onExit);
+    widget.exiting.addListener(_onExiting);
+  }
+
+  /// 跟手退出：推多少走多少（行程是像素，得换成自身的比例）。
+  void _onExit() {
+    if (!mounted || !widget.open || _height <= 0) return;
+    // 松手之后由动画接手，不再逐帧设值——否则会和 animateTo 抢同一个 controller。
+    if (!widget.exiting.value) return;
+    _ctrl.stop();
+    _ctrl.value = (1 - widget.exit.value / _height).clamp(0.0, 1.0);
+  }
+
+  /// 松手：关掉了交给 `didUpdateWidget` 播退场；没关成（编辑态守卫拦下）就弹回。
+  void _onExiting() {
+    if (!mounted || widget.exiting.value || !widget.open) return;
+    _ctrl.animateTo(1, duration: _exit, curve: Curves.easeOutCubic);
   }
 
   void _onStatus(AnimationStatus status) {
@@ -422,6 +457,14 @@ class _MainlineRevealState extends State<_MainlineReveal>
   @override
   void didUpdateWidget(covariant _MainlineReveal oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.exit != widget.exit) {
+      oldWidget.exit.removeListener(_onExit);
+      widget.exit.addListener(_onExit);
+    }
+    if (oldWidget.exiting != widget.exiting) {
+      oldWidget.exiting.removeListener(_onExiting);
+      widget.exiting.addListener(_onExiting);
+    }
     if (widget.open == oldWidget.open) return;
     if (widget.open) {
       _ctrl.forward();
@@ -432,6 +475,8 @@ class _MainlineRevealState extends State<_MainlineReveal>
 
   @override
   void dispose() {
+    widget.exit.removeListener(_onExit);
+    widget.exiting.removeListener(_onExiting);
     _ctrl.dispose();
     super.dispose();
   }
@@ -442,7 +487,10 @@ class _MainlineRevealState extends State<_MainlineReveal>
     return AbsorbPointer(
       // 退场那 200ms 里不再接手势：这一页正在关，点到的不该是它。
       absorbing: !widget.open,
-      child: SlideTransition(position: _slide, child: widget.child),
+      child: LayoutBuilder(builder: (context, constraints) {
+        _height = constraints.maxHeight;
+        return SlideTransition(position: _slide, child: widget.child);
+      }),
     );
   }
 }
@@ -463,12 +511,20 @@ class _PlanReveal extends StatefulWidget {
   /// 手指还按着（false = 松手，该补满或弹回）。
   final ValueListenable<bool> dragging;
 
+  /// 上滑退出的跟手行程（逻辑像素，0 = 没推）。
+  final ValueListenable<double> exit;
+
+  /// 手指还按着（false = 松手，该补满或弹回）。
+  final ValueListenable<bool> exiting;
+
   final Widget child;
 
   const _PlanReveal({
     required this.open,
     required this.pull,
     required this.dragging,
+    required this.exit,
+    required this.exiting,
     required this.child,
   });
 
@@ -505,6 +561,8 @@ class _PlanRevealState extends State<_PlanReveal>
     }
     widget.pull.addListener(_onPull);
     widget.dragging.addListener(_onDragging);
+    widget.exit.addListener(_onExit);
+    widget.exiting.addListener(_onExiting);
   }
 
   void _onStatus(AnimationStatus status) {
@@ -523,6 +581,14 @@ class _PlanRevealState extends State<_PlanReveal>
     if (oldWidget.dragging != widget.dragging) {
       oldWidget.dragging.removeListener(_onDragging);
       widget.dragging.addListener(_onDragging);
+    }
+    if (oldWidget.exit != widget.exit) {
+      oldWidget.exit.removeListener(_onExit);
+      widget.exit.addListener(_onExit);
+    }
+    if (oldWidget.exiting != widget.exiting) {
+      oldWidget.exiting.removeListener(_onExiting);
+      widget.exiting.addListener(_onExiting);
     }
     if (widget.open != oldWidget.open) {
       if (widget.open && !_visible) setState(() => _visible = true);
@@ -546,10 +612,27 @@ class _PlanRevealState extends State<_PlanReveal>
         duration: _settle, curve: Curves.easeOutCubic);
   }
 
+  /// 跟手退出：时间轴推掉多少，覆盖页就往上藏多少。
+  void _onExit() {
+    if (!mounted || !widget.open || _height <= 0) return;
+    // 松手之后交给动画，不再逐帧设值。
+    if (!widget.exiting.value) return;
+    _ctrl.stop();
+    _ctrl.value = (1 - widget.exit.value / _height).clamp(0.0, 1.0);
+  }
+
+  /// 松手：关掉了交给 `didUpdateWidget` 播退场；没够阈值就弹回全开。
+  void _onExiting() {
+    if (!mounted || widget.exiting.value || !widget.open) return;
+    _ctrl.animateTo(1, duration: _settle, curve: Curves.easeOutCubic);
+  }
+
   @override
   void dispose() {
     widget.pull.removeListener(_onPull);
     widget.dragging.removeListener(_onDragging);
+    widget.exit.removeListener(_onExit);
+    widget.exiting.removeListener(_onExiting);
     _ctrl.dispose();
     super.dispose();
   }

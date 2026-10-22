@@ -386,6 +386,8 @@ class _MainlineLogCalendarState extends State<MainlineLogCalendar> {
     final steps = widget.mainline.stepsDoneOn(day);
     final logs = widget.mainline.logsCovering(day);
     return ListView(
+      // 不满一屏也要能 overscroll：覆盖页的上滑退出发生在"末尾之后"。
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(14, 6, 14, 12),
       children: [
         Text('${day.month} 月 ${day.day} 日', style: theme.textTheme.titleSmall),

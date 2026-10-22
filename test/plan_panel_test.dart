@@ -40,8 +40,13 @@ void main() {
           height: 620,
           child: AnimatedBuilder(
             animation: c,
-            builder: (_, __) =>
-                PlanOverlay(controller: c, onClose: () {}, day: day),
+            builder: (context, _) => PlanOverlay(
+              controller: c,
+              onClose: () {},
+              day: day,
+              // 固定"现在"：游标位置与默认时刻都不该随跑测试的钟点变。
+              now: DateTime(2026, 10, 22, 22, 30),
+            ),
           ),
         ),
       ),
@@ -229,6 +234,64 @@ void main() {
     // 时刻跟着条目走，没有变
     final moved = c.planEntriesFor(day).firstWhere((e) => e.title == '晨会');
     expect(moved.timeText, '08:30');
+  });
+
+  testWidgets('时间轴：现在游标落在"第一个还没到的条目"之前', (tester) async {
+    final c = makeController(plan: [
+      DayPlan(day: day, entries: const [
+        PlanEntry(title: '晨会', minutesOfDay: 9 * 60),
+        PlanEntry(title: '收尾', minutesOfDay: 23 * 60 + 50),
+      ]),
+    ]);
+    await c.planService!.load();
+    await pumpOverlay(tester, c);
+
+    // 现在是 22:30：两条都还在后面？不——09:00 已过、23:50 没到，游标在两者之间。
+    expect(find.text('现在'), findsOneWidget);
+    final cursorY = tester.getCenter(find.text('现在')).dy;
+    expect(cursorY, greaterThan(tester.getCenter(find.text('09:00')).dy));
+    expect(cursorY, lessThan(tester.getCenter(find.text('23:50')).dy));
+  });
+
+  testWidgets('时间轴滚到底再上滑：覆盖页收回', (tester) async {
+    final c = makeController(plan: [
+      DayPlan(day: day, entries: const [
+        PlanEntry(title: '晨会', minutesOfDay: 9 * 60),
+      ]),
+    ]);
+    await c.planService!.load();
+    final pageCtrl = PageController(initialPage: PanelPage.today.index);
+    await tester.pumpWidget(MaterialApp(
+      home: Center(
+        child: SizedBox(
+          width: 300,
+          height: 620,
+          child: SidePanel(
+            controller: c,
+            pageCtrl: pageCtrl,
+            onOpenCalendar: () {},
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    c.openPlan();
+    await tester.pumpAndSettle();
+    expect(c.planOpen, isTrue);
+
+    // 内容不满一屏也已经在末尾：往上拖就是"末尾之后"。
+    await tester.drag(
+      find
+          .descendant(
+            of: find.byType(PlanOverlay),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+      const Offset(0, -300),
+    );
+    await tester.pumpAndSettle();
+
+    expect(c.planOpen, isFalse);
   });
 
   testWidgets('今日页到顶再下拉：覆盖页滑下来，返回键/返回按钮收回', (tester) async {

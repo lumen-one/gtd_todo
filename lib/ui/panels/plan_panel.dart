@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 
 import '../../domain/plan.dart';
@@ -18,11 +19,16 @@ class PlanOverlay extends StatefulWidget {
   /// 编排哪一天（测试注入；默认今天）。界面只显示一天，跨天由装配层重算。
   final DateTime? day;
 
+  /// 判定"现在"用的时刻（测试注入；默认取真实时间）。只有"现在"游标与
+  /// "已过的时刻"弱化用到它——编排本身没有时间语义。
+  final DateTime? now;
+
   const PlanOverlay({
     super.key,
     required this.controller,
     required this.onClose,
     this.day,
+    this.now,
   });
 
   @override
@@ -49,6 +55,9 @@ class _PlanOverlayState extends State<PlanOverlay> {
 
   DateTime get _day => planDay(widget.day ?? DateTime.now());
 
+  /// 判定"现在"的时刻：注入优先（测试用固定时刻，不然游标位置随跑测试的钟点变）。
+  DateTime get _now => widget.now ?? DateTime.now();
+
   List<PlanEntry> get _entries => widget.controller.planEntriesFor(_day);
 
   @override
@@ -62,6 +71,8 @@ class _PlanOverlayState extends State<PlanOverlay> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final entries = _entries;
+    // 游标插在第几条之前（-1 = 不画：不是今天）。全过完了就落在末尾。
+    final cursorAt = _cursorIndex(entries);
     return Material(
       color: theme.scaffoldBackgroundColor,
       child: Column(
@@ -69,18 +80,132 @@ class _PlanOverlayState extends State<PlanOverlay> {
           _header(theme, entries.length),
           const Divider(height: 1),
           Expanded(
-            child: ReorderableListView.builder(
-              padding: const EdgeInsets.fromLTRB(10, 8, 12, 32),
-              buildDefaultDragHandles: false,
-              // newIndex 已按"移除旧位"调整好，直接就是落点（同挂起组）。
-              onReorderItem: (from, to) => _reorder(entries, from, to),
-              itemCount: entries.length,
-              header: entries.isEmpty ? _emptyHint(theme) : null,
-              footer: _addRow(theme),
-              itemBuilder: (context, i) => ReorderableDelayedDragStartListener(
-                key: ObjectKey(entries[i]),
-                index: i,
-                child: _entryRow(theme, entries, i),
+            // 桌面：overscroll 只能靠按住鼠标拖出来（滚轮滚到头继续滚是常态，
+            // 认了就是天天误触），所以这一页和今日页一样要放开鼠标拖拽。
+            child: ScrollConfiguration(
+              behavior: ScrollConfiguration.of(context).copyWith(
+                dragDevices: PointerDeviceKind.values.toSet(),
+              ),
+              child: NotificationListener<ScrollNotification>(
+                onNotification: _onScroll,
+                child: ReorderableListView.builder(
+                  // 内容不满一屏也要能 overscroll：上滑退出发生在"末尾之后"。
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(10, 8, 12, 32),
+                  buildDefaultDragHandles: false,
+                  // newIndex 已按"移除旧位"调整好，直接就是落点（同挂起组）。
+                  onReorderItem: (from, to) => _reorder(entries, from, to),
+                  itemCount: entries.length,
+                  header: entries.isEmpty ? _emptyHint(theme) : null,
+                  footer: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (entries.isNotEmpty && cursorAt == entries.length)
+                        _cursorRow(theme),
+                      _addRow(theme),
+                    ],
+                  ),
+                  itemBuilder: (context, i) => Column(
+                    key: ObjectKey(entries[i]),
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (i == cursorAt) _cursorRow(theme),
+                      ReorderableDelayedDragStartListener(
+                        index: i,
+                        child: _entryRow(theme, entries, i,
+                            beforeCursor: cursorAt < 0 || i < cursorAt),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 末尾之后继续上滑 = 退出（与今日页"到顶再下拉"同一条规则的两端）。
+  ///
+  /// 只认手指拖出来的 overscroll（`dragDetails` 非空）：鼠标滚轮滚到底继续滚是
+  /// 常态，认了就是天天误退。`depth != 0` 是内层列表的通知，跳过。
+  bool _onScroll(ScrollNotification n) {
+    if (n.depth != 0) return false;
+    if (n is OverscrollNotification &&
+        n.dragDetails != null &&
+        n.overscroll > 0) {
+      widget.controller.pullPlanExit(n.overscroll);
+    } else if (n is ScrollEndNotification) {
+      // 向上快甩是 dy < 0（页面往上走）。
+      widget.controller
+          .settlePlanExit(n.dragDetails?.velocity.pixelsPerSecond.dy ?? 0);
+    }
+    return false;
+  }
+
+  /// "现在"落在第几条之前 = 第一个时刻晚于现在的条目；全都已过就是末尾。
+  /// 没有时刻的条目不参与比较（它没有可比的点）。
+  int _cursorIndex(List<PlanEntry> entries) {
+    if (!_isToday) return -1;
+    final now = _nowMinutes;
+    for (var i = 0; i < entries.length; i++) {
+      final m = entries[i].minutesOfDay;
+      if (m != null && m > now) return i;
+    }
+    return entries.length;
+  }
+
+  /// 现在游标：左侧当前时刻、一条强调色横线、右端标『现在』。
+  ///
+  /// 它是**行间的分隔**，不是精确刻度——行距等距，游标只在跨过某一条时往前走一格。
+  Widget _cursorRow(ThemeData theme) {
+    final accent = AppColors.accent;
+    return SizedBox(
+      height: 24,
+      child: Stack(
+        children: [
+          Positioned(
+            left: 0,
+            width: _timeWidth,
+            top: 5,
+            child: Text(
+              _fmtMinutes(_nowMinutes),
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                fontSize: 10.5,
+                height: 1.2,
+                color: accent,
+                fontWeight: FontWeight.w700,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          ),
+          Positioned(
+            left: _railX - 3,
+            top: 7,
+            child: Container(
+              width: 7,
+              height: 7,
+              decoration: BoxDecoration(shape: BoxShape.circle, color: accent),
+            ),
+          ),
+          Positioned(
+            left: _railX,
+            right: 26,
+            top: 10,
+            child: Container(height: 1, color: accent.withValues(alpha: 0.55)),
+          ),
+          Positioned(
+            right: 0,
+            top: 4,
+            child: Text(
+              '现在',
+              style: TextStyle(
+                fontSize: 10,
+                height: 1.2,
+                color: accent,
+                fontWeight: FontWeight.w700,
               ),
             ),
           ),
@@ -129,7 +254,8 @@ class _PlanOverlayState extends State<PlanOverlay> {
 
   // ---- 时间轴 ----
 
-  Widget _entryRow(ThemeData theme, List<PlanEntry> entries, int index) {
+  Widget _entryRow(ThemeData theme, List<PlanEntry> entries, int index,
+      {required bool beforeCursor}) {
     final entry = entries[index];
     final minutes = entry.minutesOfDay;
     final prev = index == 0 ? null : entries[index - 1].minutesOfDay;
@@ -143,6 +269,8 @@ class _PlanOverlayState extends State<PlanOverlay> {
             ? hint.withValues(alpha: 0.45)
             : hint;
     final line = theme.colorScheme.outlineVariant;
+    // 游标以上的竖线用强调色：这一段是今天已经走完的部分（进度条的"已过"）。
+    final rail = beforeCursor ? AppColors.accent.withValues(alpha: 0.45) : line;
     final isLast = index == entries.length - 1;
 
     return InkWell(
@@ -155,7 +283,7 @@ class _PlanOverlayState extends State<PlanOverlay> {
             top: 0,
             bottom: isLast ? null : 0,
             height: isLast ? 18 : null,
-            child: Container(width: 1, color: line),
+            child: Container(width: 1, color: rail),
           ),
           Positioned(
             left: _railX - 3,
@@ -478,7 +606,7 @@ class _PlanOverlayState extends State<PlanOverlay> {
       final m = entries[i].minutesOfDay;
       if (m != null) return (m + 30).clamp(0, 23 * 60 + 59);
     }
-    final now = DateTime.now();
+    final now = _now;
     final round = ((now.hour * 60 + now.minute + 29) ~/ 30) * 30;
     return round.clamp(0, 23 * 60 + 59);
   }
@@ -520,13 +648,13 @@ class _PlanOverlayState extends State<PlanOverlay> {
   // ---- 时间小工具 ----
 
   bool get _isToday {
-    final now = DateTime.now();
+    final now = _now;
     final d = _day;
     return now.year == d.year && now.month == d.month && now.day == d.day;
   }
 
   int get _nowMinutes {
-    final now = DateTime.now();
+    final now = _now;
     return now.hour * 60 + now.minute;
   }
 

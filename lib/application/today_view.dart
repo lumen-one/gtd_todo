@@ -165,14 +165,17 @@ TodayView buildTodayView({
   final mark = dayMark(today);
 
   // 手动挑过的日子自动挑让位（决议 8）： picked 即今日尾部那一件。
+  // **无排序档没有这一件**：那一档不跑定期挑，散件整段在 ⑥——"挑上来"没有去处。
   // **挂起中的件不当 picked**（决议 47）：它的显示位置是挂起组，取消挂起后
   // （当日标记还在）才回⑤。
-  var pickedTask = tasks
-      .where((t) =>
-          !t.isCompleted &&
-          t.pickedForDate == mark &&
-          t.inProgressAt == null)
-      .firstOrNull;
+  var pickedTask = scheduleMode.isManual
+      ? null
+      : tasks
+          .where((t) =>
+              !t.isCompleted &&
+              t.pickedForDate == mark &&
+              t.inProgressAt == null)
+          .firstOrNull;
 
   final overdue = <Task>[];
   final fixed = <Task>[];
@@ -214,8 +217,9 @@ TodayView buildTodayView({
         }
         // 无截止散件（v1.27）：**只在无排序档**进页底 ⑥；标准/完整档归任务池
         // 散件段（或被挑）。这是三档之间唯一的成员差异，其余成员仍按锚点准入。
+        // 标了 `loose_home: pool` 的例外——它们住在池子散件段（长按搬过去）。
         if (deadline == null) {
-          if (scheduleMode.isManual) loose.add(t);
+          if (scheduleMode.isManual && !t.looseHomeIsPool) loose.add(t);
           continue;
         }
         // "提醒锚点落在今天"或今天到期（§6.1）；snoozed 到期前不出现，
@@ -297,18 +301,19 @@ TodayView buildTodayView({
 /// 聚合任务池。[routineOccurrences] = 周期规则的未来发生（决议 27；
 /// [routineShowInPool] = false 时按设置不显示）。
 ///
-/// [hideLoose]（v1.27）：无排序档下散件段已整段铺在今日页底部（[TodayView.loose]），
-/// 池子不再显示——返回的 [PoolView.loose] 为空，只留 [PoolView.hiddenLooseCount]
-/// 给空状态文案。同一件任务在无排序档只有一个显示位置。
+/// [splitLoose]（无排序档）：散件按 metadata `loose_home` 分家——池子这边只收
+/// 标了 `pool` 的那些，其余整段在今日页底部（[TodayView.loose]）；
+/// [PoolView.hiddenLooseCount] 给空状态文案用。同一件任务在无排序档只有一个家。
 PoolView buildPoolView({
   required List<Task> tasks,
   required DateTime now,
   List<RoutineOccurrence> routineOccurrences = const [],
   bool routineShowInPool = true,
-  bool hideLoose = false,
+  bool splitLoose = false,
 }) {
   final plan = <Task>[];
   final loose = <Task>[];
+  var looseInToday = 0;
   final startOfTomorrow = DateTime(now.year, now.month, now.day + 1);
 
   for (final t in tasks) {
@@ -328,7 +333,18 @@ PoolView buildPoolView({
       }
       continue;
     }
-    // 三无散件；当日被挑走的不重复显示（今日尾部最多一件，决议 8）。
+    // 三无散件。
+    if (splitLoose) {
+      // 无排序档：只有搬过来的（`loose_home: pool`）住池子，其余整段在今日页 ⑥。
+      // 当日"被挑"的标记这一档不参与——那一档不跑定期挑，⑤ 不出现。
+      if (t.looseHomeIsPool) {
+        loose.add(t);
+      } else {
+        looseInToday++;
+      }
+      continue;
+    }
+    // 标准/完整档：当日被挑走的不重复显示（今日尾部最多一件，决议 8）。
     if (t.pickedForDate == dayMark(now)) continue;
     loose.add(t);
   }
@@ -382,9 +398,9 @@ PoolView buildPoolView({
 
   return PoolView(
     plan: List.unmodifiable(plan),
-    loose: hideLoose ? const [] : List.unmodifiable(loose),
+    loose: List.unmodifiable(loose),
     rows: List.unmodifiable(rows),
-    hiddenLooseCount: hideLoose ? loose.length : 0,
+    hiddenLooseCount: splitLoose ? looseInToday : 0,
   );
 }
 

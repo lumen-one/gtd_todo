@@ -129,7 +129,7 @@ void main() {
       expect(view.flex.map((t) => t.id).toList(), ['old', 'new-0', 'new-1']);
     });
 
-    test('四处不跟着变：逾期置顶 / 固定时点按时刻 / 例行按时点 / 被挑散件在最后', () {
+    test('三处不跟着变：逾期置顶 / 固定时点按时刻 / 例行按时点', () {
       final tasks = [
         task(id: 'overdue', deadline: DateTime(2026, 10, 6, 18, 0)),
         task(id: 'fixed-late', deadline: wed(19, 0), type: TaskType.fixed),
@@ -152,7 +152,9 @@ void main() {
           reason: '时刻就是序，与排序模式无关');
       expect(view.flex.map((t) => t.id).toList(), ['flex']);
       expect(view.routines.map((t) => t.id).toList(), ['routine']);
-      expect(view.picked?.id, 'picked');
+      expect(view.picked, isNull, reason: '这一档不跑定期挑，⑤ 不出现');
+      expect(view.loose.map((t) => t.id).toList(), ['picked'],
+          reason: '带被挑标记的散件照样进 ⑥——标记这一档不参与分区');
     });
   });
 
@@ -222,7 +224,7 @@ void main() {
           reason: '整理过的在前；manual_order 是 ③ 的序号，对 ⑥ 无效');
     });
 
-    test('被挑中的那件在 ⑤、不在 ⑥；挂起中的件两段都不占', () {
+    test('无排序档不挑：被挑标记忽略，散件全在 ⑥；挂起件两段都不占', () {
       final view = buildTodayView(
         tasks: [
           task(id: 'picked-for-today', deadline: null,
@@ -235,15 +237,30 @@ void main() {
         now: now,
         scheduleMode: ScheduleMode.manual,
       );
-      expect(view.picked?.id, 'picked-for-today');
-      expect(view.loose.map((t) => t.id).toList(), ['plain'],
-          reason: '被挑的那件上移到 ⑤，挂起件只在 ⓿');
+      expect(view.picked, isNull, reason: '这一档不跑定期挑，⑤ 不出现');
+      expect(view.loose.map((t) => t.id).toList(),
+          ['picked-for-today', 'plain'],
+          reason: '被挑标记这一档不参与分区；挂起件只在 ⓿');
       expect(view.inProgress.map((t) => t.id).toList(), ['hanging']);
+    });
+
+    test('搬到池子的散件（loose_home: pool）不在 ⑥', () {
+      final view = buildTodayView(
+        tasks: [
+          task(id: 'stays', deadline: null),
+          task(id: 'moved', deadline: null,
+              metadata: const {'loose_home': 'pool'}),
+        ],
+        schedule: null,
+        now: now,
+        scheduleMode: ScheduleMode.manual,
+      );
+      expect(view.loose.map((t) => t.id).toList(), ['stays']);
     });
   });
 
-  group('任务池：散件段在无排序档搬去今日页（v1.27）', () {
-    test('hideLoose 时散件不返回，只留计数给空状态文案', () {
+  group('任务池：散件按 loose_home 分家（无排序档）', () {
+    test('splitLoose 时只收搬过来的那些，其余计数给空状态文案', () {
       final all = [
         task(id: 'loose-1', deadline: null),
         task(id: 'loose-2', deadline: null),
@@ -251,10 +268,30 @@ void main() {
       final shown = buildPoolView(tasks: all, now: now);
       expect(shown.loose.map((t) => t.id).toList(), ['loose-1', 'loose-2']);
 
-      final hidden = buildPoolView(tasks: all, now: now, hideLoose: true);
-      expect(hidden.loose, isEmpty);
-      expect(hidden.hiddenLooseCount, 2);
-      expect(hidden.isEmpty, isTrue);
+      final split = buildPoolView(tasks: all, now: now, splitLoose: true);
+      expect(split.loose, isEmpty);
+      expect(split.hiddenLooseCount, 2);
+      expect(split.isEmpty, isTrue);
+    });
+
+    test('搬过来的那一件住池子，计数只算留在今日页的', () {
+      final all = [
+        task(id: 'stays', deadline: null),
+        task(id: 'moved', deadline: null,
+            metadata: const {'loose_home': 'pool'}),
+      ];
+      final split = buildPoolView(tasks: all, now: now, splitLoose: true);
+      expect(split.loose.map((t) => t.id).toList(), ['moved']);
+      expect(split.hiddenLooseCount, 1);
+    });
+
+    test('标准档不认 loose_home：散件照旧全在池子', () {
+      final all = [
+        task(id: 'moved', deadline: null,
+            metadata: const {'loose_home': 'pool'}),
+      ];
+      final view = buildPoolView(tasks: all, now: now);
+      expect(view.loose.map((t) => t.id).toList(), ['moved']);
     });
 
     test('计划段照旧：搬走的只有散件段', () {
@@ -262,7 +299,7 @@ void main() {
         task(id: 'loose', deadline: null),
         task(id: 'plan', deadline: DateTime(2026, 10, 9, 18, 0)),
       ];
-      final view = buildPoolView(tasks: all, now: now, hideLoose: true);
+      final view = buildPoolView(tasks: all, now: now, splitLoose: true);
       expect(view.plan.map((t) => t.id).toList(), ['plan']);
       expect(view.hiddenLooseCount, 1);
     });

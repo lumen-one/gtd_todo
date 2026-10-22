@@ -144,6 +144,11 @@ class Task {
   /// 池子显示序（仅整理无调度含义）；null = 未整理过。
   int? get poolOrder => int.tryParse(metadata['pool_order'] ?? '');
 
+  /// 散件的家（metadata `loose_home`）：`true` = 住任务池散件段，缺省 = 住今日页
+  /// ⑥ 散件段。**只在无排序档参与分区**（标准/完整档散件照旧全在池子，标记保留
+  /// 但不生效，切档不迁移）；长期有效，不是当日标记。
+  bool get looseHomeIsPool => metadata['loose_home'] == 'pool';
+
   /// 手动序（v1.12 决议 43 / D17）：无排序模式下人拖出来的顺序，持久化在任务上；
   /// null = 没排过序（沉在末尾）。自动模式下原样保留、**不参与排序**。
   int? get manualOrder => int.tryParse(metadata['manual_order'] ?? '');

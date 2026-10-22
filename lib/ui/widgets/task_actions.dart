@@ -34,6 +34,7 @@ Future<void> showTaskMenu(
       TaskMenuKind.overdue => '逾期',
       TaskMenuKind.inProgress => '挂起中',
       TaskMenuKind.completed => '已完成',
+      TaskMenuKind.loose => '散件',
       _ => null,
     },
     entries: taskMenuEntries(context, controller, task, kind),
@@ -54,6 +55,7 @@ List<TaskMenuEntry> taskMenuEntries(
     switch (kind) {
       TaskMenuKind.routine => _routineEntries(context, controller, task),
       TaskMenuKind.pool => _poolEntries(context, controller, task),
+      TaskMenuKind.loose => _looseEntries(context, controller, task),
       TaskMenuKind.completed => _completedEntries(context, controller, task),
       _ => _todayEntries(context, controller, task, kind),
     };
@@ -253,10 +255,11 @@ class _SelectModeTile extends StatelessWidget {
 
 /// 条目所在的位置：决定长按菜单与详情卡给哪些动作（决议 23/25/44）。
 /// [pool] = 任务池（计划段与散件段同款，决议 13）。
+/// [loose] = 今日页 ⑥ 散件段（仅无排序档，ui 文档 §6.1）。
 /// [inProgress] = 今日页最顶的挂起组（决议 47：长期任务"正在做"）。
 /// [completed] = 已完成页（ui 文档 §6.7：只有恢复未完成 / 删除）。
 enum TaskMenuKind {
-  overdue, fixed, flex, picked, routine, pool, inProgress, completed
+  overdue, fixed, flex, picked, routine, pool, loose, inProgress, completed
 }
 
 class _MenuTag extends StatelessWidget {
@@ -298,11 +301,46 @@ List<TaskMenuEntry> _completedEntries(
   ];
 }
 
+/// 今日页 ⑥ 散件段的条目（仅无排序档）：这一档散件整段在今日页，所以没有
+/// 『挑到今日』（它已经在今日），出口是**『移到任务池』**——搬到池子的散件段，
+/// 长期有效；在池子里用『移到今日清单』搬回来（同一个字段的两个方向）。
+List<TaskMenuEntry> _looseEntries(
+    BuildContext context, AppController controller, Task task) {
+  return [
+    ('完成', Icons.check_circle, () => controller.complete(task.id)),
+    if (task.isLongTerm && task.inProgressAt == null)
+      (
+        '挂起进行',
+        Icons.play_circle_outline,
+        () => controller.setInProgress(task.id, enabled: true)
+      ),
+    (
+      '移到任务池',
+      Icons.inventory_2_outlined,
+      () => controller.setLooseHome(task.id, pool: true)
+    ),
+    (
+      '编辑',
+      Icons.edit,
+      () => showEditSheet(context, controller, task: task)
+    ),
+    (
+      '删除',
+      Icons.delete_outline,
+      () => deleteTaskWithUndo(context, controller, task)
+    ),
+  ];
+}
+
 /// 任务池条目（决议 13：散件段与计划段同款）：
 /// 长期任务的『挂起进行』（v0.17，决议 47）/ 挑到今日（不转正，附今日尾部）/
 /// 完成 / 编辑（补属性即转正）/ 删除。
+///
+/// **无排序档的散件段换一套**：池子里只剩被搬过来的那些（`loose_home: pool`），
+/// 给的是『移到今日清单』——那一档不跑定期挑，⑤ 不存在，"挑到今日"没有去处。
 List<TaskMenuEntry> _poolEntries(
     BuildContext context, AppController controller, Task task) {
+  final looseHere = controller.isManualSort && task.deadline == null;
   return [
     // 挂起中的件在池子里隐藏（决议 47），所以这里只会给"未挂起"的长期任务。
     if (task.isLongTerm && task.inProgressAt == null)
@@ -311,7 +349,14 @@ List<TaskMenuEntry> _poolEntries(
         Icons.play_circle_outline,
         () => controller.setInProgress(task.id, enabled: true)
       ),
-    ('挑到今日', Icons.today, () => controller.pickForToday(task.id)),
+    if (looseHere)
+      (
+        '移到今日清单',
+        Icons.today,
+        () => controller.setLooseHome(task.id, pool: false)
+      )
+    else
+      ('挑到今日', Icons.today, () => controller.pickForToday(task.id)),
     ('完成', Icons.check_circle, () => controller.complete(task.id)),
     (
       '编辑',

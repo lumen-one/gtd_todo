@@ -114,6 +114,23 @@ void main() {
     expect(find.text('论文冲刺'), findsOneWidget);
   });
 
+  testWidgets('行为链滚到底再上滑：覆盖页收回', (tester) async {
+    final controller = makeController(prefix: [sample()]);
+    await tester.runAsync(() => controller.mainlineService!.load());
+    await pumpPanel(tester, controller);
+
+    await tester.tap(find.text('论文冲刺'));
+    await tester.pumpAndSettle();
+    expect(controller.mainlineOpen, isTrue);
+
+    // 行为链不满一屏，已经"在底"：往上拖就是末尾之后的那一下。
+    await tester.drag(find.byType(ListView).first, const Offset(0, -300));
+    await tester.pumpAndSettle();
+
+    expect(controller.mainlineOpen, isFalse);
+    expect(find.text('列提纲'), findsNothing);
+  });
+
   testWidgets('覆盖页进出都是滑动：途中在落点上方，退场滑完才摘子树', (tester) async {
     final controller = makeController(prefix: [sample()]);
     await tester.runAsync(() => controller.mainlineService!.load());
