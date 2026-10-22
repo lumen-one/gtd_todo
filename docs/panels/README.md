@@ -26,7 +26,7 @@
   从那儿横拖可能先被判成返回 / 收起面板；往面板里挪一点起手就是翻页。
 - **不做纵向翻页**：竖滑手势和"浏览清单"抢的是同一个纵向手势区，代价就是翻不动。
   唯一的纵向越界是今日页**到顶之后**的继续下拉——它进的是编排覆盖页，不换页序
-  （[今日编排](plan.md)）。
+  （[今日编排](plan.md)）；反向那一下是覆盖页里**滚到底之后**的继续上滑，退回原来那页。
 - 页序（**全文唯一定义处**）：**灵感 → 今日清单 → 任务池 → 已完成**——今日清单
   退到第二页（v1.24）：默认落点已经可配（下条），"打开就是今日"不再是唯一正确姿势。
   文档与代码里的页面引用一律只认**页名**，不写"第 N 页"——页序改一次就要全库改数字的写法，
@@ -71,8 +71,10 @@
 | 跳页（点页序圆点 / 通知定位） | 260ms | easeOutCubic | `side_panel.dart`、`android_shell.dart` |
 | 页名切换 | 180ms | 线性淡入淡出 | `side_panel.dart` |
 | 页序圆点换色 | 220ms | easeOutCubic | `side_panel.dart` |
-| 主线覆盖页进 / 退 | 260 / 200ms | easeOutCubic / easeInCubic | `side_panel.dart` |
-| 今日编排覆盖页松手补满 / 弹回 | 200ms | easeOutCubic | `side_panel.dart` |
+| 主线覆盖页进 / 退（『返回』与返回键） | 260 / 200ms | easeOutCubic / easeInCubic | `side_panel.dart` |
+| 覆盖页上滑退出（跟手段） | 1:1 跟手，不插值 | — | `side_panel.dart`、`mainline_panel.dart` |
+| 覆盖页上滑退出（松手后补满 / 弹回） | 200ms | easeOutCubic | `side_panel.dart` |
+| 今日编排覆盖页松手补满 / 弹回（进、出两向） | 200ms | easeOutCubic | `side_panel.dart` |
 | 主线覆盖页内翻页（`1/2`、记录页下半区右滑） | 240ms | easeOutCubic | `mainline_panel.dart` |
 | 快记从方块展开成输入框 | 360ms（前 60% 走位、后 40% 展开） | 两段 easeOutCubic | `side_panel.dart` |
 | 右下角双钮 ↔ 批处理条（选择模式进出） | 160ms | 默认淡入淡出 | `panel_dock.dart` |
