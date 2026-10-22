@@ -33,15 +33,34 @@ class _CalendarDialog extends StatefulWidget {
 }
 
 class _CalendarDialogState extends State<_CalendarDialog> {
-  late DateTime _month;
+  /// 月历按**月序号**翻页（`2000-01` 记 0）：往前往后都算得出来，
+  /// 所以左右滑不到头，不用手写可翻范围。
+  static const int _baseYear = 2000;
+
+  late final PageController _pageCtrl;
+  late int _page;
   int? _selectedDay;
 
   @override
   void initState() {
     super.initState();
     final now = DateTime.now();
-    _month = DateTime(now.year, now.month);
+    _page = _monthIndex(DateTime(now.year, now.month));
+    _pageCtrl = PageController(initialPage: _page);
   }
+
+  @override
+  void dispose() {
+    _pageCtrl.dispose();
+    super.dispose();
+  }
+
+  static int _monthIndex(DateTime m) => (m.year - _baseYear) * 12 + m.month - 1;
+
+  static DateTime _monthAt(int index) =>
+      DateTime(_baseYear + index ~/ 12, index % 12 + 1);
+
+  DateTime get _month => _monthAt(_page);
 
   List<Task> _tasksOf(DateTime day) {
     return widget.controller.tasks
@@ -59,34 +78,78 @@ class _CalendarDialogState extends State<_CalendarDialog> {
   List<RoutineOccurrence> _routinesOf(DateTime day) =>
       widget.controller.occurrencesOn(day);
 
+  /// 这天有没有安排（任务或例行实例）——日历上的那个点。
+  bool _hasItems(DateTime day) =>
+      _tasksOf(day).isNotEmpty || _routinesOf(day).isNotEmpty;
+
+  /// 箭头与横滑是同一个动作的两种走法（§6.4）：箭头走相邻一格。
+  void _goToMonth(int page) {
+    if (!_pageCtrl.hasClients) return;
+    _pageCtrl.animateToPage(page,
+        duration: const Duration(milliseconds: 240),
+        curve: Curves.easeOutCubic);
+  }
+
+  /// 一个月的网格：**固定六行**（4 行的月份底部留白）——高度跟着月份变
+  /// 会让整块弹窗在滑动中跳（§6.4）。
+  Widget _monthGrid(int page, DateTime today) {
+    final month = _monthAt(page);
+    // 周一为一周开始（`weekday` 里周一 = 1）。
+    final lead = (month.weekday + 6) % 7;
+    final days = DateTime(month.year, month.month + 1, 0).day;
+    final isThisMonth = month.year == today.year && month.month == today.month;
+    // 只有当前页认选中：滑动中相邻页同时在树里，不限定的话同号日跟着亮。
+    final selected = page == _page ? _selectedDay : null;
+
+    return Column(
+      children: [
+        for (var row = 0; row < 6; row++)
+          Expanded(
+            child: Row(
+              children: [
+                for (var col = 0; col < 7; col++)
+                  Expanded(
+                    child: _cellFor(
+                      dayNumber: row * 7 + col - lead + 1,
+                      daysInMonth: days,
+                      month: month,
+                      today: today,
+                      isThisMonth: isThisMonth,
+                      selected: selected,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _cellFor({
+    required int dayNumber,
+    required int daysInMonth,
+    required DateTime month,
+    required DateTime today,
+    required bool isThisMonth,
+    required int? selected,
+  }) {
+    if (dayNumber < 1 || dayNumber > daysInMonth) {
+      return const SizedBox.shrink();
+    }
+    final day = DateTime(month.year, month.month, dayNumber);
+    return _DayCell(
+      day: dayNumber,
+      isToday: isThisMonth && dayNumber == today.day,
+      selected: selected == dayNumber,
+      marked: _hasItems(day),
+      onTap: () => setState(() => _selectedDay = dayNumber),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final first = DateTime(_month.year, _month.month);
-    // 周一为一周开始
-    final lead = (first.weekday + 6) % 7;
-    final daysInMonth = DateTime(_month.year, _month.month + 1, 0).day;
     final today = DateTime.now();
-    final isThisMonth = _month.year == today.year && _month.month == today.month;
-
-    final cells = <Widget>[
-      for (final w in _weekLabels)
-        Center(
-          child: Text(w,
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-        ),
-      for (var i = 0; i < lead; i++) const SizedBox(),
-      for (var d = 1; d <= daysInMonth; d++)
-        _DayCell(
-          day: d,
-          isToday: isThisMonth && d == today.day,
-          selected: _selectedDay == d,
-          marked: _tasksOf(DateTime(_month.year, _month.month, d)).isNotEmpty ||
-              _routinesOf(DateTime(_month.year, _month.month, d)).isNotEmpty,
-          onTap: () => setState(() => _selectedDay = d),
-        ),
-    ];
 
     return Dialog(
       backgroundColor: theme.cardTheme.color,
@@ -104,10 +167,7 @@ class _CalendarDialogState extends State<_CalendarDialog> {
               child: Row(
                 children: [
                   IconButton(
-                    onPressed: () => setState(() {
-                      _month = DateTime(_month.year, _month.month - 1);
-                      _selectedDay = null;
-                    }),
+                    onPressed: () => _goToMonth(_page - 1),
                     icon: const Icon(Icons.chevron_left),
                   ),
                   Expanded(
@@ -119,10 +179,7 @@ class _CalendarDialogState extends State<_CalendarDialog> {
                     ),
                   ),
                   IconButton(
-                    onPressed: () => setState(() {
-                      _month = DateTime(_month.year, _month.month + 1);
-                      _selectedDay = null;
-                    }),
+                    onPressed: () => _goToMonth(_page + 1),
                     icon: const Icon(Icons.chevron_right),
                   ),
                 ],
@@ -130,13 +187,42 @@ class _CalendarDialogState extends State<_CalendarDialog> {
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
-              child: GridView.count(
-                crossAxisCount: 7,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                childAspectRatio: 1.15,
-                mainAxisSpacing: 2,
-                children: cells,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  // 格子宽度由面板宽度定，高度按老比例（宽:高 = 1.15）推，
+                  // 六行总高就是月历区的高度。
+                  final cellH = constraints.maxWidth / 7 / 1.15;
+                  return Column(
+                    children: [
+                      Row(
+                        children: [
+                          for (final w in _weekLabels)
+                            Expanded(
+                              child: Center(
+                                child: Text(w,
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                        color: theme
+                                            .colorScheme.onSurfaceVariant)),
+                              ),
+                            ),
+                        ],
+                      ),
+                      SizedBox(
+                        height: cellH * 6,
+                        child: PageView.builder(
+                          controller: _pageCtrl,
+                          // 切月清空当天选中（§6.4）：展开的当天列表收回去。
+                          onPageChanged: (page) => setState(() {
+                            _page = page;
+                            _selectedDay = null;
+                          }),
+                          itemBuilder: (context, page) =>
+                              _monthGrid(page, today),
+                        ),
+                      ),
+                    ],
+                  );
+                },
               ),
             ),
             const Divider(height: 1),
@@ -190,8 +276,10 @@ class _DayCell extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
-            width: 30,
-            height: 30,
+            // 28 + 1 + 4 = 33dp：窄屏（320dp 宽时格子高约 37dp）也放得下，
+            // 固定六行网格不会因此溢出。
+            width: 28,
+            height: 28,
             alignment: Alignment.center,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
@@ -209,10 +297,10 @@ class _DayCell extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 2),
+          const SizedBox(height: 1),
           Container(
-            width: 5,
-            height: 5,
+            width: 4,
+            height: 4,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: marked ? AppColors.accent : Colors.transparent,
