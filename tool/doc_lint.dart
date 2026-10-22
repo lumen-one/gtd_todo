@@ -79,6 +79,7 @@ class DocLint {
       problems.addAll(_checkChapters(rel, abs, chapterText, chapterCache));
       problems.addAll(_checkCodeLinks(rel, raw));
       problems.addAll(_checkStatusWords(rel, text));
+      problems.addAll(_checkVersionTags(rel, text));
     }
 
     problems.sort((a, b) {
@@ -326,6 +327,30 @@ class DocLint {
   /// 规则文件与外部参考会**引用**这些词（"正文不写'已实现'"），排除在外。
   bool _isWordCheckExempt(String rel) =>
       rel.endsWith('docs/AGENTS.md') || rel.contains('docs/references/');
+
+  // ------------------------------------------------------------------ 版本号
+
+  /// 正文里的 `v1.27` 一类版本号。
+  ///
+  /// 版本号本来是坐标，可它指向的账本（changelog / 决议表 / 版本说明）不在文档
+  /// 里——读者拿到 `v1.27` 无处可查，只能猜它是"哪一版加的"。正文只写现状，
+  /// 这件事归 commit；某条口径容易被再推翻时，留一张决策卡片。
+  ///
+  /// 写进反引号的示例（规则文件里教人别写的那种）不算：[stripCode] 已经剥掉，
+  /// 所以本项目自己的规则可以直接举 `v1.27` 当例子。
+  List<LintProblem> _checkVersionTags(String rel, String text) {
+    if (rel.contains('docs/references/')) return const [];
+    final problems = <LintProblem>[];
+    final lines = text.split('\n');
+
+    for (var i = 0; i < lines.length; i++) {
+      final m = _versionTagRe.firstMatch(lines[i]);
+      if (m == null) continue;
+      problems.add(LintProblem(rel, i + 1, LintSeverity.error,
+          '版本号「${m.group(0)}」：正文只写现状，版本号指向的账本不在文档里'));
+    }
+    return problems;
+  }
 }
 
 // -------------------------------------------------------------- 从磁盘加载
@@ -475,6 +500,9 @@ const _docAliases = ['架构合同', '架构文档', 'arch', 'UI 文档', 'ui �
 /// 单个引用，或范围引用 `§0–§2` / `§3.4-§3.5`。范围一次产生两个编号。
 final _sectionRefRe =
     RegExp(r'§\s*(\d+(?:\.\d+)*)(?:\s*[–—\-~]\s*§?\s*(\d+(?:\.\d+)*))?');
+
+/// 版本号：`v` 前面不能贴着字母数字（`dev1.2` 是标识符不是版本号）。
+final _versionTagRe = RegExp(r'\bv\d+\.\d+');
 
 /// 硬禁用：叙述"曾经是什么样"，正文只写现状。
 const _historyWords = [

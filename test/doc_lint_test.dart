@@ -341,6 +341,38 @@ void main() {
 
   // -------------------------------------------------------------- 路径工具
 
+  group('版本号', () {
+    test('标题尾巴与句中的版本号都报错误', () {
+      // 先报出来是为了让人看清"这是个坐标"：它指向的 changelog / 决议表
+      // 早就不在文档里了，读者拿着 v1.27 查不到任何东西。
+      for (final s in ['# 6.9 主线（顶栏名字 → 覆盖页，v1.30）', '闹钟会被跳过（v1.26 修）；']) {
+        final p = _lint({'docs/a.md': s}).run().single;
+        expect(p.severity, LintSeverity.error, reason: s);
+        expect(p.message, contains('v1.'), reason: s);
+      }
+    });
+
+    test('一行只报一次（多个版本号不刷屏）', () {
+      final lint = _lint({'docs/a.md': 'v1.20 到 v1.31 之间反复改过。'});
+      expect(lint.run().length, 1);
+    });
+
+    test('反引号里的示例不算（规则文件要能举例子）', () {
+      final lint = _lint({'docs/AGENTS.md': '正文不写 `v1.27` 这类版本号。'});
+      expect(lint.run(), isEmpty);
+    });
+
+    test('外部参考豁免', () {
+      final lint = _lint({'docs/references/x.md': '4 个版本目录：v0.1.7-rc.2、v0.2.0-rc.2。'});
+      expect(lint.run(), isEmpty);
+    });
+
+    test('贴着字母数字的不算版本号（dev1.2 是标识符）', () {
+      final lint = _lint({'docs/a.md': '字段名叫 dev1.2，不是版本号。\n'});
+      expect(lint.run().where((p) => p.message.contains('版本号')), isEmpty);
+    });
+  });
+
   group('路径工具', () {
     test('joinPath 把第一个参数当目录，不往上退一级', () {
       // 这条是重构时真踩过的：把 root 当文件传进去，路径会少掉一层目录，
