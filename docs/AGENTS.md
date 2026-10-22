@@ -42,8 +42,8 @@
 | 为什么这么设计、当时否了什么 | `decisions/` |
 | 以后可能做什么、什么条件下做 | `roadmap.md` |
 | 有哪些已知局限（登记在案、不是待办） | `architecture.md` §11 |
-| 有意不做什么 | `ui-interaction.md` §12 |
-| 要加功能，先改哪 | 契约在 `architecture.md` §3.5，交互在 `ui-interaction.md` §10 |
+| 有意不做什么 | `ui-interaction.md` §11 |
+| 要加功能，先改哪 | 契约在 `architecture.md` §3.5，交互在 `ui-interaction.md` §4–§9（按功能分节） |
 | 设置页有哪些项 | `ui-interaction.md` §9 |
 
 ## 写作与改动规则
@@ -53,7 +53,7 @@
 2. **一份事实一个家**。发现同一句话在两处出现，改第二处为链接，不要两处一起维护。
 3. **只写现状**。正文不写"已实现 / 计划中 / 这次改成了"：状态由代码和测试承载，
    历史归 commit，理由归 `decisions/`。真有边界要登记，写进 `architecture.md` §11 或
-   `ui-interaction.md` §12 的表格里。想写计划，去 `roadmap.md`。
+   `ui-interaction.md` §11 的表格里。想写计划，去 `roadmap.md`。
 
    两种"历史"处理相反，别混：**被撤销的旧口径**就地划掉（`~~…~~`）并在旁边一句写清
    为什么撤——读者需要知道"这条路走过、不通"；**进度与完成账本**（版本 changelog、
