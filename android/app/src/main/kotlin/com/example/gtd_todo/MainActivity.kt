@@ -70,6 +70,9 @@ class MainActivity : FlutterActivity() {
     override fun onDestroy() {
         bridge?.detach()
         bridge = null
+        // 正常销毁走的是 pause → stop → destroy，onPause 已复位过；这里兜住"没走
+        // onPause 就被销毁"的情形——否则 hostForeground 留在 true，把手会被一直藏着。
+        OverlayHandleService.notifyHostForeground(this, false)
         super.onDestroy()
     }
 

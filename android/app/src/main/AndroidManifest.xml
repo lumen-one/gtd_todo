@@ -56,6 +56,17 @@
         <receiver
             android:name=".ActionReceiver"
             android:exported="false"/>
+        <!-- 开机 / 应用更新后把把手服务拉回来：只在用户开过把手时动手，
+             不重挂闹钟（architecture.md §11） -->
+        <receiver
+            android:name=".BootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+            </intent-filter>
+        </receiver>
         <!-- 系统级悬浮手柄：specialUse 前台服务，Android 14 要求提供子类型说明 -->
         <service
             android:name=".OverlayHandleService"

@@ -303,6 +303,33 @@ class OverlayHandleService : Service() {
         }
 
         /**
+         * 系统重启 / 应用更新后的恢复点（[BootReceiver]）：用户开过才拉起来，没开过不碰。
+         *
+         * 与 [setEnabled] 的区别是**不写标记、不回报**——这是系统替用户重放一次他已做过
+         * 的选择，没做成也只是一次开机，不值得在他眼前报错。悬浮窗权限在此期间被撤销时
+         * 顺手清掉标记，免得以后每次开机都白试一次。
+         */
+        fun restore(context: Context) {
+            val app = context.applicationContext
+            if (!isEnabled(app)) return
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !canDrawOverlays(app)) {
+                Log.w(TAG, "overlay restore skipped: permission lost")
+                prefs(app).edit().putBoolean(KEY_ENABLED, false).apply()
+                return
+            }
+            try {
+                val intent = Intent(app, OverlayHandleService::class.java).setAction(ACTION_START)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    app.startForegroundService(intent)
+                } else {
+                    app.startService(intent)
+                }
+            } catch (t: Throwable) {
+                Log.w(TAG, "overlay restore failed: ${t.message}", t)
+            }
+        }
+
+        /**
          * 把手位置上锁/解锁（[NativeBridge] 转 settings.json 的 `handle_locked`）。
          *
          * 服务活着就直接改内存里的标志（同进程，主线程 post）；没活着也没关系——
@@ -499,6 +526,19 @@ class OverlayHandleService : Service() {
             // 把手的 y 刚被重新夹紧：重广播状态，Dart 侧的面板锚点跟着更新。
             notifyOverlayState()
         }
+    }
+
+    /**
+     * 从最近任务划掉卡片。`stopWithTask=false` 已经挡住系统的默认停止，这里只做两件
+     * 收尾：**把手必须露出来**（Activity 没了，若 `hostForeground` 停在 true，把手会被
+     * [applyVisibility] 一直藏着），以及视图丢了就补一个（[addHandle] 幂等）。
+     *
+     * 不碰面板与引擎：用户划掉的是应用，不是把手。
+     */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        setHostForeground(false)
+        addHandle()
+        super.onTaskRemoved(rootIntent)
     }
 
     override fun onDestroy() {
