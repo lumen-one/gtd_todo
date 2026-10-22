@@ -66,7 +66,9 @@ abstract class PermissionPort {
 `gtd_normal`/`gtd_alarm`/`gtd_overlay` + 通知按钮 + full-screen intent）、
 `AndroidPermissionPort`（permission_handler + 原生全屏 intent/悬浮窗查询）、
 `AndroidFolderPickerPort`（所有文件访问 + 系统目录选择器 / 文件选择器）；
-原生侧另有 `OverlayHandleService`（贴屏把手，前台服务 + WindowManager）。
+原生侧另有 `OverlayHandleService`（贴屏把手 + 悬浮面板窗口，前台服务 + WindowManager）：
+它从 `stopWithTask=false` 起就与 Activity 解绑，划掉任务卡片不停止服务，把手与面板
+照常（生命周期见 [architecture.md](../architecture.md) §5.1）。
 `platform/` 不受 [architecture.md](../architecture.md) §2 矩阵约束（组装点装配），但不得被 domain/scheduler/application import。
 
 **系统级悬浮面板（第二个 Flutter 引擎）**：[architecture.md](../architecture.md) §0 的产品定位是"日常操作发生在
