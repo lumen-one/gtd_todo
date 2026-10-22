@@ -124,7 +124,20 @@ void main() {
     expect(find.text('回邮件'), findsOneWidget);
   });
 
-  test('进入今日页：今天有条目就亮一次，同一天第二次不再弹', () async {
+  testWidgets('窄面板：添加行的输入区不被时刻与两颗图标挤没', (tester) async {
+    final c = makeController();
+    await pumpOverlay(tester, c); // 320 宽（接近最窄的拖动下限）
+    await tester.tap(find.text('添加一项'));
+    await tester.pumpAndSettle();
+
+    final width = tester.getSize(find.byType(TextField)).width;
+    // 原来两颗图标各 48dp、时刻按钮也松散，320 宽下输入区只有 103dp，窄面板上
+    // 提示文字被截成"几…"。图标收到 34、时刻字号降一档后是 141dp——再塞回大
+    // 图标就会掉回一百出头，这里守住。
+    expect(width, greaterThan(130));
+  });
+
+  test('展开面板亮编排：今天有条目、默认页是今日清单', () async {
     final c = makeController(plan: [
       DayPlan(day: day, entries: const [
         PlanEntry(title: '晨会', minutesOfDay: 8 * 60 + 30),
@@ -134,50 +147,43 @@ void main() {
 
     expect(c.landOnPlanForToday(today: day), isTrue);
     expect(c.planOpen, isTrue);
-
-    c.closePlan();
-    expect(c.landOnPlanForToday(today: day), isFalse);
-    expect(c.planOpen, isFalse);
   });
 
-  test('进入今日页：今天没有条目就不亮', () async {
-    final c = makeController();
-    await c.planService!.load();
-
-    expect(c.landOnPlanForToday(today: day), isFalse);
-    expect(c.planOpen, isFalse);
-  });
-
-  testWidgets('切到今日清单页：今天排过就把编排亮出来（落在别的页时不亮）',
-      (tester) async {
+  test('每次展开亮一次：亮着的时候不再叠，收起后再拉会再亮', () async {
     final c = makeController(plan: [
       DayPlan(day: day, entries: const [
         PlanEntry(title: '晨会', minutesOfDay: 8 * 60 + 30),
       ]),
     ]);
     await c.planService!.load();
-    final pageCtrl = PageController(initialPage: PanelPage.notes.index);
-    await tester.pumpWidget(MaterialApp(
-      home: Center(
-        child: SizedBox(
-          width: 300,
-          height: 620,
-          child: SidePanel(
-            controller: c,
-            pageCtrl: pageCtrl,
-            onOpenCalendar: () {},
-          ),
-        ),
-      ),
-    ));
-    await tester.pumpAndSettle();
-    // 落在灵感页：这一页没被打开过，不亮
-    expect(c.planOpen, isFalse);
 
-    pageCtrl.animateToPage(PanelPage.today.index,
-        duration: const Duration(milliseconds: 200), curve: Curves.easeOut);
-    await tester.pumpAndSettle();
-    expect(c.planOpen, isTrue);
+    expect(c.landOnPlanForToday(today: day), isTrue);
+    // 已经亮着：同一次展开里不再叠一层
+    expect(c.landOnPlanForToday(today: day), isFalse);
+    // 收起面板（宿主 _closePanel 会关覆盖页）→ 再拉出来又亮
+    c.closePlan();
+    expect(c.landOnPlanForToday(today: day), isTrue);
+  });
+
+  test('展开面板不亮：默认页不是今日清单', () async {
+    final c = makeController(plan: [
+      DayPlan(day: day, entries: const [
+        PlanEntry(title: '晨会', minutesOfDay: 8 * 60 + 30),
+      ]),
+    ]);
+    await c.planService!.load();
+    await c.setDefaultPage(PanelPage.pool);
+
+    expect(c.landOnPlanForToday(today: day), isFalse);
+    expect(c.planOpen, isFalse);
+  });
+
+  test('展开面板不亮：今天没有条目', () async {
+    final c = makeController();
+    await c.planService!.load();
+
+    expect(c.landOnPlanForToday(today: day), isFalse);
+    expect(c.planOpen, isFalse);
   });
 
   testWidgets('编辑：点条目开面板，改标题后落盘', (tester) async {

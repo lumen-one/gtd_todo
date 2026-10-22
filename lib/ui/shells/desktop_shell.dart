@@ -80,9 +80,6 @@ class _DesktopShellState extends State<DesktopShell> {
       controller: controller,
       pageCtrl: _pageCtrl,
       onOpenCalendar: () => showCalendarDialog(context, controller),
-      // 桌面左栏常驻、没有"打开面板"这一步，切页也不自动亮编排（§6.11）：
-      // 要编排就下拉。
-      autoPlanOnEnter: false,
     );
 
     return ReminderListener(

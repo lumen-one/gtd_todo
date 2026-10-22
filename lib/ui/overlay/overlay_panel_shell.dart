@@ -129,14 +129,13 @@ class _OverlayPanelShellState extends State<OverlayPanelShell>
   /// 落到设置里选的默认页（§9 第 12 条）：用 `jumpToPage`——面板正在跟手/补满，
   /// 再来一道横扫就是两段动作。
   void _landOnDefaultPage() {
-    final landing = defaultPanelPageIndex(_c.settings);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_pageCtrl.hasClients) return;
-      _pageCtrl.jumpToPage(landing);
+      _pageCtrl.jumpToPage(defaultPanelPageIndex(_c.settings));
     });
-    // 落在今日清单页 = 这一页被打开（§6.11）：今天排过就先亮编排。落别的页不判，
-    // 等横滑过去时由 `PageView.onPageChanged` 触发。
-    if (landing == PanelPage.today.index) _landOnPlan();
+    // 默认页是今日清单时，每次展开先把编排亮出来（§6.11）：收起再拉会再亮。
+    // 默认页是别的页就不亮——控制器自己判。
+    _landOnPlan();
   }
 
   /// 今天排过就把编排亮出来：帧后执行，让面板先把页摆对。

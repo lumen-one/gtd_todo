@@ -115,9 +115,6 @@ class AppController extends ChangeNotifier {
 
   /// 本次打开请求是通知定位（见 [consumeLocateRequest]）。
   bool _openRequestLocates = false;
-
-  /// 今天已经自动把编排亮出来过（内存态，不落盘；跨天自然失效）。
-  String? _planAutoOpenedOn;
   String? _settingsFocusRoutineId;
   int _panelCloseRequest = 0;
 
@@ -294,21 +291,19 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 面板展开、落到今日清单页时调一次：今天已经有编排就直接展开它（§6.11）——
+  /// 面板展开、落在今日清单页时调一次：今天已经有编排就直接展开它（§6.11）——
   /// 等于替用户把"到顶再下拉"做了一遍。返回是否展开（测试与宿主都读它）。
   ///
-  /// **触发点是"今日清单这一页被打开"**（面板落页 / 横滑切页），不是"面板被展开"：
-  /// 默认页设成灵感时，从灵感滑到今日清单同样算一次进入。
+  /// 三个条件缺一不可：装配了编排、**设置里的默认页就是今日清单**（默认页是别的
+  /// 页时不触发，那一页才是打开面板要看的东西）、今天确实有条目。空的一天不进：
+  /// 那正是要去写的时候，先盖一层空轴只会挡路。
   ///
-  /// **一天只自动展开一次**（内存记日期，不落盘）：当天的第一次进入先把编排亮出来，
-  /// 之后切来切去不再弹——否则每次回到今日页都被盖一层，想按清单看反而要按两下。
-  /// 今天没有条目也不进：那正是要去写的时候，先盖一层空轴只会挡路。
+  /// **每次展开只亮一次**：亮过之后 `planOpen` 就是 true，同一轮里再调直接返回；
+  /// 收起面板会 [closePlan]，下次拉出来再亮一遍。不需要额外记"今天亮过没有"。
   bool landOnPlanForToday({DateTime? today}) {
     if (_planOpen || planService == null) return false;
-    final day = today ?? DateTime.now();
-    if (_planAutoOpenedOn == planDayKey(day)) return false;
-    if (planEntriesFor(day).isEmpty) return false;
-    _planAutoOpenedOn = planDayKey(day);
+    if (defaultPanelPage != PanelPage.today) return false;
+    if (planEntriesFor(today ?? DateTime.now()).isEmpty) return false;
     openPlan();
     return true;
   }

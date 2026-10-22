@@ -135,12 +135,12 @@ class _AndroidShellState extends State<AndroidShell>
     });
     // 展开即落设置里选的那一页（§9 第 12 条）。点通知定位时调用方紧接着再
     // `_jumpToPage(focusPage)`，两帧后同批执行，后者生效——定位优先于默认值。
-    final landing = defaultPanelPageIndex(widget.controller.settings);
-    _jumpToPage(landing, animate: false);
-    // 落在今日清单页就算"这一页被打开"（§6.11）：今天排过就先亮编排。落别的页
-    // 不判——等它横滑过去时由 `PageView.onPageChanged` 触发。定位进来的不盖，
+    _jumpToPage(defaultPanelPageIndex(widget.controller.settings),
+        animate: false);
+    // 默认页是今日清单时，每次展开先把编排亮出来（§6.11）——收起再拉会再亮一遍，
+    // 判断在控制器里（它也就判这一次展开里有没有已经亮过）。定位进来的不盖，
     // 目标那一件才是用户点的。
-    if (!locate && landing == PanelPage.today.index) {
+    if (!locate) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         widget.controller.landOnPlanForToday();

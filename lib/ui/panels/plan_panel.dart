@@ -276,6 +276,13 @@ class _PlanOverlayState extends State<PlanOverlay> {
             children: [
               TextButton(
                 onPressed: _pickDraftTime,
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  minimumSize: const Size(0, 32),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  textStyle: const TextStyle(
+                      fontSize: 13, fontWeight: FontWeight.w600),
+                ),
                 child: Text(
                   _draftMinutes == null ? '加时刻' : _fmtMinutes(_draftMinutes!),
                   style:
@@ -287,22 +294,37 @@ class _PlanOverlayState extends State<PlanOverlay> {
                   controller: _draft,
                   focusNode: _draftFocus,
                   textInputAction: TextInputAction.done,
+                  // **不写占位提示**（v1.34）：窄面板上"几点做什么"只剩"几…"，
+                  // 看不清反而成噪音。左边是时刻、右边是确定，上下文已经够了。
                   decoration: const InputDecoration(
                     isDense: true,
                     border: InputBorder.none,
-                    hintText: '几点做什么',
                   ),
                   onChanged: (_) => setState(() {}),
                   onSubmitted: (_) => _commit(),
                 ),
               ),
+              // 两颗图标钮收到 34dp（默认 48dp 会把输入区挤成一条缝）。Material 3
+              // 下 `constraints` 被 ButtonStyle 接管，只能用 `style` 收。
               IconButton(
                 tooltip: '添加',
+                iconSize: 20,
+                style: IconButton.styleFrom(
+                  minimumSize: const Size(34, 34),
+                  padding: EdgeInsets.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
                 icon: const Icon(Icons.check),
                 onPressed: _commit,
               ),
               IconButton(
                 tooltip: '收起',
+                iconSize: 20,
+                style: IconButton.styleFrom(
+                  minimumSize: const Size(34, 34),
+                  padding: EdgeInsets.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
                 icon: const Icon(Icons.close),
                 onPressed: _cancelAdding,
               ),
