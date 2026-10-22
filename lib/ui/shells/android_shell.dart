@@ -92,11 +92,14 @@ class _AndroidShellState extends State<AndroidShell>
     }
     if (c.panelOpenRequest != _seenPanelRequest) {
       _seenPanelRequest = c.panelOpenRequest;
-      _openPanel();
+      // 定位请求是一次性的；`focusedTaskId` 会一直留着给高亮，拿它判"这次是定位"
+      // 会让此后每次打开都跳回上次那条。
+      final locate = c.consumeLocateRequest();
+      _openPanel(locate: locate);
       // 只有"点通知定位"才带着目标页；把手拖出 / 原生降级打开都落默认页
       // （§6.0）——曾经无条件跳 `focusPage`，它的 0 号默认值在旧页序里恰好
       // 是今日清单，页序一换就变成了灵感。
-      if (c.focusedTaskId != null) _jumpToPage(c.focusPage);
+      if (locate) _jumpToPage(c.focusPage);
     }
     final notice = c.consumeNotice();
     if (notice != null) {
@@ -124,7 +127,7 @@ class _AndroidShellState extends State<AndroidShell>
     });
   }
 
-  void _openPanel() {
+  void _openPanel({bool locate = false}) {
     setState(() {
       _panelOpen = true;
       _panelSliding = false;
@@ -132,8 +135,17 @@ class _AndroidShellState extends State<AndroidShell>
     });
     // 展开即落设置里选的那一页（§9 第 12 条）。点通知定位时调用方紧接着再
     // `_jumpToPage(focusPage)`，两帧后同批执行，后者生效——定位优先于默认值。
-    _jumpToPage(defaultPanelPageIndex(widget.controller.settings),
-        animate: false);
+    final landing = defaultPanelPageIndex(widget.controller.settings);
+    _jumpToPage(landing, animate: false);
+    // 落在今日清单页就算"这一页被打开"（§6.11）：今天排过就先亮编排。落别的页
+    // 不判——等它横滑过去时由 `PageView.onPageChanged` 触发。定位进来的不盖，
+    // 目标那一件才是用户点的。
+    if (!locate && landing == PanelPage.today.index) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        widget.controller.landOnPlanForToday();
+      });
+    }
     _maybeOnboard();
   }
 

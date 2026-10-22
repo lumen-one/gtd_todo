@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../domain/plan.dart';
+import '../../domain/task.dart';
 import '../app_controller.dart';
 import '../theme.dart';
 
@@ -33,6 +34,9 @@ class _PlanOverlayState extends State<PlanOverlay> {
   static const double _timeWidth = 46;
   static const double _railGap = 16;
   static const double _railX = _timeWidth + 8;
+
+  /// 候选最多几条（再多就该用输入框筛了，面板也就那么高）。
+  static const int _maxCandidates = 6;
 
   final TextEditingController _draft = TextEditingController();
   final FocusNode _draftFocus = FocusNode();
@@ -258,48 +262,153 @@ class _PlanOverlayState extends State<PlanOverlay> {
       );
     }
 
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          margin: const EdgeInsets.only(top: 4),
+          padding: const EdgeInsets.fromLTRB(6, 4, 4, 4),
+          decoration: BoxDecoration(
+            border: Border.all(color: AppColors.accent.withValues(alpha: 0.5)),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              TextButton(
+                onPressed: _pickDraftTime,
+                child: Text(
+                  _draftMinutes == null ? '加时刻' : _fmtMinutes(_draftMinutes!),
+                  style:
+                      const TextStyle(fontFeatures: [FontFeature.tabularFigures()]),
+                ),
+              ),
+              Expanded(
+                child: TextField(
+                  controller: _draft,
+                  focusNode: _draftFocus,
+                  textInputAction: TextInputAction.done,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    border: InputBorder.none,
+                    hintText: '几点做什么',
+                  ),
+                  onChanged: (_) => setState(() {}),
+                  onSubmitted: (_) => _commit(),
+                ),
+              ),
+              IconButton(
+                tooltip: '添加',
+                icon: const Icon(Icons.check),
+                onPressed: _commit,
+              ),
+              IconButton(
+                tooltip: '收起',
+                icon: const Icon(Icons.close),
+                onPressed: _cancelAdding,
+              ),
+            ],
+          ),
+        ),
+        _candidateList(theme),
+      ],
+    );
+  }
+
+  /// 快捷添加的候选：今日清单（按清单顺序）+ 任务池（计划段、散件段）的标题。
+  ///
+  /// **只借标题文字**（§6.11「贴的是文字，不是引用」）：点击后的编排条目与任务
+  /// 没有任何关系，所以这里也按标题去重——同名任务贴一次就够。输入框里的字按
+  /// 包含匹配筛，最多 [_maxCandidates] 条。
+  List<String> _candidates() {
+    final controller = widget.controller;
+    final today = controller.todayView;
+    final pool = controller.poolView;
+    final ordered = <Task>[
+      ...today.inProgress,
+      ...today.overdue,
+      ...today.fixed,
+      ...today.pinned,
+      ...today.flex,
+      ...today.routines,
+      if (today.picked != null) today.picked!,
+      ...today.loose,
+      ...pool.plan,
+      ...pool.loose,
+    ];
+    final query = _draft.text.trim().toLowerCase();
+    final seen = <String>{};
+    final out = <String>[];
+    for (final task in ordered) {
+      final title = task.title.trim();
+      if (title.isEmpty || !seen.add(title)) continue;
+      if (query.isNotEmpty && !title.toLowerCase().contains(query)) continue;
+      out.add(title);
+      if (out.length >= _maxCandidates) break;
+    }
+    return out;
+  }
+
+  Widget _candidateList(ThemeData theme) {
+    final items = _candidates();
+    if (items.isEmpty) return const SizedBox.shrink();
+    // 编排里已有同名条目：标一个勾，但照样能点（一天做两次同一件事是允许的）。
+    final planned = {for (final e in _entries) e.title.trim()};
+    final hint = theme.colorScheme.onSurfaceVariant;
     return Container(
-      margin: const EdgeInsets.only(top: 4),
-      padding: const EdgeInsets.fromLTRB(6, 4, 4, 4),
+      margin: const EdgeInsets.only(top: 6),
       decoration: BoxDecoration(
-        border: Border.all(color: AppColors.accent.withValues(alpha: 0.5)),
+        border: Border.all(
+            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.6)),
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          TextButton(
-            onPressed: _pickDraftTime,
-            child: Text(
-              _draftMinutes == null ? '加时刻' : _fmtMinutes(_draftMinutes!),
-              style: const TextStyle(fontFeatures: [FontFeature.tabularFigures()]),
-            ),
-          ),
-          Expanded(
-            child: TextField(
-              controller: _draft,
-              focusNode: _draftFocus,
-              textInputAction: TextInputAction.done,
-              decoration: const InputDecoration(
-                isDense: true,
-                border: InputBorder.none,
-                hintText: '几点做什么',
+          for (final title in items)
+            InkWell(
+              borderRadius: BorderRadius.circular(10),
+              onTap: () => _pickCandidate(title),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
+                child: Row(
+                  children: [
+                    Icon(Icons.add, size: 15, color: hint),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ),
+                    if (planned.contains(title))
+                      Text(
+                        '已排',
+                        style: theme.textTheme.labelSmall
+                            ?.copyWith(color: AppColors.accent),
+                      ),
+                  ],
+                ),
               ),
-              onSubmitted: (_) => _commit(),
             ),
-          ),
-          IconButton(
-            tooltip: '添加',
-            icon: const Icon(Icons.check),
-            onPressed: _commit,
-          ),
-          IconButton(
-            tooltip: '收起',
-            icon: const Icon(Icons.close),
-            onPressed: _cancelAdding,
-          ),
         ],
       ),
     );
+  }
+
+  /// 点一条候选 = 直接落一条编排（时刻用当前默认），可以连点连排。
+  Future<void> _pickCandidate(String title) async {
+    await widget.controller.addPlanEntry(
+      _day,
+      PlanEntry(title: title, minutesOfDay: _draftMinutes),
+    );
+    if (!mounted) return;
+    setState(() {
+      _draft.clear();
+      _draftMinutes = _suggestedMinutes();
+    });
+    _draftFocus.requestFocus();
   }
 
   void _startAdding() {

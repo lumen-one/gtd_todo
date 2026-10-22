@@ -43,6 +43,10 @@ class SidePanel extends StatefulWidget {
   /// Hero 标签前缀：同一棵树里放两份面板时要区分（抽屉兜底 / 悬浮窗）。
   final String heroTagPrefix;
 
+  /// 切到今日清单页时要不要顺手把编排亮出来（§6.11「进入今日清单页就优先显示
+  /// 编排」）。桌面左栏常驻、没有"打开面板"这件事，不接这一套，传 false。
+  final bool autoPlanOnEnter;
+
   const SidePanel({
     super.key,
     required this.controller,
@@ -50,6 +54,7 @@ class SidePanel extends StatefulWidget {
     required this.onOpenCalendar,
     this.onOpenSettings,
     this.heroTagPrefix = 'panel',
+    this.autoPlanOnEnter = true,
   });
 
   @override
@@ -173,6 +178,14 @@ class _SidePanelState extends State<SidePanel> {
                     children: [
                       PageView(
                         controller: widget.pageCtrl,
+                        // 进入今日清单页 = 这一页被打开（横滑、点圆点、宿主落页）。
+                        // 今天排过就先亮编排（§6.11）；一天只自动亮一次，判断在
+                        // 控制器里，这里只是触发器。
+                        onPageChanged: (i) {
+                          if (!widget.autoPlanOnEnter) return;
+                          if (PanelPage.values[i] != PanelPage.today) return;
+                          controller.landOnPlanForToday();
+                        },
                         children: [
                           for (final page in PanelPage.values)
                             _pageBody(page, controller),

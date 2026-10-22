@@ -85,6 +85,101 @@ void main() {
     expect(find.byType(TextField), findsOneWidget);
   });
 
+  testWidgets('快捷添加：候选来自今日清单与任务池，点一条直接落账', (tester) async {
+    final c = makeController();
+    await c.createTask(title: '写方案');
+    await pumpOverlay(tester, c);
+
+    await tester.tap(find.text('添加一项'));
+    await tester.pumpAndSettle();
+    expect(find.text('写方案'), findsOneWidget);
+
+    await tester.tap(find.text('写方案'));
+    await tester.pumpAndSettle();
+
+    final entry = c.planEntriesFor(day).single;
+    expect(entry.title, '写方案');
+    expect(entry.minutesOfDay, isNotNull); // 时刻用默认，不是空
+    // 只借标题：任务本身没有被改（还在池子里，没被挑、没完成）
+    expect(c.service.tasks.single.title, '写方案');
+    expect(c.service.tasks.single.isCompleted, isFalse);
+    // 落过一条后候选还在（可以连点连排），并标了已排
+    expect(find.text('已排'), findsOneWidget);
+  });
+
+  testWidgets('快捷添加：输入框里的字用来筛候选', (tester) async {
+    final c = makeController();
+    await c.createTask(title: '写方案');
+    await c.createTask(title: '回邮件');
+    await pumpOverlay(tester, c);
+
+    await tester.tap(find.text('添加一项'));
+    await tester.pumpAndSettle();
+    expect(find.text('写方案'), findsOneWidget);
+    expect(find.text('回邮件'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), '邮件');
+    await tester.pumpAndSettle();
+    expect(find.text('写方案'), findsNothing);
+    expect(find.text('回邮件'), findsOneWidget);
+  });
+
+  test('进入今日页：今天有条目就亮一次，同一天第二次不再弹', () async {
+    final c = makeController(plan: [
+      DayPlan(day: day, entries: const [
+        PlanEntry(title: '晨会', minutesOfDay: 8 * 60 + 30),
+      ]),
+    ]);
+    await c.planService!.load();
+
+    expect(c.landOnPlanForToday(today: day), isTrue);
+    expect(c.planOpen, isTrue);
+
+    c.closePlan();
+    expect(c.landOnPlanForToday(today: day), isFalse);
+    expect(c.planOpen, isFalse);
+  });
+
+  test('进入今日页：今天没有条目就不亮', () async {
+    final c = makeController();
+    await c.planService!.load();
+
+    expect(c.landOnPlanForToday(today: day), isFalse);
+    expect(c.planOpen, isFalse);
+  });
+
+  testWidgets('切到今日清单页：今天排过就把编排亮出来（落在别的页时不亮）',
+      (tester) async {
+    final c = makeController(plan: [
+      DayPlan(day: day, entries: const [
+        PlanEntry(title: '晨会', minutesOfDay: 8 * 60 + 30),
+      ]),
+    ]);
+    await c.planService!.load();
+    final pageCtrl = PageController(initialPage: PanelPage.notes.index);
+    await tester.pumpWidget(MaterialApp(
+      home: Center(
+        child: SizedBox(
+          width: 300,
+          height: 620,
+          child: SidePanel(
+            controller: c,
+            pageCtrl: pageCtrl,
+            onOpenCalendar: () {},
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    // 落在灵感页：这一页没被打开过，不亮
+    expect(c.planOpen, isFalse);
+
+    pageCtrl.animateToPage(PanelPage.today.index,
+        duration: const Duration(milliseconds: 200), curve: Curves.easeOut);
+    await tester.pumpAndSettle();
+    expect(c.planOpen, isTrue);
+  });
+
   testWidgets('编辑：点条目开面板，改标题后落盘', (tester) async {
     final c = makeController(plan: [
       DayPlan(day: day, entries: const [

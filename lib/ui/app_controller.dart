@@ -112,6 +112,12 @@ class AppController extends ChangeNotifier {
   String? _focusedTaskId;
   int _focusPage = 0;
   int _panelOpenRequest = 0;
+
+  /// 本次打开请求是通知定位（见 [consumeLocateRequest]）。
+  bool _openRequestLocates = false;
+
+  /// 今天已经自动把编排亮出来过（内存态，不落盘；跨天自然失效）。
+  String? _planAutoOpenedOn;
   String? _settingsFocusRoutineId;
   int _panelCloseRequest = 0;
 
@@ -286,6 +292,25 @@ class AppController extends ChangeNotifier {
     planPull.value = 0;
     planDragging.value = false;
     notifyListeners();
+  }
+
+  /// 面板展开、落到今日清单页时调一次：今天已经有编排就直接展开它（§6.11）——
+  /// 等于替用户把"到顶再下拉"做了一遍。返回是否展开（测试与宿主都读它）。
+  ///
+  /// **触发点是"今日清单这一页被打开"**（面板落页 / 横滑切页），不是"面板被展开"：
+  /// 默认页设成灵感时，从灵感滑到今日清单同样算一次进入。
+  ///
+  /// **一天只自动展开一次**（内存记日期，不落盘）：当天的第一次进入先把编排亮出来，
+  /// 之后切来切去不再弹——否则每次回到今日页都被盖一层，想按清单看反而要按两下。
+  /// 今天没有条目也不进：那正是要去写的时候，先盖一层空轴只会挡路。
+  bool landOnPlanForToday({DateTime? today}) {
+    if (_planOpen || planService == null) return false;
+    final day = today ?? DateTime.now();
+    if (_planAutoOpenedOn == planDayKey(day)) return false;
+    if (planEntriesFor(day).isEmpty) return false;
+    _planAutoOpenedOn = planDayKey(day);
+    openPlan();
+    return true;
   }
 
   /// 定位到设置页某条周期规则（决议 23：实例菜单的『编辑规则』）。
@@ -1017,6 +1042,7 @@ class AppController extends ChangeNotifier {
       // 已完成 → 跳已完成页定位高亮（§6.7）：不再是一句"该任务已完成"的死路 toast。
       _focusedTaskId = taskId;
       _focusPage = PanelPage.completed.index;
+      _openRequestLocates = true;
       _panelOpenRequest++;
       _pendingNotice = '已定位到「${task.title}」（已完成）';
     } else {
@@ -1032,14 +1058,26 @@ class AppController extends ChangeNotifier {
       ].any((t) => t.id == taskId);
       _focusedTaskId = taskId;
       _focusPage = inTodayList ? PanelPage.today.index : PanelPage.pool.index;
+      _openRequestLocates = true;
       _panelOpenRequest++;
       _pendingNotice = '已定位到「${task.title}」';
     }
     notifyListeners();
   }
 
+  /// 本次"打开面板"的请求是不是通知定位触发的。
+  ///
+  /// **读一次即清**：`focusedTaskId` 会一直留着给条目高亮（没有 clearFocus 的调用点），
+  /// 拿它判"这次是定位"会让此后每次打开都跳回上次那条。
+  bool consumeLocateRequest() {
+    final locating = _openRequestLocates;
+    _openRequestLocates = false;
+    return locating;
+  }
+
   /// 把手拖出（系统级悬浮窗）→ 打开面板。
   void requestOpenPanel() {
+    _openRequestLocates = false;
     _panelOpenRequest++;
     notifyListeners();
   }

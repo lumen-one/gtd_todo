@@ -88,7 +88,10 @@ class _OverlayPanelShellState extends State<OverlayPanelShell>
       // 每次展开都落一遍默认页：跟手拖出那一路的起手页已由 [_syncLandingPage]
       // 摆对，但原生也可能不经拖动直接广播展开（降级打开 / 通知拉起），
       // 那一路上没有拖动起手——这里兜住。
-      if (s.expanded && !wasExpanded) _landOnDefaultPage();
+      if (s.expanded && !wasExpanded) {
+        _landOnDefaultPage();
+        _landOnPlan();
+      }
       if (s.expanded) _maybeOnboard();
     });
     _dragSub = widget.bridge.drags.listen(_onDrag);
@@ -126,9 +129,21 @@ class _OverlayPanelShellState extends State<OverlayPanelShell>
   /// 落到设置里选的默认页（§9 第 12 条）：用 `jumpToPage`——面板正在跟手/补满，
   /// 再来一道横扫就是两段动作。
   void _landOnDefaultPage() {
+    final landing = defaultPanelPageIndex(_c.settings);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_pageCtrl.hasClients) return;
-      _pageCtrl.jumpToPage(defaultPanelPageIndex(_c.settings));
+      _pageCtrl.jumpToPage(landing);
+    });
+    // 落在今日清单页 = 这一页被打开（§6.11）：今天排过就先亮编排。落别的页不判，
+    // 等横滑过去时由 `PageView.onPageChanged` 触发。
+    if (landing == PanelPage.today.index) _landOnPlan();
+  }
+
+  /// 今天排过就把编排亮出来：帧后执行，让面板先把页摆对。
+  void _landOnPlan() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _c.landOnPlanForToday();
     });
   }
 
