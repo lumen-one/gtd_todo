@@ -44,7 +44,10 @@ Windows 10/11 · Android · MIT
 
 ## 装上
 
-需要 Flutter（Dart 3）。
+**安卓**：到 [Releases](https://github.com/lumen-one/gtd_todo/releases) 下 `arm64-v8a` 那个 APK
+（近几年的手机都适用；老的 32 位机用 `armeabi-v7a`），装在手机上时允许「安装未知来源应用」。
+
+**从源码跑**（Windows / 安卓）：需要 Flutter（Dart 3）。
 
 ```bash
 git clone https://github.com/lumen-one/gtd_todo.git

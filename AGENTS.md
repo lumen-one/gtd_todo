@@ -63,6 +63,19 @@ import 矩阵由 `test/architecture_test.dart` 守着，改跨层引用会直接
 不会弹。桌面壳是 `main.dart` + 常驻左栏，设置页按壳能力表（`application/shell_capabilities.dart`）
 裁剪。
 
+## 出 release
+
+1. 改 `pubspec.yaml` 的 `version`（`1.0.0+1` 里 `+1` 是 versionCode，每次发版必须加）。
+2. 构建：`flutter build apk --release --split-per-abi`，产物在 `build/app/outputs/flutter-apk/`
+   三个按架构拆的包（十来兆一个，比通用包小一多半）。
+3. 打标签并推送：`git tag -a v1.0.0 -m "…" && git push origin main --tags`。
+4. 到 GitHub Releases 挂附件（网页点，或用 API `POST /repos/<owner>/<repo>/releases` 再往
+   `uploads.github.com` 传二进制）。
+
+**签名**：`android/key.properties` 指向 `android/app/gtd-release.jks`，两个文件都不入库。
+丢了这个密钥，装过包的人就再也收不到覆盖升级——只能卸载重装，而任务数据在应用私有目录里，
+卸载即清空。密钥和口令自己留一份在仓库之外。
+
 ## 文档
 
 改动顺序固定：**先改契约文档，再改代码**，提交也按这个顺序拆笔。
