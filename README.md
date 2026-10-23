@@ -6,6 +6,12 @@ Windows 上是一个四页横滑的面板，安卓上是一枚随时拖出来的
 
 Windows 10/11 · Android · MIT
 
+<p align="center">
+  <img src="docs/images/today.png" width="240" alt="今日清单：逾期 / 固定时点 / 可推三组">
+  <img src="docs/images/pool.png" width="240" alt="任务池：计划段与散件">
+  <img src="docs/images/new-task.png" width="240" alt="新建待办：三无 / 有截止 / 定点">
+</p>
+
 ## 它和普通待办的区别
 
 待办 App 默认按截止时间排序，分不出这种差别：两件事都 12 月交，一件要 30 小时、一件要
