@@ -154,6 +154,53 @@ void main() {
       expect(svc.entriesFor(today), isEmpty);
     });
 
+    test('改时刻即整轴归位：按时刻升序，没有时刻的沉到最后', () async {
+      final svc = PlanService(repo: MemoryPlanRepository());
+      await svc.load();
+      await svc.addEntry(today, const PlanEntry(title: 'A', minutesOfDay: 600));
+      await svc.addEntry(today, const PlanEntry(title: 'B', minutesOfDay: 660));
+      await svc.addEntry(today, const PlanEntry(title: 'C'));
+
+      // A 从 10:00 推到 11:40：跑到 B 后面，无时刻的 C 仍在末尾。
+      await svc.updateEntry(today, 0, const PlanEntry(title: 'A', minutesOfDay: 700));
+      expect([for (final e in svc.entriesFor(today)) e.title], ['B', 'A', 'C']);
+
+      // 清掉 B 的时刻：它也沉到末尾，且排在 C 之后（原来的先后不变）。
+      await svc.updateEntry(
+          today, 0, const PlanEntry(title: 'B', minutesOfDay: null));
+      expect([for (final e in svc.entriesFor(today)) e.title], ['A', 'B', 'C']);
+    });
+
+    test('新增也归位：手选一个更早的时刻不会落地成倒挂', () async {
+      final svc = PlanService(repo: MemoryPlanRepository());
+      await svc.load();
+      await svc.addEntry(today, const PlanEntry(title: '下午', minutesOfDay: 14 * 60));
+      await svc.addEntry(today, const PlanEntry(title: '早上', minutesOfDay: 9 * 60));
+      expect([for (final e in svc.entriesFor(today)) e.title], ['早上', '下午']);
+    });
+
+    test('同一时刻保持原相对顺序', () async {
+      final svc = PlanService(repo: MemoryPlanRepository());
+      await svc.load();
+      await svc.addEntry(today, const PlanEntry(title: 'A', minutesOfDay: 540));
+      await svc.addEntry(today, const PlanEntry(title: 'B', minutesOfDay: 540));
+      await svc.addEntry(today, const PlanEntry(title: 'C', minutesOfDay: 480));
+
+      expect([for (final e in svc.entriesFor(today)) e.title], ['C', 'A', 'B']);
+    });
+
+    test('只改标题不重排：拖出来的顺序留着', () async {
+      final svc = PlanService(repo: MemoryPlanRepository());
+      await svc.load();
+      await svc.addEntry(today, const PlanEntry(title: 'A', minutesOfDay: 540));
+      await svc.addEntry(today, const PlanEntry(title: 'B', minutesOfDay: 600));
+      // 拖动是手动顺序：setEntries 不排序。
+      await svc.setEntries(today, [...svc.entriesFor(today).reversed]);
+
+      await svc.updateEntry(today, 0, const PlanEntry(title: 'B 改名', minutesOfDay: 600));
+      expect([for (final e in svc.entriesFor(today)) e.title], ['B 改名', 'A']);
+    });
+
     test('两个引擎各持一个服务：改自己那天不会抹掉别人刚写的另一天', () async {
       final repo = MemoryPlanRepository();
       final a = PlanService(repo: repo);

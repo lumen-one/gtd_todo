@@ -51,7 +51,7 @@ class PlanEntry {
   String toString() => 'PlanEntry(${timeText ?? '—'}, $title)';
 }
 
-/// 某一天的编排。行序就是顺序（应用不按时刻重排）。
+/// 某一天的编排。行序就是顺序：改时刻 / 新增时由 [sortPlanEntries] 归位，拖动可临时覆盖。
 class DayPlan {
   /// 当天零点。
   final DateTime day;
@@ -65,4 +65,32 @@ class DayPlan {
 
   @override
   String toString() => 'DayPlan(${planDayKey(day)}, ${entries.length} 条)';
+}
+
+/// 按时刻升序重排一天：有时刻的在前（同一时刻保持原相对顺序），没有时刻的按原相对顺序
+/// 沉到最后。
+///
+/// 改时刻、新增一条时走这里（[panels/plan.md](../../docs/panels/plan.md)『时间轴』）；
+/// 拖动改顺序绕开它——那是唯一的手动覆盖。插入排序不是图省事：`List.sort` 不保证稳定，
+/// 同一时刻的两条会被随手换位。
+List<PlanEntry> sortPlanEntries(List<PlanEntry> entries) {
+  final timed = <PlanEntry>[];
+  final untimed = <PlanEntry>[];
+  for (final e in entries) {
+    if (e.minutesOfDay == null) {
+      untimed.add(e);
+    } else {
+      timed.add(e);
+    }
+  }
+  for (var i = 1; i < timed.length; i++) {
+    final entry = timed[i];
+    var j = i - 1;
+    while (j >= 0 && timed[j].minutesOfDay! > entry.minutesOfDay!) {
+      timed[j + 1] = timed[j];
+      j--;
+    }
+    timed[j + 1] = entry;
+  }
+  return [...timed, ...untimed];
 }

@@ -36,15 +36,18 @@ class PlanService {
     return const [];
   }
 
-  /// 追加一条（末尾）。
+  /// 追加一条：按时刻归位（同刻的排在已有那几条之后）。
   Future<void> addEntry(DateTime day, PlanEntry entry) =>
-      _mutate(day, (entries) => [...entries, entry]);
+      _mutate(day, (entries) => sortPlanEntries([...entries, entry]));
 
-  /// 改一条（标题 / 时刻）。
+  /// 改一条（标题 / 时刻）。**只有时刻变了才重排**：只改标题不该打散拖出来的顺序。
   Future<void> updateEntry(DateTime day, int index, PlanEntry next) =>
       _mutate(day, (entries) {
         if (index < 0 || index >= entries.length) return entries;
-        return [...entries]..[index] = next;
+        final out = [...entries]..[index] = next;
+        return entries[index].minutesOfDay == next.minutesOfDay
+            ? out
+            : sortPlanEntries(out);
       });
 
   /// 删一条。
@@ -54,7 +57,7 @@ class PlanService {
         return [...entries]..removeAt(index);
       });
 
-  /// 整日重写（拖动改顺序走这里：一次落盘 + 一次通知）。
+  /// 整日重写（拖动改顺序走这里：一次落盘 + 一次通知）。**不排序**——拖动是手动顺序。
   Future<void> setEntries(DateTime day, List<PlanEntry> entries) =>
       _mutate(day, (_) => entries);
 

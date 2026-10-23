@@ -31,12 +31,13 @@ void main() {
     );
   }
 
-  Future<void> pumpOverlay(WidgetTester tester, AppController c) async {
+  Future<void> pumpOverlay(WidgetTester tester, AppController c,
+      {double width = 320}) async {
     // 真实装配里由 SidePanel 监听控制器重建；这里补一层同样的关系。
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
         body: SizedBox(
-          width: 320,
+          width: width,
           height: 620,
           child: AnimatedBuilder(
             animation: c,
@@ -325,7 +326,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(c.planOpen, isTrue);
-    expect(find.text('今日编排'), findsOneWidget);
+    expect(find.text('编排'), findsOneWidget);
 
     await tester.tap(find.byTooltip('返回'));
     await tester.pumpAndSettle();
@@ -361,5 +362,110 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(c.planOpen, isFalse);
+  });
+
+  // ---- 日期轴（昨天 / 今天 / 明天）----
+
+  testWidgets('左滑到明天：页头跟着走，落账落在明天且默认 09:00', (tester) async {
+    final c = makeController();
+    await pumpOverlay(tester, c);
+
+    await tester.drag(find.byType(PageView), const Offset(-280, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('明天还没有编排'), findsOneWidget);
+
+    await tester.tap(find.text('添加一项'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '准备明天的会');
+    await tester.tap(find.byIcon(Icons.check));
+    await tester.pumpAndSettle();
+
+    final tomorrow = DateTime(2026, 10, 23);
+    expect(c.planEntriesFor(tomorrow).single.title, '准备明天的会');
+    // 晚上排明天：默认落 09:00，不是"现在"的 22:30
+    expect(c.planEntriesFor(tomorrow).single.minutesOfDay, 9 * 60);
+    expect(c.planEntriesFor(day), isEmpty);
+  });
+
+  testWidgets('点页头标签直接跳页（桌面没有横滑的手感）', (tester) async {
+    final c = makeController();
+    await pumpOverlay(tester, c);
+
+    expect(find.text('昨天 21'), findsOneWidget);
+    expect(find.text('今天 22'), findsOneWidget);
+    expect(find.text('明天 23'), findsOneWidget);
+
+    await tester.tap(find.text('明天 23'));
+    await tester.pumpAndSettle();
+    expect(find.text('明天还没有编排'), findsOneWidget);
+  });
+
+  testWidgets('昨天只读：没有添加行，点条目不弹编辑', (tester) async {
+    final c = makeController(plan: [
+      DayPlan(day: DateTime(2026, 10, 21), entries: const [
+        PlanEntry(title: '昨天的会', minutesOfDay: 10 * 60),
+      ]),
+    ]);
+    await c.planService!.load();
+    await pumpOverlay(tester, c);
+
+    await tester.drag(find.byType(PageView), const Offset(280, 0));
+    await tester.pumpAndSettle();
+
+    expect(find.text('昨天的会'), findsOneWidget);
+    expect(find.text('添加一项'), findsNothing);
+
+    await tester.tap(find.text('昨天的会'));
+    await tester.pumpAndSettle();
+    expect(find.text('保存'), findsNothing);
+  });
+
+  testWidgets('新增默认时刻：上一条 + 一小时', (tester) async {
+    final c = makeController(plan: [
+      DayPlan(day: day, entries: const [
+        PlanEntry(title: '晨会', minutesOfDay: 8 * 60 + 30),
+      ]),
+    ]);
+    await c.planService!.load();
+    await pumpOverlay(tester, c);
+
+    await tester.tap(find.text('添加一项'));
+    await tester.pumpAndSettle();
+    // 08:30 + 1h（时刻按钮上显示）
+    expect(find.text('09:30'), findsOneWidget);
+  });
+
+  testWidgets('窄面板 240dp：页头三段标签与添加行都不溢出', (tester) async {
+    final c = makeController(plan: [
+      DayPlan(day: day, entries: const [
+        PlanEntry(title: '一个很长很长的标题会不会把这一行撑破', minutesOfDay: 8 * 60),
+      ]),
+    ]);
+    await c.planService!.load();
+    await pumpOverlay(tester, c, width: 240);
+
+    await tester.tap(find.text('添加一项'));
+    await tester.pumpAndSettle();
+    // 走到这儿还没炸，就说明页头与添加行在 240dp 下都排得开
+    expect(find.text('昨天 21'), findsOneWidget);
+  });
+
+  testWidgets('改时刻后整轴归位：最新改的那条按时刻插进去', (tester) async {
+    final c = makeController(plan: [
+      DayPlan(day: day, entries: const [
+        PlanEntry(title: '晨会', minutesOfDay: 8 * 60),
+        PlanEntry(title: '评审', minutesOfDay: 10 * 60),
+      ]),
+    ]);
+    await c.planService!.load();
+    await pumpOverlay(tester, c);
+
+    // 直接把 B 通过服务挪到 07:00（编辑面板里的时刻选择器在测试里走不通）
+    await c.updatePlanEntry(day, 1, const PlanEntry(title: '评审', minutesOfDay: 7 * 60));
+    await tester.pumpAndSettle();
+    expect([for (final e in c.planEntriesFor(day)) e.title], ['评审', '晨会']);
+
+    final review = tester.getCenter(find.text('评审')).dy;
+    expect(review, lessThan(tester.getCenter(find.text('晨会')).dy));
   });
 }

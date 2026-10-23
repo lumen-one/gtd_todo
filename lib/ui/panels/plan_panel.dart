@@ -6,17 +6,19 @@ import '../../domain/task.dart';
 import '../app_controller.dart';
 import '../theme.dart';
 
-/// 今日编排覆盖页（ui-interaction.md §6.11；格式见 docs/formats/plan.md）。
+/// 编排覆盖页（panels/plan.md §6.11；格式见 docs/formats/plan.md）。
 ///
 /// **只排不做**：条目不是任务，完成 / 逾期 / 提醒都在今日清单里。这一页只有一条
-/// 时间轴——左侧时刻、右侧标题、中间一条竖线；拖动只改行序，不改时刻，所以顺序和
-/// 时刻会打架，打架时只把时间标橙，不自动纠正。
+/// 时间轴——左侧时刻、右侧标题、中间一条竖线。
+///
+/// 三天窗口：昨天只读、今天明天可排，打开落在今天。改时刻或新增一条时，应用会把这
+/// 一天按时刻归位（`PlanService` 里做），拖动是唯一能盖过它的操作。
 class PlanOverlay extends StatefulWidget {
   final AppController controller;
 
   final VoidCallback onClose;
 
-  /// 编排哪一天（测试注入；默认今天）。界面只显示一天，跨天由装配层重算。
+  /// 锚点日 = 界面上那个"今天"（测试注入；默认取真实日期）。三页由它派生。
   final DateTime? day;
 
   /// 判定"现在"用的时刻（测试注入；默认取真实时间）。只有"现在"游标与
@@ -36,6 +38,200 @@ class PlanOverlay extends StatefulWidget {
 }
 
 class _PlanOverlayState extends State<PlanOverlay> {
+  /// 三页里的"今天"；打开落在这一页，左边是昨天、右边是明天。
+  static const int _todayIndex = 1;
+
+  late final PageController _pages = PageController(initialPage: _todayIndex);
+
+  int _index = _todayIndex;
+
+  DateTime get _anchor => planDay(widget.day ?? DateTime.now());
+
+  DateTime get _now => widget.now ?? DateTime.now();
+
+  /// 第 [i] 页是哪一天（0 = 昨天 / 1 = 今天 / 2 = 明天）。
+  DateTime _dayAt(int i) =>
+      DateTime(_anchor.year, _anchor.month, _anchor.day + i - 1);
+
+  @override
+  void dispose() {
+    _pages.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final count = widget.controller.planEntriesFor(_dayAt(_index)).length;
+    return Material(
+      color: theme.scaffoldBackgroundColor,
+      child: Column(
+        children: [
+          _header(theme, count),
+          const Divider(height: 1),
+          Expanded(
+            // 桌面：overscroll 只能靠按住鼠标拖出来（滚轮滚到头继续滚是常态，
+            // 认了就是天天误触），所以这一页和今日页一样要放开鼠标拖拽。横向同理
+            // ——桌面上滑页也得能用鼠标拖。
+            child: ScrollConfiguration(
+              behavior: ScrollConfiguration.of(context).copyWith(
+                dragDevices: PointerDeviceKind.values.toSet(),
+              ),
+              child: NotificationListener<ScrollNotification>(
+                onNotification: _onScroll,
+                child: PageView(
+                  controller: _pages,
+                  onPageChanged: (i) => setState(() => _index = i),
+                  children: [
+                    for (var i = 0; i < 3; i++)
+                      _DayTimeline(
+                        key: ValueKey(planDayKey(_dayAt(i))),
+                        controller: widget.controller,
+                        day: _dayAt(i),
+                        now: _now,
+                        readOnly: i == 0,
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 末尾之后继续上滑 = 退出（与今日页"到顶再下拉"同一条规则的两端）。
+  ///
+  /// **按轴筛，不按 depth 筛**：这一页外面套了横向 PageView，里面列表的通知冒上来时
+  /// depth 已经是 1，按 depth 过滤会把退出手势整个吃掉。只认手指拖出来的 overscroll
+  /// （`dragDetails` 非空）：鼠标滚轮滚到底继续滚是常态，认了就是天天误退。
+  bool _onScroll(ScrollNotification n) {
+    if (n.metrics.axis != Axis.vertical) return false;
+    if (n is OverscrollNotification &&
+        n.dragDetails != null &&
+        n.overscroll > 0) {
+      widget.controller.pullPlanExit(n.overscroll);
+    } else if (n is ScrollEndNotification) {
+      // 向上快甩是 dy < 0（页面往上走）。
+      widget.controller
+          .settlePlanExit(n.dragDetails?.velocity.pixelsPerSecond.dy ?? 0);
+    }
+    return false;
+  }
+
+  // ---- 头部 ----
+
+  Widget _header(ThemeData theme, int count) {
+    final hint = theme.colorScheme.onSurfaceVariant;
+    final readOnly = _index == 0;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(2, 4, 12, 0),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              IconButton(
+                tooltip: '返回',
+                icon: const Icon(Icons.arrow_back),
+                onPressed: widget.onClose,
+              ),
+              // 标题不带"今日"：这一页同时装昨天和明天。
+              Expanded(
+                child: Text('编排',
+                    style: theme.textTheme.titleMedium,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis),
+              ),
+              if (readOnly) ...[
+                Icon(Icons.lock_outline, size: 14, color: hint),
+                const SizedBox(width: 4),
+              ],
+              if (count > 0)
+                Text(
+                  '$count 项',
+                  style: theme.textTheme.labelMedium?.copyWith(color: hint),
+                ),
+            ],
+          ),
+          Row(
+            children: [
+              for (var i = 0; i < 3; i++) Expanded(child: _tab(theme, i)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 日期轴的一段：`昨天 22` / `今天 23` / `明天 24`，当前那段强调色 + 下划线。
+  ///
+  /// 标签是给桌面的：Windows 上横滑没有肌肉记忆，只有手势等于没有入口。
+  Widget _tab(ThemeData theme, int i) {
+    final selected = _index == i;
+    final accent = AppColors.accent;
+    return InkWell(
+      onTap: () => _goTo(i),
+      child: Container(
+        padding: const EdgeInsets.only(top: 4, bottom: 5),
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(
+              color: selected ? accent : Colors.transparent,
+              width: 2,
+            ),
+          ),
+        ),
+        child: Text(
+          '${_relativeLabel(i)} ${_dayAt(i).day}',
+          textAlign: TextAlign.center,
+          style: theme.textTheme.labelMedium?.copyWith(
+            color: selected ? accent : theme.colorScheme.onSurfaceVariant,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _goTo(int i) {
+    if (i == _index) return;
+    _pages.animateToPage(
+      i,
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  static String _relativeLabel(int i) =>
+      const ['昨天', '今天', '明天'][i.clamp(0, 2)];
+}
+
+/// 一天的编排（时间轴本体）。昨天那一页只读：照常渲染，不加、不拖、不改。
+class _DayTimeline extends StatefulWidget {
+  final AppController controller;
+
+  final DateTime day;
+
+  /// 判定"现在"的时刻。
+  final DateTime now;
+
+  /// 只读 = 昨天：没有添加行、不可拖动、点条目不开编辑面板。
+  final bool readOnly;
+
+  const _DayTimeline({
+    super.key,
+    required this.controller,
+    required this.day,
+    required this.now,
+    required this.readOnly,
+  });
+
+  @override
+  State<_DayTimeline> createState() => _DayTimelineState();
+}
+
+class _DayTimelineState extends State<_DayTimeline> {
   /// 时刻列宽 + 竖线所在的空隙（竖线在两者之间）。
   static const double _timeWidth = 46;
   static const double _railGap = 16;
@@ -43,6 +239,9 @@ class _PlanOverlayState extends State<PlanOverlay> {
 
   /// 候选最多几条（再多就该用输入框筛了，面板也就那么高）。
   static const int _maxCandidates = 6;
+
+  /// 新条目默认离开上一条一小时。
+  static const int _defaultGap = 60;
 
   final TextEditingController _draft = TextEditingController();
   final FocusNode _draftFocus = FocusNode();
@@ -53,12 +252,16 @@ class _PlanOverlayState extends State<PlanOverlay> {
   /// 正在写的那一条的时刻；null = 没有时刻。
   int? _draftMinutes;
 
-  DateTime get _day => planDay(widget.day ?? DateTime.now());
+  List<PlanEntry> get _entries =>
+      widget.controller.planEntriesFor(widget.day);
 
-  /// 判定"现在"的时刻：注入优先（测试用固定时刻，不然游标位置随跑测试的钟点变）。
-  DateTime get _now => widget.now ?? DateTime.now();
+  bool get _isToday {
+    final now = widget.now;
+    final d = widget.day;
+    return now.year == d.year && now.month == d.month && now.day == d.day;
+  }
 
-  List<PlanEntry> get _entries => widget.controller.planEntriesFor(_day);
+  int get _nowMinutes => widget.now.hour * 60 + widget.now.minute;
 
   @override
   void dispose() {
@@ -72,76 +275,49 @@ class _PlanOverlayState extends State<PlanOverlay> {
     final theme = Theme.of(context);
     final entries = _entries;
     // 游标插在第几条之前（-1 = 不画：不是今天）。全过完了就落在末尾。
-    final cursorAt = _cursorIndex(entries);
-    return Material(
-      color: theme.scaffoldBackgroundColor,
-      child: Column(
+    final cursorAt = widget.readOnly ? -1 : _cursorIndex(entries);
+
+    if (widget.readOnly) {
+      return ListView.builder(
+        // 内容不满一屏也要能 overscroll：上滑退出发生在"末尾之后"。
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(10, 8, 12, 32),
+        itemCount: entries.isEmpty ? 1 : entries.length,
+        itemBuilder: (context, i) => entries.isEmpty
+            ? _emptyHint(theme)
+            : _entryRow(theme, entries, i, beforeCursor: false),
+      );
+    }
+
+    return ReorderableListView.builder(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(10, 8, 12, 32),
+      buildDefaultDragHandles: false,
+      // newIndex 已按"移除旧位"调整好，直接就是落点（同挂起组）。
+      onReorderItem: (from, to) => _reorder(entries, from, to),
+      itemCount: entries.length,
+      header: entries.isEmpty ? _emptyHint(theme) : null,
+      footer: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          _header(theme, entries.length),
-          const Divider(height: 1),
-          Expanded(
-            // 桌面：overscroll 只能靠按住鼠标拖出来（滚轮滚到头继续滚是常态，
-            // 认了就是天天误触），所以这一页和今日页一样要放开鼠标拖拽。
-            child: ScrollConfiguration(
-              behavior: ScrollConfiguration.of(context).copyWith(
-                dragDevices: PointerDeviceKind.values.toSet(),
-              ),
-              child: NotificationListener<ScrollNotification>(
-                onNotification: _onScroll,
-                child: ReorderableListView.builder(
-                  // 内容不满一屏也要能 overscroll：上滑退出发生在"末尾之后"。
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(10, 8, 12, 32),
-                  buildDefaultDragHandles: false,
-                  // newIndex 已按"移除旧位"调整好，直接就是落点（同挂起组）。
-                  onReorderItem: (from, to) => _reorder(entries, from, to),
-                  itemCount: entries.length,
-                  header: entries.isEmpty ? _emptyHint(theme) : null,
-                  footer: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (entries.isNotEmpty && cursorAt == entries.length)
-                        _cursorRow(theme),
-                      _addRow(theme),
-                    ],
-                  ),
-                  itemBuilder: (context, i) => Column(
-                    key: ObjectKey(entries[i]),
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (i == cursorAt) _cursorRow(theme),
-                      ReorderableDelayedDragStartListener(
-                        index: i,
-                        child: _entryRow(theme, entries, i,
-                            beforeCursor: cursorAt < 0 || i < cursorAt),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
+          if (entries.isNotEmpty && cursorAt == entries.length)
+            _cursorRow(theme),
+          _addRow(theme),
+        ],
+      ),
+      itemBuilder: (context, i) => Column(
+        key: ObjectKey(entries[i]),
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (i == cursorAt) _cursorRow(theme),
+          ReorderableDelayedDragStartListener(
+            index: i,
+            child: _entryRow(theme, entries, i,
+                beforeCursor: cursorAt < 0 || i < cursorAt),
           ),
         ],
       ),
     );
-  }
-
-  /// 末尾之后继续上滑 = 退出（与今日页"到顶再下拉"同一条规则的两端）。
-  ///
-  /// 只认手指拖出来的 overscroll（`dragDetails` 非空）：鼠标滚轮滚到底继续滚是
-  /// 常态，认了就是天天误退。`depth != 0` 是内层列表的通知，跳过。
-  bool _onScroll(ScrollNotification n) {
-    if (n.depth != 0) return false;
-    if (n is OverscrollNotification &&
-        n.dragDetails != null &&
-        n.overscroll > 0) {
-      widget.controller.pullPlanExit(n.overscroll);
-    } else if (n is ScrollEndNotification) {
-      // 向上快甩是 dy < 0（页面往上走）。
-      widget.controller
-          .settlePlanExit(n.dragDetails?.velocity.pixelsPerSecond.dy ?? 0);
-    }
-    return false;
   }
 
   /// "现在"落在第几条之前 = 第一个时刻晚于现在的条目；全都已过就是末尾。
@@ -214,44 +390,6 @@ class _PlanOverlayState extends State<PlanOverlay> {
     );
   }
 
-  // ---- 头部 ----
-
-  Widget _header(ThemeData theme, int count) {
-    final hint = theme.colorScheme.onSurfaceVariant;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(2, 6, 12, 4),
-      child: Row(
-        children: [
-          IconButton(
-            tooltip: '返回',
-            icon: const Icon(Icons.arrow_back),
-            onPressed: widget.onClose,
-          ),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('今日编排',
-                    style: theme.textTheme.titleMedium,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis),
-                Text(
-                  _dayLabel(_day),
-                  style: theme.textTheme.bodySmall?.copyWith(color: hint),
-                ),
-              ],
-            ),
-          ),
-          if (count > 0)
-            Text(
-              '$count 项',
-              style: theme.textTheme.labelMedium?.copyWith(color: hint),
-            ),
-        ],
-      ),
-    );
-  }
-
   // ---- 时间轴 ----
 
   Widget _entryRow(ThemeData theme, List<PlanEntry> entries, int index,
@@ -259,7 +397,7 @@ class _PlanOverlayState extends State<PlanOverlay> {
     final entry = entries[index];
     final minutes = entry.minutesOfDay;
     final prev = index == 0 ? null : entries[index - 1].minutesOfDay;
-    // 倒挂 = 时刻比上一条还早（拖动只改行序，不改时刻，所以它们会打架）。
+    // 倒挂 = 时刻比上一条还早。只剩两个来源：手改文件、手动拖动。
     final inverted = minutes != null && prev != null && minutes < prev;
     final past = _isToday && minutes != null && minutes < _nowMinutes;
     final hint = theme.colorScheme.onSurfaceVariant;
@@ -273,85 +411,96 @@ class _PlanOverlayState extends State<PlanOverlay> {
     final rail = beforeCursor ? AppColors.accent.withValues(alpha: 0.45) : line;
     final isLast = index == entries.length - 1;
 
-    return InkWell(
-      onTap: () => _edit(entries, index),
-      child: Stack(
-        children: [
-          // 竖线：最后一条只画到节点为止，免得线拖出一条尾巴。
-          Positioned(
-            left: _railX,
-            top: 0,
-            bottom: isLast ? null : 0,
-            height: isLast ? 18 : null,
-            child: Container(width: 1, color: rail),
-          ),
-          Positioned(
-            left: _railX - 3,
-            top: 13,
-            child: Container(
-              width: 7,
-              height: 7,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: inverted ? AppColors.timeBadge : line,
-              ),
+    final row = Stack(
+      children: [
+        // 竖线：最后一条只画到节点为止，免得线拖出一条尾巴。
+        Positioned(
+          left: _railX,
+          top: 0,
+          bottom: isLast ? null : 0,
+          height: isLast ? 18 : null,
+          child: Container(width: 1, color: rail),
+        ),
+        Positioned(
+          left: _railX - 3,
+          top: 13,
+          child: Container(
+            width: 7,
+            height: 7,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: inverted ? AppColors.timeBadge : line,
             ),
           ),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(
-                width: _timeWidth,
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 9),
-                  child: Text(
-                    entry.timeText ?? '—',
-                    textAlign: TextAlign.right,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: timeColor,
-                      fontWeight: FontWeight.w600,
-                      fontFeatures: const [FontFeature.tabularFigures()],
-                    ),
+        ),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: _timeWidth,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 9),
+                child: Text(
+                  entry.timeText ?? '—',
+                  textAlign: TextAlign.right,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: timeColor,
+                    fontWeight: FontWeight.w600,
+                    fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
               ),
-              const SizedBox(width: _railGap),
-              Expanded(
-                child: Container(
-                  margin: const EdgeInsets.symmetric(vertical: 3),
-                  padding: const EdgeInsets.fromLTRB(12, 9, 12, 10),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceContainerHighest
-                        .withValues(alpha: 0.5),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    entry.title,
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodyMedium,
-                  ),
+            ),
+            const SizedBox(width: _railGap),
+            Expanded(
+              child: Container(
+                margin: const EdgeInsets.symmetric(vertical: 3),
+                padding: const EdgeInsets.fromLTRB(12, 9, 12, 10),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHighest
+                      .withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  entry.title,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium,
                 ),
               ),
-            ],
-          ),
-        ],
-      ),
+            ),
+          ],
+        ),
+      ],
     );
+
+    // 昨天只读：整行就是一块字，点了什么也不发生。
+    if (widget.readOnly) return row;
+    return InkWell(onTap: () => _edit(entries, index), child: row);
   }
 
   Widget _emptyHint(ThemeData theme) {
     final hint = theme.colorScheme.onSurfaceVariant;
+    final title = widget.readOnly
+        ? '昨天没有编排'
+        : _isToday
+            ? '今天还没有编排'
+            : '明天还没有编排';
+    final sub = widget.readOnly
+        ? '那天没排，也就没留下什么'
+        : _isToday
+            ? '把今天要做的事按时刻排一条'
+            : '提前把明天排出来';
     return Padding(
       padding: const EdgeInsets.fromLTRB(6, 48, 6, 10),
       child: Column(
         children: [
           Icon(Icons.event_note_outlined, size: 36, color: hint),
           const SizedBox(height: 10),
-          const Text('今天还没有编排'),
+          Text(title),
           const SizedBox(height: 4),
           Text(
-            '把今天要做的事按时刻排一条',
+            sub,
             style: theme.textTheme.bodySmall?.copyWith(color: hint),
           ),
         ],
@@ -422,7 +571,7 @@ class _PlanOverlayState extends State<PlanOverlay> {
                   controller: _draft,
                   focusNode: _draftFocus,
                   textInputAction: TextInputAction.done,
-                  // **不写占位提示**（v1.34）：窄面板上"几点做什么"只剩"几…"，
+                  // **不写占位提示**：窄面板上"几点做什么"只剩"几…"，
                   // 看不清反而成噪音。左边是时刻、右边是确定，上下文已经够了。
                   decoration: const InputDecoration(
                     isDense: true,
@@ -466,9 +615,9 @@ class _PlanOverlayState extends State<PlanOverlay> {
 
   /// 快捷添加的候选：今日清单（按清单顺序）+ 任务池（计划段、散件段）的标题。
   ///
-  /// **只借标题文字**（§6.11「贴的是文字，不是引用」）：点击后的编排条目与任务
-  /// 没有任何关系，所以这里也按标题去重——同名任务贴一次就够。输入框里的字按
-  /// 包含匹配筛，最多 [_maxCandidates] 条。
+  /// **只借标题文字**（『贴的是文字，不是引用』）：点击后的编排条目与任务没有任何
+  /// 关系，所以这里也按标题去重——同名任务贴一次就够。输入框里的字按包含匹配筛，最多
+  /// [_maxCandidates] 条。
   List<String> _candidates() {
     final controller = widget.controller;
     final today = controller.todayView;
@@ -550,7 +699,7 @@ class _PlanOverlayState extends State<PlanOverlay> {
   /// 点一条候选 = 直接落一条编排（时刻用当前默认），可以连点连排。
   Future<void> _pickCandidate(String title) async {
     await widget.controller.addPlanEntry(
-      _day,
+      widget.day,
       PlanEntry(title: title, minutesOfDay: _draftMinutes),
     );
     if (!mounted) return;
@@ -587,7 +736,7 @@ class _PlanOverlayState extends State<PlanOverlay> {
       return;
     }
     await widget.controller.addPlanEntry(
-      _day,
+      widget.day,
       PlanEntry(title: title, minutesOfDay: _draftMinutes),
     );
     if (!mounted) return;
@@ -599,14 +748,16 @@ class _PlanOverlayState extends State<PlanOverlay> {
     _draftFocus.requestFocus();
   }
 
-  /// 默认时刻 = 上一条 + 30 分钟；还没有条目 = 现在向上取整到半点。
+  /// 默认时刻 = 最近一条有时刻的 + 一小时；还没有条目时：今天取现在向上取整到半点，
+  /// **昨天 / 明天取 09:00**——晚上排明天，"现在"落上去没有意义。
   int _suggestedMinutes() {
     final entries = _entries;
     for (var i = entries.length - 1; i >= 0; i--) {
       final m = entries[i].minutesOfDay;
-      if (m != null) return (m + 30).clamp(0, 23 * 60 + 59);
+      if (m != null) return (m + _defaultGap).clamp(0, 23 * 60 + 59);
     }
-    final now = _now;
+    if (!_isToday) return 9 * 60;
+    final now = widget.now;
     final round = ((now.hour * 60 + now.minute + 29) ~/ 30) * 30;
     return round.clamp(0, 23 * 60 + 59);
   }
@@ -628,11 +779,11 @@ class _PlanOverlayState extends State<PlanOverlay> {
     if (result == null) return;
     if (result is _DeletePlanEntry) {
       // 标题清空也算删掉：没有"无标题条目"这种状态。
-      await widget.controller.removePlanEntry(_day, index);
+      await widget.controller.removePlanEntry(widget.day, index);
       return;
     }
     if (result is PlanEntry) {
-      await widget.controller.updatePlanEntry(_day, index, result);
+      await widget.controller.updatePlanEntry(widget.day, index, result);
     }
   }
 
@@ -642,28 +793,11 @@ class _PlanOverlayState extends State<PlanOverlay> {
     final next = [...entries]
       ..removeAt(from)
       ..insert(to, entries[from]);
-    await widget.controller.setPlanEntries(_day, next);
+    await widget.controller.setPlanEntries(widget.day, next);
   }
 
   // ---- 时间小工具 ----
 
-  bool get _isToday {
-    final now = _now;
-    final d = _day;
-    return now.year == d.year && now.month == d.month && now.day == d.day;
-  }
-
-  int get _nowMinutes {
-    final now = _now;
-    return now.hour * 60 + now.minute;
-  }
-
-  static String _dayLabel(DateTime d) {
-    const weeks = ['一', '二', '三', '四', '五', '六', '日'];
-    return '${d.month} 月 ${d.day} 日 · 周${weeks[d.weekday - 1]}';
-  }
-
-  /// 24 小时制：时间轴上一律 `08:30`，不跟着系统 12/24 制变（同一页要能竖着扫）。
   Future<int?> _pickTime(BuildContext context, int? current) =>
       pickPlanTime(context, current);
 }
