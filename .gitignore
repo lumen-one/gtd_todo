@@ -48,3 +48,9 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+/android/build/
+
+# 签名密钥：私钥与口令永不入库。丢了它，装过包的人再也升不了级（只能卸载重装）。
+/android/key.properties
+*.jks
+*.keystore
