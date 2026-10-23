@@ -409,54 +409,60 @@ class _SettingsPanelState extends State<SettingsPanel> {
 
   Future<void> _editTaskDir(BuildContext context) async {
     final ctrl = TextEditingController(text: _c.taskDir);
+    // isScrollControlled + viewInsets：底部弹窗不会自己给键盘让位，少了这两样
+    // 输入框正好落在键盘底下（跟编辑任务表单同一招，见 edit_task_sheet.dart）。
     await showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
       builder: (ctx) => SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text('任务目录', style: Theme.of(ctx).textTheme.titleSmall),
-              const SizedBox(height: 4),
-              Text('改动需重启应用生效',
-                  style: Theme.of(ctx).textTheme.bodySmall),
-              const SizedBox(height: 10),
-              TextField(
-                controller: ctrl,
-                decoration: const InputDecoration(labelText: '目录路径'),
-              ),
-              const SizedBox(height: 10),
-              FilledButton.icon(
-                icon: const Icon(Icons.folder_open),
-                label: const Text('用系统选择器挑一个目录'),
-                onPressed: () async {
-                  final picked = await _c.pickTaskDir();
-                  if (!ctx.mounted) return;
-                  if (picked == null) {
-                    ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(
-                        content: Text('未选择目录（或缺少"所有文件访问"权限）')));
-                    return;
-                  }
-                  ctrl.text = picked;
-                },
-              ),
-              const SizedBox(height: 8),
-              FilledButton(
-                onPressed: () async {
-                  final dir = ctrl.text.trim();
-                  Navigator.of(ctx).pop();
-                  if (dir.isEmpty || dir == _c.taskDir) return;
-                  await _c.setTaskDir(dir);
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                        content: Text('已保存，重启应用后生效')));
-                  }
-                },
-                child: const Text('保存'),
-              ),
-            ],
+          padding: EdgeInsets.fromLTRB(
+              16, 16, 16, 16 + MediaQuery.of(ctx).viewInsets.bottom),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('任务目录', style: Theme.of(ctx).textTheme.titleSmall),
+                const SizedBox(height: 4),
+                Text('改动需重启应用生效',
+                    style: Theme.of(ctx).textTheme.bodySmall),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: ctrl,
+                  decoration: const InputDecoration(labelText: '目录路径'),
+                ),
+                const SizedBox(height: 10),
+                FilledButton.icon(
+                  icon: const Icon(Icons.folder_open),
+                  label: const Text('用系统选择器挑一个目录'),
+                  onPressed: () async {
+                    final picked = await _c.pickTaskDir();
+                    if (!ctx.mounted) return;
+                    if (picked == null) {
+                      ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(
+                          content: Text('未选择目录（或缺少"所有文件访问"权限）')));
+                      return;
+                    }
+                    ctrl.text = picked;
+                  },
+                ),
+                const SizedBox(height: 8),
+                FilledButton(
+                  onPressed: () async {
+                    final dir = ctrl.text.trim();
+                    Navigator.of(ctx).pop();
+                    if (dir.isEmpty || dir == _c.taskDir) return;
+                    await _c.setTaskDir(dir);
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                          content: Text('已保存，重启应用后生效')));
+                    }
+                  },
+                  child: const Text('保存'),
+                ),
+              ],
+            ),
           ),
         ),
       ),

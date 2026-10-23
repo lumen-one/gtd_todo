@@ -19,8 +19,9 @@ void main() {
   Future<void> pumpSettings(
     WidgetTester tester, {
     required ShellCapabilities caps,
+    Size size = const Size(900, 4000),
   }) async {
-    tester.view.physicalSize = const Size(900, 4000);
+    tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
@@ -91,5 +92,49 @@ void main() {
     }
     expect(find.text('拖动把手展开时落在这一页；点通知定位时按定位目标走'),
         findsOneWidget);
+  });
+
+  /// 两个路径编辑弹窗都是底部弹窗：`showModalBottomSheet` 不会自己给输入法让位，
+  /// 少了 `isScrollControlled` + `viewInsets` 那一层，输入框正好落在键盘底下
+  /// （用户报的就是这个）。这里按下限守住：输入框和保存按钮都在键盘上方。
+  const phone = Size(400, 1400);
+  const keyboardHeight = 600.0;
+
+  Future<void> expectSheetAboveKeyboard(
+    WidgetTester tester, {
+    required String rowLabel,
+    required String fieldLabel,
+  }) async {
+    await pumpSettings(tester, caps: ShellCapabilities.overlayShell, size: phone);
+    // 任务目录既是分区标题也是行标题，按整行找。
+    final row = find.widgetWithText(ListTile, rowLabel);
+    await tester.scrollUntilVisible(row, 240,
+        scrollable: find.byType(Scrollable).first);
+    await tester.tap(row);
+    await tester.pumpAndSettle();
+
+    tester.view.viewInsets = const FakeViewPadding(bottom: keyboardHeight);
+    await tester.pumpAndSettle();
+
+    final topOfKeyboard = phone.height - keyboardHeight;
+    expect(tester.getRect(find.text(fieldLabel)).bottom,
+        lessThanOrEqualTo(topOfKeyboard),
+        reason: '输入框「$fieldLabel」落到了键盘底下');
+    expect(
+        tester
+            .getRect(find.widgetWithText(FilledButton, '保存'))
+            .bottom,
+        lessThanOrEqualTo(topOfKeyboard),
+        reason: '保存按钮落到了键盘底下');
+  }
+
+  testWidgets('任务目录：键盘弹起时输入框跟着上浮', (tester) async {
+    await expectSheetAboveKeyboard(tester,
+        rowLabel: '任务目录', fieldLabel: '目录路径');
+  });
+
+  testWidgets('灵感文件路径：键盘弹起时输入框跟着上浮', (tester) async {
+    await expectSheetAboveKeyboard(tester,
+        rowLabel: '灵感文件路径', fieldLabel: '文件路径');
   });
 }
