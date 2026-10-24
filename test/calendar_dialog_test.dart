@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gtd_todo/application/task_service.dart';
-import 'package:gtd_todo/domain/schedule.dart';
 import 'package:gtd_todo/domain/time_context.dart';
 import 'package:gtd_todo/repository/memory_task_repository.dart';
 import 'package:gtd_todo/scheduler/slack_scheduler.dart';
@@ -163,7 +162,7 @@ void main() {
     expect(find.byType(DatePickerDialog), findsNothing);
   });
 
-  testWidgets('截止日已经过去的已完成件不进日历', (tester) async {
+  testWidgets('过去的已完成件也留在那天（蓝点不抹掉）', (tester) async {
     final controller = await build(tester);
     final now = DateTime.now();
     final yesterday = now.subtract(const Duration(days: 1));
@@ -183,7 +182,7 @@ void main() {
     }
     await tester.tap(dayCell(yesterday.day));
     await tester.pumpAndSettle();
-    expect(find.text('早就干完'), findsNothing);
-    expect(find.text('这一天没有安排'), findsOneWidget);
+    expect(find.text('早就干完'), findsOneWidget);
+    expect(find.text('已完成'), findsOneWidget);
   });
 }

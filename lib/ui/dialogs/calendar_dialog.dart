@@ -30,27 +30,25 @@ final ButtonStyle _compactIcon = IconButton.styleFrom(
 bool _sameDay(DateTime a, DateTime b) =>
     a.year == b.year && a.month == b.month && a.day == b.day;
 
-DateTime _dayStart(DateTime t) => DateTime(t.year, t.month, t.day);
-
 /// 某一天的任务，按截止时刻排。
 ///
 /// [completed] 选已完成 / 未完成；[noRoutine] 去掉周期实例（当天列表里那些由
-/// 例行规则单独画，月历的点不筛，例行实例与规则发生各算各的）；
-/// [minDeadline] 卡住下限——已完成件只认截止日 ≥ 今天，见 [_CalendarDialogState._doneOf]。
+/// 例行规则单独画，月历的点不筛，例行实例与规则发生各算各的）。
+///
+/// 日期不设下限：已经过去的那些天，干完的活照样留在它到期的那一天——翻回去
+/// 要看得见那天做了什么。
 List<Task> _tasksOn(
   List<Task> all,
   DateTime day, {
   required bool completed,
   required bool noRoutine,
-  DateTime? minDeadline,
 }) {
   return all
       .where((t) =>
           t.isCompleted == completed &&
           (!noRoutine || t.type != TaskType.routine) &&
           t.deadline != null &&
-          _sameDay(t.deadline!, day) &&
-          (minDeadline == null || !t.deadline!.isBefore(minDeadline)))
+          _sameDay(t.deadline!, day))
       .toList()
     ..sort((a, b) => a.deadline!.compareTo(b.deadline!));
 }
@@ -115,15 +113,9 @@ class _CalendarDialogState extends State<_CalendarDialog> {
   List<Task> _openOf(DateTime day) =>
       _tasksOn(widget.controller.tasks, day, completed: false, noRoutine: false);
 
-  /// 这天**已经干完**的活。只认截止日 ≥ 今天的：更早的日子只画还要干的活，
-  /// 历史归已完成页，否则日历会变成一本旧账。
-  List<Task> _doneOf(DateTime day, DateTime today) => _tasksOn(
-        widget.controller.tasks,
-        day,
-        completed: true,
-        noRoutine: false,
-        minDeadline: _dayStart(today),
-      );
+  /// 这天**已经干完**的活。过去的那些天也照画——翻回去要看得见那天做了什么。
+  List<Task> _doneOf(DateTime day) =>
+      _tasksOn(widget.controller.tasks, day, completed: true, noRoutine: false);
 
   /// 例行实例/规则在这一天的发生（决议 24：在其发生日打点、只读）。
   List<RoutineOccurrence> _routinesOf(DateTime day) =>
@@ -133,9 +125,8 @@ class _CalendarDialogState extends State<_CalendarDialog> {
   bool _hasOpen(DateTime day) =>
       _openOf(day).isNotEmpty || _routinesOf(day).isNotEmpty;
 
-  /// 蓝点：这天有已经干完的（截止日还没到的那些）。
-  bool _hasDone(DateTime day, DateTime today) =>
-      _doneOf(day, today).isNotEmpty;
+  /// 蓝点：这天有已经干完的。
+  bool _hasDone(DateTime day) => _doneOf(day).isNotEmpty;
 
   /// 箭头与横滑是同一个动作的两种走法（§6.4）：箭头走相邻一格。
   void _goToMonth(int page) {
@@ -221,7 +212,7 @@ class _CalendarDialogState extends State<_CalendarDialog> {
       isToday: isThisMonth && dayNumber == today.day,
       selected: selected == dayNumber,
       marked: _hasOpen(day),
-      doneMarked: _hasDone(day, today),
+      doneMarked: _hasDone(day),
       onTap: () => setState(() {
         _selectedDay = dayNumber;
         _adding = false;
@@ -463,13 +454,11 @@ class _DayList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final today = DateTime.now();
-    final dayStart = _dayStart(today);
     final tasks = _tasksOn(controller.tasks, day,
         completed: false, noRoutine: true);
-    // 已完成件只认截止日 ≥ 今天的（与月历蓝点同一条口径）：排在末尾、不可点。
+    // 已完成件排末尾、不可点（与月历蓝点同一条口径，不按今天划线）。
     final done = _tasksOn(controller.tasks, day,
-        completed: true, noRoutine: true, minDeadline: dayStart);
+        completed: true, noRoutine: true);
 
     // 决议 24：例行在其发生日打点、只读（点开跳『编辑规则』）。
     final occurrences = controller.occurrencesOn(day);
