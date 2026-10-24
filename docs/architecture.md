@@ -548,8 +548,8 @@ lib/ui/
 │                 side_panel.dart（安卓壳 / 悬浮面板 / 桌面壳共用同一份）/
 │                 panel_pages.dart（页序 / 页名 / 默认页的唯一来源）
 │                 ← 功能面板，平台无关，只被 shell 摆放
-├── dialogs/      创建对话框（**类型+日期档位按钮、默认三无**）/
-│                 编辑表单 / 推迟档位 / 日历 /
+├── dialogs/      新建流程（**先问日期，再填表单**）/ 编辑表单 /
+│                 表单字段（新建与编辑同源）/ 日期时间弹窗 / 推迟档位 / 日历 /
 │                 task_detail_sheet.dart（详情卡，只读展示件）/
 │                 routine_edit_dialog.dart（周期规则）/
 │                 settings_windows_dialog.dart / settings_notes_path_dialog.dart（设置页弹窗）
