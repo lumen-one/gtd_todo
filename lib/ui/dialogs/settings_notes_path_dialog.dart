@@ -43,7 +43,17 @@ Future<void> showSettingsNotesPathDialog(
                         content: Text('未选择文件（或缺少"所有文件访问"权限）')));
                     return;
                   }
-                  ctrl.text = picked;
+                  if (!_isMarkdown(picked)) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(
+                        const SnackBar(content: Text('只支持 Markdown 文件（.md）')));
+                    return;
+                  }
+                  // 光标放到末尾：路径长，先让人看见文件名而不是 /storage 那截前缀——
+                  // 同一目录下的两个文件，从前往后看几乎一样。
+                  ctrl.value = TextEditingValue(
+                    text: picked,
+                    selection: TextSelection.collapsed(offset: picked.length),
+                  );
                 },
               ),
               const SizedBox(height: 8),
@@ -64,4 +74,10 @@ Future<void> showSettingsNotesPathDialog(
       ),
     ),
   );
+}
+
+/// 灵感页只认 Markdown（正文段提取、frontmatter 保真都按它写的，见 docs/panels/notes.md §6.2）。
+bool _isMarkdown(String path) {
+  final lower = path.toLowerCase();
+  return lower.endsWith('.md') || lower.endsWith('.markdown');
 }

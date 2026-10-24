@@ -100,7 +100,7 @@ Future<void> main() async {
   final permissions =
       bridge != null ? AndroidPermissionPort(bridge) : GrantedPermissionPort();
   final folderPicker = bridge != null
-      ? AndroidFolderPickerPort(permissions as AndroidPermissionPort)
+      ? AndroidFolderPickerPort(permissions as AndroidPermissionPort, bridge)
       : DesktopFolderPickerPort();
 
   late final ReminderDispatcher dispatcher;

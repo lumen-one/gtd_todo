@@ -120,6 +120,19 @@ class AndroidNativeBridge {
   Future<bool> isIgnoringBatteryOptimizations() =>
       _invoke('isIgnoringBatteryOptimizations');
 
+  /// 灵感文件（见 docs/panels/notes.md §6.2）：原生 SAF 挑一个文档，回**真实文件路径**
+  /// （`/storage/…`），取消或换不出路径 → null。
+  ///
+  /// 不走 file_picker：它挑文件只会把原件复制进 App 缓存再回副本路径，写回就写进副本，
+  /// Obsidian 里那份永远不动（挑目录是另一条分支，见 docs/decisions/2026-10-24-android-markdown-pick.md）。
+  Future<String?> pickMarkdownFile() async {
+    try {
+      return await channel.invokeMethod<String>('pickMarkdownFile');
+    } catch (_) {
+      return null; // 原生不可用：调用方按 §11 退回手输
+    }
+  }
+
   Future<bool> _invoke(String method, [Map<String, Object?>? args]) async {
     try {
       final r = await channel.invokeMethod<Object?>(method, args);
@@ -259,8 +272,9 @@ class AndroidPermissionPort implements PermissionPort {
 /// 未授予"所有文件访问"时先申请；选择器取消 → null（UI 保持原目录）。
 class AndroidFolderPickerPort implements FolderPickerPort {
   final AndroidPermissionPort permissions;
+  final AndroidNativeBridge bridge;
 
-  AndroidFolderPickerPort(this.permissions);
+  AndroidFolderPickerPort(this.permissions, this.bridge);
 
   @override
   Future<String?> pickDirectory() async {
@@ -277,8 +291,13 @@ class AndroidFolderPickerPort implements FolderPickerPort {
     }
   }
 
-  /// 灵感文件（ui §6.2）：同样是"所有文件访问"打底——没它 SAF 只给一个
-  /// 缓存副本的路径，改天 Obsidian 里更新了笔记，App 读的还是那份旧快照。
+  /// 灵感文件（ui §6.2）：所有文件访问打底，然后走原生 SAF 拿**真实路径**。
+  ///
+  /// file_picker 挑目录回真实路径（`getFullPathFromTreeUri`），挑文件却先复制进
+  /// `<缓存目录>/file_picker/<时间戳>/<文件名>` 再回副本——写回就写进副本，
+  /// Obsidian 里那份永远不动，缓存一清灵感页就空。所以文件这条自己发 SAF。
+  /// [allowedExtensions] 只作提示：选择器不按它过滤（`.md` 的 MIME 各 ROM 不一，
+  /// 过滤条件对不上文件就是灰的），类型由调用方验。
   @override
   Future<String?> pickFile({
     required String dialogTitle,
@@ -288,19 +307,7 @@ class AndroidFolderPickerPort implements FolderPickerPort {
       final ok = await permissions.ensure(PermissionKind.folderAccess);
       if (!ok) return null;
     }
-    try {
-      final result = await FilePicker.platform.pickFiles(
-        dialogTitle: dialogTitle,
-        type: allowedExtensions.isEmpty ? FileType.any : FileType.custom,
-        allowedExtensions: allowedExtensions.isEmpty ? null : allowedExtensions,
-        allowMultiple: false,
-        withData: false,
-      );
-      final files = result?.files;
-      if (files == null || files.isEmpty) return null;
-      return files.first.path;
-    } catch (_) {
-      return null;
-    }
+    final path = await bridge.pickMarkdownFile();
+    return (path == null || path.trim().isEmpty) ? null : path;
   }
 }

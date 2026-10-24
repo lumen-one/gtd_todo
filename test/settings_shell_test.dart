@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gtd_todo/application/delivery.dart';
 import 'package:gtd_todo/application/shell_capabilities.dart';
 import 'package:gtd_todo/application/task_service.dart';
 import 'package:gtd_todo/domain/time_context.dart';
@@ -20,6 +21,7 @@ void main() {
     WidgetTester tester, {
     required ShellCapabilities caps,
     Size size = const Size(900, 4000),
+    FolderPickerPort? picker,
   }) async {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1.0;
@@ -35,6 +37,7 @@ void main() {
       service: svc,
       taskDir: 'ignored',
       caps: caps,
+      folderPicker: picker,
     );
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(body: SettingsPanel(controller: controller)),
@@ -137,4 +140,53 @@ void main() {
     await expectSheetAboveKeyboard(tester,
         rowLabel: '灵感文件路径', fieldLabel: '文件路径');
   });
+
+  /// 灵感文件这条路只认**真实文件路径 + Markdown**：选择器回什么就落什么，回错了就
+  /// 只提示不落（路径一旦落进缓存副本，写回的是副本，Obsidian 那份永远不动，见
+  /// docs/decisions/2026-10-24-android-markdown-pick.md）。
+  Future<void> pickNotes(WidgetTester tester, {required String? picked}) async {
+    await pumpSettings(tester,
+        caps: ShellCapabilities.overlayShell, size: phone, picker: _FakePicker(picked));
+    final row = find.widgetWithText(ListTile, '灵感文件路径');
+    await tester.scrollUntilVisible(row, 240,
+        scrollable: find.byType(Scrollable).first);
+    await tester.tap(row);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('用系统选择器挑一个文件'));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('灵感文件路径：选到非 Markdown 只提示，路径不变', (tester) async {
+    await pickNotes(tester, picked: '/storage/emulated/0/vault/灵感.txt');
+
+    expect(find.text('只支持 Markdown 文件（.md）'), findsOneWidget);
+    expect(tester.widget<TextField>(find.byType(TextField)).controller!.text, '');
+  });
+
+  testWidgets('灵感文件路径：真实路径落进输入框，光标停在末尾', (tester) async {
+    const path = '/storage/emulated/0/Documents/vault/灵感.md';
+    await pickNotes(tester, picked: path);
+
+    final ctrl = tester.widget<TextField>(find.byType(TextField)).controller!;
+    expect(ctrl.text, path);
+    expect(ctrl.selection.baseOffset, path.length,
+        reason: '光标在末尾才不会只看见 /storage 那截前缀');
+  });
+}
+
+/// 只回一个固定结果的目录/文件选择器。
+class _FakePicker implements FolderPickerPort {
+  _FakePicker(this.picked);
+
+  final String? picked;
+
+  @override
+  Future<String?> pickDirectory() async => null;
+
+  @override
+  Future<String?> pickFile({
+    required String dialogTitle,
+    required List<String> allowedExtensions,
+  }) async =>
+      picked;
 }

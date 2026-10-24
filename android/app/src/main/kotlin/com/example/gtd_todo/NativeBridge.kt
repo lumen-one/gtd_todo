@@ -1,14 +1,18 @@
 package com.example.gtd_todo
 
+import android.app.Activity
 import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
+import android.provider.DocumentsContract
+import android.provider.MediaStore
 import android.provider.Settings
 import android.util.Log
 import io.flutter.embedding.engine.FlutterEngine
@@ -16,6 +20,7 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 
 /**
  * `gtd/native`（Dart → 原生）与 `gtd/native/events`（原生 → Dart）两条 MethodChannel 的实现，
@@ -40,6 +45,9 @@ class NativeBridge(
 
         /** 全局唯一闹钟（契约要求：新闹钟先取消旧的）。 */
         private const val ALARM_REQUEST_CODE = 0
+
+        /** 灵感文件选择器（`pickMarkdownFile`）。 */
+        private const val PICK_FILE_REQUEST_CODE = 1
 
         /** 当前活着的 bridge（供接收器直接投递事件）。 */
         @Volatile
@@ -75,6 +83,9 @@ class NativeBridge(
     @Volatile
     private var eventChannelReady = true
 
+    /** 等着回话的 `pickMarkdownFile` 调用：选择器是异步的，结果从 onActivityResult 回来。 */
+    private var pendingPick: MethodChannel.Result? = null
+
     // ---------------------------------------------------------------- 方法通道
 
     fun attach() {
@@ -105,6 +116,10 @@ class NativeBridge(
 
     fun detach() {
         flushPendingToQueue()
+        // 选择器还开着时 Activity 就被销毁（低内存重建）：先回话，别让 Dart 那头的
+        // future 永远挂着——回 null 等于"没选"，UI 保持原路径。
+        pendingPick?.success(null)
+        pendingPick = null
         val wasActive = activeInstance === this
         if (wasActive) activeInstance = null
         methodChannel?.setMethodCallHandler(null)
@@ -159,6 +174,11 @@ class NativeBridge(
                 "setHandleLocked" -> result.success(setHandleLocked(call))
                 "setHandleHotWidth" -> result.success(setHandleHotWidth(call))
                 "isIgnoringBatteryOptimizations" -> result.success(isIgnoringBatteryOptimizations())
+                "pickMarkdownFile" -> {
+                    // 异步：结果从 onActivityResult 回来，这里先不回话。
+                    pickMarkdownFile(result)
+                    return
+                }
                 "notifyReady" -> {
                     dartReady = true
                     result.success(true)
@@ -455,6 +475,103 @@ class NativeBridge(
         alarmIntent(activity, reminder),
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
     )
+
+    // -------------------------------------------------------- 文件选择（灵感页）
+
+    /**
+     * 挑一个 Markdown，回**真实文件路径**（灵感页入口，见 docs/panels/notes.md §6.2）。
+     *
+     * 不走 file_picker：它挑文件一律把原件复制进 App 缓存再回副本路径，写回就写进副本，
+     * Obsidian 里那份永远不动（挑目录走的是另一条分支，所以任务目录一直好好的）。
+     * 这里自己发 SAF，再把 documentId 换回共享存储上的真实路径——应用有"所有文件访问"，
+     * 换出来的路径直接可读写。
+     *
+     * 不按 MIME 过滤：`.md` 在不同 ROM 上被标成 `text/markdown` /
+     * `application/octet-stream` 都有，过滤条件一旦对不上，文件在选择器里就是灰的、
+     * 根本点不着。类型交给 Dart 侧验。
+     */
+    private fun pickMarkdownFile(result: MethodChannel.Result) {
+        // 同时只挂一个：连点两下时前一次按取消处理，避免回调挂在旧 Result 上。
+        pendingPick?.success(null)
+        pendingPick = result
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+        }
+        try {
+            activity.startActivityForResult(intent, PICK_FILE_REQUEST_CODE)
+        } catch (t: Throwable) {
+            Log.w(TAG, "pickMarkdownFile: 没有可用的文件选择器", t)
+            pendingPick = null
+            result.success(null)
+        }
+    }
+
+    /**
+     * 选择器结果（[MainActivity.onActivityResult] 转发）。
+     *
+     * @return true = 这次结果归这里（已回话），调用方不必再交给别处。
+     */
+    fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?): Boolean {
+        if (requestCode != PICK_FILE_REQUEST_CODE) return false
+        val waiting = pendingPick ?: return true
+        pendingPick = null
+        val uri = if (resultCode == Activity.RESULT_OK) data?.data else null
+        waiting.success(uri?.let { resolveDocumentPath(it) })
+        return true
+    }
+
+    /**
+     * document URI → 共享存储上的真实路径；换不出来（云盘、"最近"里挑到的特殊 provider）
+     * 回 null，UI 退回手输。
+     */
+    private fun resolveDocumentPath(uri: Uri): String? {
+        if (uri.scheme == "file") return uri.path?.takeIf { File(it).canRead() }
+        val candidates = ArrayList<String>(2)
+        try {
+            when (uri.authority) {
+                // 共享存储：documentId = "primary:Documents/vault/灵感.md"；
+                // 非主卷是 "<卷标>:<相对路径>"（如 "1B0F-3A2E:notes/灵感.md"）。
+                "com.android.externalstorage.documents" -> {
+                    val split = DocumentsContract.getDocumentId(uri).split(':', limit = 2)
+                    if (split.size == 2) {
+                        val root =
+                            if (split[0].equals("primary", ignoreCase = true)) {
+                                Environment.getExternalStorageDirectory().absolutePath
+                            } else {
+                                "/storage/${split[0]}"
+                            }
+                        candidates += if (split[1].isEmpty()) root else "$root/${split[1]}"
+                    }
+                }
+                // 下载目录：documentId 形如 "raw:/storage/emulated/0/Download/灵感.md"。
+                "com.android.providers.downloads.documents" -> {
+                    val docId = DocumentsContract.getDocumentId(uri)
+                    if (docId.startsWith("raw:")) candidates += docId.removePrefix("raw:")
+                }
+            }
+        } catch (t: Throwable) {
+            Log.w(TAG, "resolveDocumentPath: documentId 解析失败", t)
+        }
+        candidates += queryDataColumn(uri)
+        return candidates.firstOrNull { it.isNotBlank() && File(it).canRead() }
+    }
+
+    /** 兜底：直接问 provider 要 `_data` 列（有"所有文件访问"才读得到）。 */
+    private fun queryDataColumn(uri: Uri): List<String> = try {
+        val out = ArrayList<String>(1)
+        activity.contentResolver
+            .query(uri, arrayOf(MediaStore.MediaColumns.DATA), null, null, null)
+            ?.use { cursor ->
+                val index = cursor.getColumnIndex(MediaStore.MediaColumns.DATA)
+                if (index >= 0 && cursor.moveToFirst()) {
+                    cursor.getString(index)?.takeIf { it.isNotBlank() }?.let { out += it }
+                }
+            }
+        out
+    } catch (t: Throwable) {
+        emptyList()
+    }
 }
 
 // ---------------------------------------------------------------- 闹钟 Intent

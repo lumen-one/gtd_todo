@@ -55,6 +55,12 @@ class MainActivity : FlutterActivity() {
         ensureBridge()?.onActivityIntent(intent)
     }
 
+    /** 灵感文件选择器的结果先问 bridge（requestCode 对不上才继续往下传，别人的照旧）。 */
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (ensureBridge()?.onActivityResult(requestCode, resultCode, data) == true) return
+        super.onActivityResult(requestCode, resultCode, data)
+    }
+
     override fun onResume() {
         super.onResume()
         // 应用在前台 = 有应用内把手：把系统级把手收起来，别盖在自己的界面上。
