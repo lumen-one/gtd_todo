@@ -1,4 +1,7 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../domain/routine.dart';
 import '../../domain/task.dart';
@@ -10,9 +13,52 @@ import 'routine_edit_dialog.dart' show routineSubtitle;
 
 const List<String> _weekLabels = ['一', '二', '三', '四', '五', '六', '日'];
 
+/// 月历之外还要摆下的高度：页头 + 星期行 + 分隔线 + 输入行，再加当天列表最小的
+/// 可见高度。键盘抬起后可用高度变小，格子尺寸按它再夹一道（`build` 里的 LayoutBuilder）。
+const double _kNonGridHeight = 200;
+
+/// 长按某天加进来的任务落在当天 18:00——与新建对话框里『今天 / 明天』同一档。
+const int _kNewTaskHour = 18;
+
+/// 输入行尾那两颗按钮：M3 默认 48dp 见方，一行里横向吃掉近 100dp；收到 34dp。
+final ButtonStyle _compactIcon = IconButton.styleFrom(
+  minimumSize: const Size(34, 34),
+  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+  padding: EdgeInsets.zero,
+);
+
+bool _sameDay(DateTime a, DateTime b) =>
+    a.year == b.year && a.month == b.month && a.day == b.day;
+
+DateTime _dayStart(DateTime t) => DateTime(t.year, t.month, t.day);
+
+/// 某一天的任务，按截止时刻排。
+///
+/// [completed] 选已完成 / 未完成；[noRoutine] 去掉周期实例（当天列表里那些由
+/// 例行规则单独画，月历的点不筛，例行实例与规则发生各算各的）；
+/// [minDeadline] 卡住下限——已完成件只认截止日 ≥ 今天，见 [_CalendarDialogState._doneOf]。
+List<Task> _tasksOn(
+  List<Task> all,
+  DateTime day, {
+  required bool completed,
+  required bool noRoutine,
+  DateTime? minDeadline,
+}) {
+  return all
+      .where((t) =>
+          t.isCompleted == completed &&
+          (!noRoutine || t.type != TaskType.routine) &&
+          t.deadline != null &&
+          _sameDay(t.deadline!, day) &&
+          (minDeadline == null || !t.deadline!.isBefore(minDeadline)))
+      .toList()
+    ..sort((a, b) => a.deadline!.compareTo(b.deadline!));
+}
+
 /// 日历弹窗（ui-interaction.md §6.4）：
-/// - 月历，有任务的日子打点；
+/// - 月历，有安排的日子打点：橙 = 还有没干完的，蓝 = 已经干完的；
 /// - 点某天 → 当天列表从弹窗底部下滑展开（同一弹窗内联动，不叠层）；
+/// - **长按某天** → 顶部升起一行输入，回车即在那天落一件（可推 + 有截止）；
 /// - 当天列表里可改任务日期，改完调度自动重锚（决议 24：例行实例只读、
 ///   散件无日期不进日历——例行未落地前无需处理）。
 Future<void> showCalendarDialog(
@@ -41,6 +87,9 @@ class _CalendarDialogState extends State<_CalendarDialog> {
   late int _page;
   int? _selectedDay;
 
+  /// 当天列表顶部那行输入框是否升起（长按某天进来，加完或取消就收）。
+  bool _adding = false;
+
   @override
   void initState() {
     super.initState();
@@ -62,25 +111,31 @@ class _CalendarDialogState extends State<_CalendarDialog> {
 
   DateTime get _month => _monthAt(_page);
 
-  List<Task> _tasksOf(DateTime day) {
-    return widget.controller.tasks
-        .where((t) =>
-            !t.isCompleted &&
-            t.deadline != null &&
-            t.deadline!.year == day.year &&
-            t.deadline!.month == day.month &&
-            t.deadline!.day == day.day)
-        .toList()
-      ..sort((a, b) => a.deadline!.compareTo(b.deadline!));
-  }
+  /// 这天还没干完的活。
+  List<Task> _openOf(DateTime day) =>
+      _tasksOn(widget.controller.tasks, day, completed: false, noRoutine: false);
+
+  /// 这天**已经干完**的活。只认截止日 ≥ 今天的：更早的日子只画还要干的活，
+  /// 历史归已完成页，否则日历会变成一本旧账。
+  List<Task> _doneOf(DateTime day, DateTime today) => _tasksOn(
+        widget.controller.tasks,
+        day,
+        completed: true,
+        noRoutine: false,
+        minDeadline: _dayStart(today),
+      );
 
   /// 例行实例/规则在这一天的发生（决议 24：在其发生日打点、只读）。
   List<RoutineOccurrence> _routinesOf(DateTime day) =>
       widget.controller.occurrencesOn(day);
 
-  /// 这天有没有安排（任务或例行实例）——日历上的那个点。
-  bool _hasItems(DateTime day) =>
-      _tasksOf(day).isNotEmpty || _routinesOf(day).isNotEmpty;
+  /// 橙点：这天还欠活（任务或例行实例）。
+  bool _hasOpen(DateTime day) =>
+      _openOf(day).isNotEmpty || _routinesOf(day).isNotEmpty;
+
+  /// 蓝点：这天有已经干完的（截止日还没到的那些）。
+  bool _hasDone(DateTime day, DateTime today) =>
+      _doneOf(day, today).isNotEmpty;
 
   /// 箭头与横滑是同一个动作的两种走法（§6.4）：箭头走相邻一格。
   void _goToMonth(int page) {
@@ -88,6 +143,30 @@ class _CalendarDialogState extends State<_CalendarDialog> {
     _pageCtrl.animateToPage(page,
         duration: const Duration(milliseconds: 240),
         curve: Curves.easeOutCubic);
+  }
+
+  /// 长按某天：选中它，把输入行升起来（加完停在当天列表，看得见新加的那件）。
+  void _beginAdd(int dayNumber) {
+    HapticFeedback.selectionClick();
+    setState(() {
+      _selectedDay = dayNumber;
+      _adding = true;
+    });
+  }
+
+  Future<void> _submitAdd(String title) async {
+    final text = title.trim();
+    final selected = _selectedDay;
+    if (text.isEmpty || selected == null) return;
+    final day = DateTime(_month.year, _month.month, selected, _kNewTaskHour);
+    setState(() => _adding = false); // 输入行先收，键盘随之落下
+    await widget.controller.createTask(
+      title: text,
+      type: TaskType.flex,
+      deadline: day,
+    );
+    if (!mounted) return;
+    setState(() {});
   }
 
   /// 一个月的网格：**固定六行**（4 行的月份底部留白）——高度跟着月份变
@@ -141,8 +220,13 @@ class _CalendarDialogState extends State<_CalendarDialog> {
       day: dayNumber,
       isToday: isThisMonth && dayNumber == today.day,
       selected: selected == dayNumber,
-      marked: _hasItems(day),
-      onTap: () => setState(() => _selectedDay = dayNumber),
+      marked: _hasOpen(day),
+      doneMarked: _hasDone(day, today),
+      onTap: () => setState(() {
+        _selectedDay = dayNumber;
+        _adding = false;
+      }),
+      onLongPress: () => _beginAdd(dayNumber),
     );
   }
 
@@ -150,13 +234,17 @@ class _CalendarDialogState extends State<_CalendarDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final today = DateTime.now();
+    final size = MediaQuery.of(context).size;
+    final keyboard = MediaQuery.viewInsetsOf(context).bottom;
+    final availableH = size.height - keyboard;
 
     return Dialog(
       backgroundColor: theme.cardTheme.color,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: ConstrainedBox(
         constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.78,
+          // 键盘抬起时按剩下的高度算上限，否则弹窗会被顶出屏幕。
+          maxHeight: math.min(size.height * 0.78, availableH - 40),
           maxWidth: 420,
         ),
         child: Column(
@@ -189,9 +277,13 @@ class _CalendarDialogState extends State<_CalendarDialog> {
               padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
               child: LayoutBuilder(
                 builder: (context, constraints) {
-                  // 格子宽度由面板宽度定，高度按老比例（宽:高 = 1.15）推，
-                  // 六行总高就是月历区的高度。
-                  final cellH = constraints.maxWidth / 7 / 1.15;
+                  // 格子宽度由弹窗宽度定，高度按老比例（宽:高 = 1.15）推，
+                  // 六行总高就是月历区的高度。键盘抬起后可用高度不够时再夹
+                  // 一道，否则当天列表会被挤没、月历直接顶出弹窗。
+                  final cellH = math.min(
+                    constraints.maxWidth / 7 / 1.15,
+                    (availableH - _kNonGridHeight) / 6,
+                  );
                   return Column(
                     children: [
                       Row(
@@ -215,6 +307,7 @@ class _CalendarDialogState extends State<_CalendarDialog> {
                           onPageChanged: (page) => setState(() {
                             _page = page;
                             _selectedDay = null;
+                            _adding = false;
                           }),
                           itemBuilder: (context, page) =>
                               _monthGrid(page, today),
@@ -234,13 +327,16 @@ class _CalendarDialogState extends State<_CalendarDialog> {
                 child: _selectedDay == null
                     ? Padding(
                         padding: const EdgeInsets.all(14),
-                        child: Text('点某一天看当天安排',
+                        child: Text('点某天看安排，长按某天加一件',
                             style: theme.textTheme.bodySmall?.copyWith(
                                 color: theme.colorScheme.onSurfaceVariant)),
                       )
                     : _DayList(
                         day: DateTime(_month.year, _month.month, _selectedDay!),
                         controller: widget.controller,
+                        adding: _adding,
+                        onCreate: _submitAdd,
+                        onCancelAdd: () => setState(() => _adding = false),
                       ),
               ),
             ),
@@ -255,15 +351,24 @@ class _DayCell extends StatelessWidget {
   final int day;
   final bool isToday;
   final bool selected;
+
+  /// 这天还欠活（橙点）。
   final bool marked;
+
+  /// 这天有已经干完的（蓝点）。两色可同时出现，橙在前。
+  final bool doneMarked;
+
   final VoidCallback onTap;
+  final VoidCallback onLongPress;
 
   const _DayCell({
     required this.day,
     required this.isToday,
     required this.selected,
     required this.marked,
+    required this.doneMarked,
     required this.onTap,
+    required this.onLongPress,
   });
 
   @override
@@ -272,39 +377,239 @@ class _DayCell extends StatelessWidget {
     return InkWell(
       borderRadius: BorderRadius.circular(12),
       onTap: onTap,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+      onLongPress: onLongPress,
+      // 格子矮的时候（窄屏、或键盘抬起把月历压小）整格等比缩小，而不是让
+      // 33dp 的内容顶出格子——不然会看到黄黑条。
+      child: Center(
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                // 28 + 1 + 4 = 33dp。
+                width: 28,
+                height: 28,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: selected
+                      ? AppColors.accent
+                      : isToday
+                          ? AppColors.accent.withValues(alpha: 0.16)
+                          : null,
+                ),
+                child: Text(
+                  '$day',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: selected || isToday ? FontWeight.w700 : null,
+                    color: selected ? Colors.white : null,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 1),
+              SizedBox(
+                height: 4,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // 选中日整颗圈是强调色填充，橙点贴上去会连成一片——那一格
+                    // 不画橙点（下面展开的列表本来就在说这天有什么），蓝点照画。
+                    if (marked && !selected) _Pip(color: AppColors.accent),
+                    if (doneMarked) ...[
+                      if (marked && !selected) const SizedBox(width: 3),
+                      _Pip(color: AppColors.doneFor(theme.brightness)),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 日期下面那颗小点（4dp，§6.4 的两色口径）。
+class _Pip extends StatelessWidget {
+  final Color color;
+  const _Pip({required this.color});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: 4,
+        height: 4,
+        decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+      );
+}
+
+class _DayList extends StatelessWidget {
+  final DateTime day;
+  final AppController controller;
+
+  /// 顶部输入行是否升起（长按某天进来）。
+  final bool adding;
+  final ValueChanged<String> onCreate;
+  final VoidCallback onCancelAdd;
+
+  const _DayList({
+    required this.day,
+    required this.controller,
+    required this.adding,
+    required this.onCreate,
+    required this.onCancelAdd,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final today = DateTime.now();
+    final dayStart = _dayStart(today);
+    final tasks = _tasksOn(controller.tasks, day,
+        completed: false, noRoutine: true);
+    // 已完成件只认截止日 ≥ 今天的（与月历蓝点同一条口径）：排在末尾、不可点。
+    final done = _tasksOn(controller.tasks, day,
+        completed: true, noRoutine: true, minDeadline: dayStart);
+
+    // 决议 24：例行在其发生日打点、只读（点开跳『编辑规则』）。
+    final occurrences = controller.occurrencesOn(day);
+
+    if (tasks.isEmpty && done.isEmpty && occurrences.isEmpty) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            // 28 + 1 + 4 = 33dp：窄屏（320dp 宽时格子高约 37dp）也放得下，
-            // 固定六行网格不会因此溢出。
-            width: 28,
-            height: 28,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: selected
-                  ? AppColors.accent
-                  : isToday
-                      ? AppColors.accent.withValues(alpha: 0.16)
-                      : null,
+          if (adding) _AddRow(day: day, onSubmit: onCreate, onCancel: onCancelAdd),
+          if (!adding)
+            Padding(
+              padding: const EdgeInsets.all(14),
+              child: Text('这一天没有安排',
+                  style: Theme.of(context).textTheme.bodySmall),
             ),
-            child: Text(
-              '$day',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: selected || isToday ? FontWeight.w700 : null,
-                color: selected ? Colors.white : null,
+        ],
+      );
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (adding) _AddRow(day: day, onSubmit: onCreate, onCancel: onCancelAdd),
+        // 条目多了要能滚：输入行吃掉的高度不能让列表溢出（弹窗高度有上限）。
+        Flexible(
+          child: ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 12),
+            children: [
+              for (final o in occurrences)
+                Card(
+                  margin: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 3),
+                  child: ListTile(
+                    dense: true,
+                    leading:
+                        Icon(Icons.repeat, size: 18, color: AppColors.accent),
+                    title: Text(o.routine.title, maxLines: 1,
+                        overflow: TextOverflow.ellipsis),
+                    subtitle: Text(routineSubtitle(o.routine)),
+                    trailing:
+                        const Text('例行', style: TextStyle(fontSize: 11.5)),
+                    onTap: () async {
+                      Navigator.of(context).pop();
+                      controller.focusRoutineInSettings(o.routine.id);
+                    },
+                  ),
+                ),
+              for (final t in tasks)
+                TaskTile(
+                  controller: controller,
+                  task: t,
+                  onTap: () async {
+                    final dt = await pickDateTime(context,
+                        initial: t.deadline, title: '改期到哪天？');
+                    if (dt == null) return;
+                    await controller.updateTask(t.id, deadline: dt);
+                  },
+                ),
+              for (final t in done) _DoneRow(task: t),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 当天列表顶部那一行：敲标题、回车即落账（§6.4）。左侧标着落在哪一天，
+/// 免得长按错了一天却不知道落去了哪里。
+class _AddRow extends StatefulWidget {
+  final DateTime day;
+  final ValueChanged<String> onSubmit;
+  final VoidCallback onCancel;
+
+  const _AddRow({
+    required this.day,
+    required this.onSubmit,
+    required this.onCancel,
+  });
+
+  @override
+  State<_AddRow> createState() => _AddRowState();
+}
+
+class _AddRowState extends State<_AddRow> {
+  final _ctrl = TextEditingController();
+  final _focus = FocusNode();
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  void _submit() => widget.onSubmit(_ctrl.text);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final d = widget.day;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 10, 10, 0),
+      child: Row(
+        children: [
+          Text(
+            '${d.month}-${d.day.toString().padLeft(2, '0')}',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: TextField(
+              controller: _ctrl,
+              focusNode: _focus,
+              autofocus: true,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => _submit(),
+              decoration: const InputDecoration(
+                isDense: true,
+                hintText: '加一件，回车确认',
+                border: OutlineInputBorder(),
               ),
             ),
           ),
-          const SizedBox(height: 1),
-          Container(
-            width: 4,
-            height: 4,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: marked ? AppColors.accent : Colors.transparent,
-            ),
+          IconButton(
+            tooltip: '取消',
+            visualDensity: VisualDensity.compact,
+            style: _compactIcon,
+            icon: const Icon(Icons.close, size: 18),
+            onPressed: widget.onCancel,
+          ),
+          IconButton(
+            tooltip: '加在这一天',
+            visualDensity: VisualDensity.compact,
+            style: _compactIcon,
+            icon: const Icon(Icons.check),
+            onPressed: _submit,
           ),
         ],
       ),
@@ -312,69 +617,44 @@ class _DayCell extends StatelessWidget {
   }
 }
 
-class _DayList extends StatelessWidget {
-  final DateTime day;
-  final AppController controller;
+/// 当天列表里的已完成件：勾 + 删除线 + "已完成"，**不可点**——改期对已经
+/// 干完的活没有意义，要恢复去已完成页。
+class _DoneRow extends StatelessWidget {
+  final Task task;
 
-  const _DayList({required this.day, required this.controller});
+  const _DoneRow({required this.task});
 
   @override
   Widget build(BuildContext context) {
-    final tasks = controller.tasks
-        .where((t) =>
-            !t.isCompleted &&
-            t.type != TaskType.routine &&
-            t.deadline != null &&
-            t.deadline!.year == day.year &&
-            t.deadline!.month == day.month &&
-            t.deadline!.day == day.day)
-        .toList()
-      ..sort((a, b) => a.deadline!.compareTo(b.deadline!));
-
-    // 决议 24：例行在其发生日打点、只读（点开跳『编辑规则』）。
-    final occurrences = controller.occurrencesOn(day);
-
-    if (tasks.isEmpty && occurrences.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.all(14),
-        child: Text('这一天没有安排',
-            style: Theme.of(context).textTheme.bodySmall),
-      );
-    }
-
-    return ListView(
-      shrinkWrap: true,
-      padding: const EdgeInsets.fromLTRB(10, 8, 10, 12),
-      children: [
-        for (final o in occurrences)
-          Card(
-            margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-            child: ListTile(
-              dense: true,
-              leading:
-                  Icon(Icons.repeat, size: 18, color: AppColors.accent),
-              title: Text(o.routine.title, maxLines: 1,
-                  overflow: TextOverflow.ellipsis),
-              subtitle: Text(routineSubtitle(o.routine)),
-              trailing: const Text('例行', style: TextStyle(fontSize: 11.5)),
-              onTap: () async {
-                Navigator.of(context).pop();
-                controller.focusRoutineInSettings(o.routine.id);
-              },
+    final theme = Theme.of(context);
+    final color = AppColors.doneFor(theme.brightness);
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(10, 8, 12, 8),
+        child: Row(
+          children: [
+            Icon(Icons.check_circle, size: 16, color: color),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                task.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w400,
+                  color: theme.colorScheme.onSurfaceVariant,
+                  decoration: TextDecoration.lineThrough,
+                  decorationColor: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
             ),
-          ),
-        for (final t in tasks)
-          TaskTile(
-            controller: controller,
-            task: t,
-            onTap: () async {
-              final dt = await pickDateTime(context,
-                  initial: t.deadline, title: '改期到哪天？');
-              if (dt == null) return;
-              await controller.updateTask(t.id, deadline: dt);
-            },
-          ),
-      ],
+            const SizedBox(width: 6),
+            Text('已完成', style: TextStyle(fontSize: 11.5, color: color)),
+          ],
+        ),
+      ),
     );
   }
 }

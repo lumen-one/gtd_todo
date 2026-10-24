@@ -11,7 +11,7 @@ import 'package:gtd_todo/ui/theme.dart';
 
 /// 暗黑模式契约（ui-interaction.md §8 / §10 #20）：明暗三选一落
 /// `settings.json` 的 `theme_mode`，缺省跟随系统；枚举与 ThemeMode 映射在
-/// UI 层；语义色只有逾期橙红随明暗提亮，其余不变。
+/// UI 层；语义色里逾期橙红与已完成蓝随明暗提亮，其余不变。
 void main() {
   group('AppSettings.themeMode', () {
     test('默认跟随系统（老设置文件缺键即此值）', () {
@@ -87,11 +87,22 @@ void main() {
     });
   });
 
-  group('语义色（§8：不随预设变，逾期橙红随明暗提亮）', () {
+  group('语义色（§8：不随预设变，逾期橙红与已完成蓝随明暗提亮）', () {
     test('逾期橙红：浅色原值、暗色提亮变体', () {
       expect(AppColors.overdueFor(Brightness.light), AppColors.overdue);
       expect(AppColors.overdueFor(Brightness.dark), AppColors.overdueOnDark);
       expect(AppColors.overdueOnDark, isNot(AppColors.overdue));
+    });
+
+    test('已完成蓝：浅色原值、暗色提亮变体，且不取强调色', () {
+      expect(AppColors.doneFor(Brightness.light), AppColors.done);
+      expect(AppColors.doneFor(Brightness.dark), AppColors.doneOnDark);
+      expect(AppColors.doneOnDark, isNot(AppColors.done));
+      // 它要跟橙点同屏并存，取强调色就分不出来了（§8）。
+      for (final p in AppThemePreset.values) {
+        expect(AppColors.done, isNot(p.seed));
+        expect(AppColors.doneOnDark, isNot(p.seed));
+      }
     });
 
     test('时间徽标橙不随明暗变（暗底对比度已达标）', () {

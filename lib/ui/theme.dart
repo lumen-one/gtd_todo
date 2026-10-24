@@ -75,6 +75,17 @@ class AppColors {
   /// 固定时点的时间徽标橙——状态语义，不随预设变化。
   static const Color timeBadge = Color(0xFFF57C00);
 
+  /// 已完成蓝（§8）：日历上"这天有已经干完的"那颗点。它要跟橙点同屏并存，
+  /// 所以不能取强调色，也不能取灰（灰在日历上跟"这天没事"太接近）。
+  static const Color done = Color(0xFF3F7FA6);
+
+  /// 已完成蓝的暗色提亮变体：与 [overdueOnDark] 同一个理由（保可读性）。
+  static const Color doneOnDark = Color(0xFF7FB3D5);
+
+  /// 当前明暗下的已完成色：日历的点与当天列表走这里。
+  static Color doneFor(Brightness brightness) =>
+      brightness == Brightness.dark ? doneOnDark : done;
+
   /// 纸白底。
   static const Color paper = Color(0xFFFAF7F2);
 
