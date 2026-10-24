@@ -47,7 +47,7 @@ abstract class AlarmPort {
 abstract class FolderPickerPort {
   Future<String?> pickDirectory();
   Future<String?> pickFile({required String dialogTitle,
-      required List<String> allowedExtensions});  // 灵感文件路径（页面规则见 ../panels/notes.md）
+      required List<String> allowedExtensions});  // 灵感文件路径：真实路径，非缓存副本（见 ../panels/notes.md）
 }  // SAF / 桌面选择器
 
 abstract class PermissionPort {
@@ -65,7 +65,9 @@ abstract class PermissionPort {
 `AndroidAlarmPort` / `AndroidNotificationPort`（系统精确闹钟 AlarmManager + 通知渠道
 `gtd_normal`/`gtd_alarm`/`gtd_overlay` + 通知按钮 + full-screen intent）、
 `AndroidPermissionPort`（permission_handler + 原生全屏 intent/悬浮窗查询）、
-`AndroidFolderPickerPort`（所有文件访问 + 系统目录选择器 / 文件选择器）；
+`AndroidFolderPickerPort`（所有文件访问 + 系统目录选择器；挑文件走自建 SAF
+`pickMarkdownFile`，把 documentId 换成真实路径，**不经 file_picker**——它挑文件只回缓存
+副本，见[决策卡](../decisions/2026-10-24-android-markdown-pick.md)）；
 原生侧另有 `OverlayHandleService`（贴屏把手 + 悬浮面板窗口，前台服务 + WindowManager）：
 它从 `stopWithTask=false` 起就与 Activity 解绑，划掉任务卡片不停止服务，把手与面板
 照常（生命周期见 [architecture.md](../architecture.md) §5.1）。

@@ -55,6 +55,7 @@
 | [2026-10-21-sort-four-tiers.md](2026-10-21-sort-four-tiers.md) | 排序四档：不可行任务单独一池 |
 | [2026-10-22-today-plan.md](2026-10-22-today-plan.md) | 今日编排：独立文件、覆盖页、不并入任务 |
 | [2026-10-23-plan-three-days.md](2026-10-23-plan-three-days.md) | 编排：三天窗口、昨天只读、改时刻即归位 |
+| [2026-10-24-android-markdown-pick.md](2026-10-24-android-markdown-pick.md) | 安卓挑灵感文件自己发 SAF：file_picker 只回缓存副本 |
 
 待补（都是"会被重新质疑"的取舍，按需要慢慢写）：
 
