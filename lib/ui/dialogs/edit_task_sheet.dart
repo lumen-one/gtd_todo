@@ -1,212 +1,151 @@
 import 'package:flutter/material.dart';
 
-import '../../domain/schedule.dart';
 import '../../domain/task.dart';
 import '../app_controller.dart';
-import '../widgets/task_tile.dart' show fmtDateTime;
-import 'create_task_dialog.dart' show pickDateTime;
+import 'date_pick.dart';
+import 'task_form.dart';
 
 /// 编辑态 = 属性展开表单（决议 17）：显式控件直改类型/日期/工时/备注，
 /// 改完调度自动重锚。长按滑档位手势只属于『新建』。
-/// 散件『转正』复用本表单（补截止 + 把'长期'换成具体工时，进调度；§6.3）。
-Future<void> showEditSheet(BuildContext context, AppController controller,
-    {required Task task, String title = '编辑任务'}) {
-  final titleCtrl = TextEditingController(text: task.title);
-  final noteCtrl = TextEditingController(text: task.description);
-  // '长期' ↔ 按时长（v1.17，D18）：编辑表单里显式二选一——'长期'是创建缺省
-  // 不是不变量，两个方向都走这里显式设，不悄悄改语义（§3.4 防线三）。
-  var longTerm = task.isLongTerm;
-  final workCtrl = TextEditingController(
-      text: task.isLongTerm ? '' : '${task.estimatedWork}');
-  var type = task.type;
-  DateTime? deadline = task.deadline;
-  var deadlineCleared = false;
-  var importance = task.importance ?? 3;
-  // 逐任务提醒开关（v0.9 决议 38）：标准模式下让这一件出声；不改顺序。
-  var remind = task.remindEnabled;
-
+///
+/// 字段与新建第 2 页同源（[TaskFormBody]）：两边能填的东西一样，
+/// 只有"初值从哪来、提交走哪条命令"不同。
+Future<void> showEditSheet(
+  BuildContext context,
+  AppController controller, {
+  required Task task,
+  String title = '编辑任务',
+}) {
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    builder: (ctx) => StatefulBuilder(
-      builder: (ctx, setSheet) => Padding(
-        padding:
-            EdgeInsets.fromLTRB(20, 16, 20, 16 + MediaQuery.of(ctx).viewInsets.bottom),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(title, style: Theme.of(ctx).textTheme.titleMedium),
-            const SizedBox(height: 12),
-            TextField(
-              controller: titleCtrl,
-              decoration: const InputDecoration(labelText: '标题'),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: noteCtrl,
-              maxLines: 2,
-              minLines: 1,
-              decoration: const InputDecoration(labelText: '备注（选填）'),
-            ),
-            const SizedBox(height: 12),
-            SegmentedButton<TaskType>(
-              segments: const [
-                ButtonSegment(
-                    value: TaskType.flex,
-                    icon: Icon(Icons.schedule),
-                    label: Text('可推')),
-                ButtonSegment(
-                    value: TaskType.fixed,
-                    icon: Icon(Icons.push_pin),
-                    label: Text('不可推')),
-              ],
-              selected: {type},
-              onSelectionChanged: (s) => setSheet(() {
-                type = s.first;
-                if (type == TaskType.fixed && deadline == null) {
-                  deadline = DateTime.now().add(const Duration(hours: 1));
-                }
-              }),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    deadline == null
-                        ? '无截止（散件）'
-                        : '截止 ${fmtDateTime(deadline!)}',
-                    style: Theme.of(ctx).textTheme.bodyMedium,
-                  ),
-                ),
-                TextButton(
-                  onPressed: () async {
-                    final dt = await pickDateTime(ctx, initial: deadline);
-                    if (dt != null) {
-                      setSheet(() {
-                        deadline = dt;
-                        deadlineCleared = false;
-                      });
-                    }
-                  },
-                  child: const Text('选时间'),
-                ),
-                if (deadline != null)
-                  TextButton(
-                    onPressed: () => setSheet(() {
-                      deadline = null;
-                      deadlineCleared = true;
-                    }),
-                    child: const Text('清除'),
-                  ),
-              ],
-            ),
-            if (type == TaskType.flex) ...[
-              // 工作强度二选一（v1.17，D18）：'长期' = 不估工时、不设优先级
-              // （内核属性文档只有 id）；'按时长' = 数字工时进 slack 数学。
-              Row(
-                children: [
-                  const Text('工作强度'),
-                  const SizedBox(width: 12),
-                  SegmentedButton<bool>(
-                    segments: const [
-                      ButtonSegment(value: true, label: Text('长期')),
-                      ButtonSegment(value: false, label: Text('按时长')),
-                    ],
-                    selected: {longTerm},
-                    onSelectionChanged: (s) =>
-                        setSheet(() => longTerm = s.first),
-                  ),
-                ],
-              ),
-              if (!longTerm) ...[
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    const Text('预计工时（分钟）'),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: TextFormField(
-                        controller: workCtrl,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(hintText: '30'),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    const Text('重要度'),
-                    Expanded(
-                      child: Slider(
-                        value: importance.toDouble(),
-                        min: 1,
-                        max: 5,
-                        divisions: 4,
-                        label: '$importance',
-                        onChanged: (v) => setSheet(() => importance = v.round()),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ],
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              secondary: const Icon(Icons.notifications_active_outlined),
-              title: const Text('提醒我'),
-              subtitle: Text(
-                controller.reminderMode == ReminderMode.full
-                    ? '完整模式下该响的都会响'
-                    : '打开它，这一件才会出声',
-                style: Theme.of(ctx).textTheme.bodySmall,
-              ),
-              value: remind,
-              onChanged: (v) => setSheet(() => remind = v),
-            ),
-            const SizedBox(height: 8),
-            FilledButton(
-              onPressed: () async {
-                // '长期' → '按时长'且没填工时：按 A2 缺省 30 分钟（转正的另一半）；
-                // 已经是'按时长'却空着 → 传 null 保持原值，不偷偷改。
-                final work = int.tryParse(workCtrl.text.trim()) ??
-                    (task.isLongTerm && !longTerm ? 30 : null);
-                try {
-                  await controller.updateTask(
-                    task.id,
-                    title: titleCtrl.text.trim(),
-                    description: noteCtrl.text,
-                    type: type,
-                    deadline: deadline,
-                    clearDeadline:
-                        deadline == null && deadlineCleared,
-                    estimatedWorkMinutes: longTerm ? null : work,
-                    // 显式设'长期'（三项一起清）；'长期' → '按时长'时走上面的
-                    // estimatedWorkMinutes（服务会补剩余量与优先级缺省 3）。
-                    clearWork: longTerm && !task.isLongTerm,
-                    importance: longTerm ? null : importance,
-                  );
-                } catch (e) {
-                  if (ctx.mounted) {
-                    ScaffoldMessenger.of(ctx).showSnackBar(
-                        SnackBar(content: Text('保存失败：$e')));
-                  }
-                  return;
-                }
-                // 提醒开关是独立的持久意图（metadata `remind`），只在真的变了时写一次。
-                if (remind != task.remindEnabled) {
-                  await controller.setTaskReminder(task.id, enabled: remind);
-                }
-                if (ctx.mounted) Navigator.of(ctx).pop();
-              },
-              child: const Text('保存'),
-            ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
+    builder: (_) => _EditTaskSheet(
+      controller: controller,
+      task: task,
+      title: title,
     ),
   );
+}
+
+class _EditTaskSheet extends StatefulWidget {
+  final AppController controller;
+  final Task task;
+  final String title;
+
+  const _EditTaskSheet({
+    required this.controller,
+    required this.task,
+    required this.title,
+  });
+
+  @override
+  State<_EditTaskSheet> createState() => _EditTaskSheetState();
+}
+
+class _EditTaskSheetState extends State<_EditTaskSheet> {
+  late final _titleCtrl = TextEditingController(text: widget.task.title);
+  late final _noteCtrl = TextEditingController(text: widget.task.description);
+  late final _workCtrl = TextEditingController(
+    text: widget.task.isLongTerm ? '' : '${widget.task.estimatedWork}',
+  );
+  late TaskFormValue _value = TaskFormValue(
+    title: widget.task.title,
+    description: widget.task.description,
+    type: widget.task.type,
+    deadline: widget.task.deadline,
+    longTerm: widget.task.isLongTerm,
+    importance: widget.task.importance ?? 3,
+    remind: widget.task.remindEnabled,
+  );
+
+  @override
+  void dispose() {
+    _titleCtrl.dispose();
+    _noteCtrl.dispose();
+    _workCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickDeadline() async {
+    final picked = await pickDateTime(context, initial: _value.deadline);
+    if (picked == null || !mounted) return;
+    setState(() => _value = _value.copyWith(deadline: picked));
+  }
+
+  Future<void> _save() async {
+    final task = widget.task;
+    // '长期' → '按时长'且没填工时：按 A2 缺省 30 分钟（转正的另一半）；
+    // 已经是'按时长'却空着 → 传 null 保持原值，不偷偷改。
+    final work = int.tryParse(_workCtrl.text.trim()) ??
+        (task.isLongTerm && !_value.longTerm ? 30 : null);
+    try {
+      await widget.controller.updateTask(
+        task.id,
+        title: _titleCtrl.text.trim(),
+        description: _noteCtrl.text,
+        type: _value.type,
+        deadline: _value.deadline,
+        clearDeadline: _value.deadline == null && task.deadline != null,
+        estimatedWorkMinutes: _value.longTerm ? null : work,
+        // 显式设'长期'（三项一起清）；'长期' → '按时长'时走上面的
+        // estimatedWorkMinutes（服务会补剩余量与优先级缺省 3）。
+        clearWork: _value.longTerm && !task.isLongTerm,
+        importance: _value.longTerm ? null : _value.importance,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('保存失败：$e')),
+      );
+      return;
+    }
+    // 提醒开关是独立的持久意图（metadata `remind`），只在真的变了时写一次。
+    if (_value.remind != task.remindEnabled) {
+      await widget.controller.setTaskReminder(task.id, enabled: _value.remind);
+    }
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        20,
+        16,
+        20,
+        16 + MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(widget.title, style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 12),
+          TaskFormBody(
+            controller: widget.controller,
+            value: _value,
+            onChanged: (v) => setState(() => _value = v),
+            titleCtrl: _titleCtrl,
+            noteCtrl: _noteCtrl,
+            workCtrl: _workCtrl,
+            onSubmit: _save,
+            deadlineActions: [
+              TextButton(
+                onPressed: _pickDeadline,
+                child: const Text('选时间'),
+              ),
+              if (_value.deadline != null)
+                TextButton(
+                  onPressed: () =>
+                      setState(() => _value = _value.copyWith(deadline: null)),
+                  child: const Text('清除'),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          FilledButton(onPressed: _save, child: const Text('保存')),
+        ],
+      ),
+    );
+  }
 }

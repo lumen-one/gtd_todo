@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../app_controller.dart';
-import '../dialogs/create_task_dialog.dart' show showCreateFlow;
+import '../dialogs/create_task_sheet.dart' show showCreateFlow;
 import '../theme.dart';
 import 'task_selection.dart';
 
