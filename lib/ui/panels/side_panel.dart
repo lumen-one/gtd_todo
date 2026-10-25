@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart' show ValueListenable;
+import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier;
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 
@@ -66,9 +66,18 @@ class _SidePanelState extends State<SidePanel> {
   /// 跟着这个 State 一起生灭。
   final TaskSelection _selection = TaskSelection();
 
+  /// 右下角双钮的"藏"开关（§6.1）：列表上滑时由 [DockScrollListener] 置位，
+  /// 换页时复位——新的一页起手不该是藏着的。
+  final ValueNotifier<bool> _dockHidden = ValueNotifier<bool>(false);
+
+  /// 当前页序号缓存：只有换页才 `setState`，滚动不必重建整块面板。
+  late int _page;
+
   @override
   void initState() {
     super.initState();
+    _page = _currentPage;
+    widget.pageCtrl.addListener(_onPageChanged);
     widget.controller.addListener(_onControllerChanged);
   }
 
@@ -79,13 +88,27 @@ class _SidePanelState extends State<SidePanel> {
       oldWidget.controller.removeListener(_onControllerChanged);
       widget.controller.addListener(_onControllerChanged);
     }
+    if (oldWidget.pageCtrl != widget.pageCtrl) {
+      oldWidget.pageCtrl.removeListener(_onPageChanged);
+      widget.pageCtrl.addListener(_onPageChanged);
+    }
   }
 
   @override
   void dispose() {
+    widget.pageCtrl.removeListener(_onPageChanged);
     widget.controller.removeListener(_onControllerChanged);
+    _dockHidden.dispose();
     _selection.dispose();
     super.dispose();
+  }
+
+  /// 换页（含跟手横滑过半个屏幕的那一下）：双钮复位成"看得见"。
+  void _onPageChanged() {
+    final page = _currentPage;
+    if (page == _page) return;
+    _dockHidden.value = false;
+    setState(() => _page = page);
   }
 
   /// 面板头第二行的主线名与进度、覆盖页里的勾选都要跟着控制器变。
@@ -171,21 +194,28 @@ class _SidePanelState extends State<SidePanel> {
                 Expanded(
                   child: Stack(
                     children: [
-                      PageView(
-                        controller: widget.pageCtrl,
-                        children: [
-                          for (final page in PanelPage.values)
-                            _pageBody(page, controller),
-                        ],
+                      DockScrollListener(
+                        hidden: _dockHidden,
+                        child: PageView(
+                          controller: widget.pageCtrl,
+                          children: [
+                            for (final page in PanelPage.values)
+                              _pageBody(page, controller),
+                          ],
+                        ),
                       ),
-                      // 每页都可添加待办与开日历（§6.1）：右下角双钮；
-                      // 选择模式下整块换成批处理条（§10#23）。
-                      PanelDock(
-                        controller: controller,
-                        selection: _selection,
-                        onOpenCalendar: widget.onOpenCalendar,
-                        heroTagPrefix: widget.heroTagPrefix,
-                      ),
+                      // 右下角双钮（§6.1）：**灵感页不摆**——那一页是读正文的，
+                      // 两颗钮压在字上，又没有可加的东西。其余页上滑时藏起来
+                      // （[DockScrollListener]），下滑或滚回顶部才回来；选择模式
+                      // 整块换成批处理条（§10#23）。
+                      if (_page != PanelPage.notes.index)
+                        PanelDock(
+                          controller: controller,
+                          selection: _selection,
+                          onOpenCalendar: widget.onOpenCalendar,
+                          heroTagPrefix: widget.heroTagPrefix,
+                          hidden: _dockHidden,
+                        ),
                     ],
                   ),
                 ),

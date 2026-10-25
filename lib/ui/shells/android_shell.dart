@@ -568,18 +568,67 @@ class _DrawerFallbackState extends State<_DrawerFallback> {
     );
   }
 
-  /// 右下角双钮（每页都有，§6.1）：抽屉里也照摆一份。
+  /// 一页 = 页内容 + 右下角双钮（§6.1）：抽屉里也照摆一份，规则与面板一致
+  /// （灵感页不摆、列表上滑藏钮）。
   ///
   /// Hero 标签带上页名——四页同时在 widget 树里（TabBarView 会保留相邻页），
   /// 同一棵树里不能有两个同标签的 Hero。
   Widget _withActions(BuildContext context, PanelPage page, Widget body) =>
-      Stack(children: [
-        body,
-        PanelDock(
-          controller: controller,
-          selection: _selection,
-          onOpenCalendar: () => showCalendarDialog(context, controller),
-          heroTagPrefix: 'drawer-${page.name}',
-        ),
+      _DockPage(
+        controller: controller,
+        selection: _selection,
+        onOpenCalendar: () => showCalendarDialog(context, controller),
+        heroTagPrefix: 'drawer-${page.name}',
+        withDock: page != PanelPage.notes,
+        child: body,
+      );
+}
+
+/// 抽屉里"一页 + 双钮"的组合：每页自己一份藏钮开关（TabBarView 四页同时活着，
+/// 各自的滚动不能互相牵连）。
+class _DockPage extends StatefulWidget {
+  final AppController controller;
+  final TaskSelection selection;
+  final VoidCallback onOpenCalendar;
+  final String heroTagPrefix;
+
+  /// false = 这一页不摆双钮（灵感页）。
+  final bool withDock;
+
+  final Widget child;
+
+  const _DockPage({
+    required this.controller,
+    required this.selection,
+    required this.onOpenCalendar,
+    required this.heroTagPrefix,
+    required this.withDock,
+    required this.child,
+  });
+
+  @override
+  State<_DockPage> createState() => _DockPageState();
+}
+
+class _DockPageState extends State<_DockPage> {
+  final ValueNotifier<bool> _dockHidden = ValueNotifier<bool>(false);
+
+  @override
+  void dispose() {
+    _dockHidden.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Stack(children: [
+        DockScrollListener(hidden: _dockHidden, child: widget.child),
+        if (widget.withDock)
+          PanelDock(
+            controller: widget.controller,
+            selection: widget.selection,
+            onOpenCalendar: widget.onOpenCalendar,
+            heroTagPrefix: widget.heroTagPrefix,
+            hidden: _dockHidden,
+          ),
       ]);
 }

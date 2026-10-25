@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier;
 import 'package:flutter/material.dart';
 
 import '../app_controller.dart';
@@ -11,11 +12,15 @@ import 'task_selection.dart';
 /// 两个宿主（[SidePanel] 与应用内抽屉）共用：[selection] 由宿主持有并往下传
 /// （选中跨页保留），这里只按状态决定摆哪一条。Positioned 必须直接挂在
 /// Stack 上，所以它包着 AnimatedBuilder 而不是反过来。
+///
+/// [hidden] 是宿主给的"藏起来"开关（列表上滑时置位，见 [DockScrollListener]）；
+/// null = 这个宿主不做上滑藏钮，永远显示。
 class PanelDock extends StatelessWidget {
   final AppController controller;
   final TaskSelection selection;
   final VoidCallback onOpenCalendar;
   final String heroTagPrefix;
+  final ValueListenable<bool>? hidden;
 
   const PanelDock({
     super.key,
@@ -23,6 +28,7 @@ class PanelDock extends StatelessWidget {
     required this.selection,
     required this.onOpenCalendar,
     this.heroTagPrefix = 'panel',
+    this.hidden,
   });
 
   @override
@@ -30,30 +36,141 @@ class PanelDock extends StatelessWidget {
     return Positioned(
       right: 14,
       bottom: 14,
-      child: FadeIn(
-        offset: 14,
-        child: AnimatedBuilder(
-          animation: selection,
-          builder: (context, _) => AnimatedSwitcher(
-            duration: const Duration(milliseconds: 160),
-            child: selection.selecting
-                ? SelectionBar(
-                    key: const ValueKey('panel-dock-selection'),
-                    controller: controller,
-                    selection: selection,
-                  )
-                : _ActionsRow(
-                    key: const ValueKey('panel-dock-actions'),
-                    controller: controller,
-                    onOpenCalendar: onOpenCalendar,
-                    heroTagPrefix: heroTagPrefix,
-                  ),
+      child: _DockSlide(
+        hidden: hidden,
+        selection: selection,
+        child: FadeIn(
+          offset: 14,
+          child: AnimatedBuilder(
+            animation: selection,
+            builder: (context, _) => AnimatedSwitcher(
+              duration: const Duration(milliseconds: 160),
+              child: selection.selecting
+                  ? SelectionBar(
+                      key: const ValueKey('panel-dock-selection'),
+                      controller: controller,
+                      selection: selection,
+                    )
+                  : _ActionsRow(
+                      key: const ValueKey('panel-dock-actions'),
+                      controller: controller,
+                      onOpenCalendar: onOpenCalendar,
+                      heroTagPrefix: heroTagPrefix,
+                    ),
+            ),
           ),
         ),
       ),
     );
   }
 }
+
+/// 藏起来那一下：往下移出面板 + 淡出，180ms（时长登记在 docs/panels/README.md
+/// 的过渡表里）。
+///
+/// **选择模式一律显示**：批处理条是刚长按出来的，藏在屏外就没法用了。
+/// 藏时必须 `IgnorePointer`——透明但还能点到的钮比不藏更糟。
+class _DockSlide extends StatelessWidget {
+  final ValueListenable<bool>? hidden;
+  final TaskSelection selection;
+  final Widget child;
+
+  const _DockSlide({
+    required this.hidden,
+    required this.selection,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final h = hidden;
+    if (h == null) return child;
+    return AnimatedBuilder(
+      animation: Listenable.merge([h, selection]),
+      builder: (context, c) {
+        final hide = h.value && !selection.selecting;
+        return IgnorePointer(
+          ignoring: hide,
+          child: AnimatedSlide(
+            offset: hide ? const Offset(0, 1.2) : Offset.zero,
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            child: AnimatedOpacity(
+              opacity: hide ? 0 : 1,
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOutCubic,
+              child: c,
+            ),
+          ),
+        );
+      },
+      child: child,
+    );
+  }
+}
+
+/// 列表上滑就把双钮藏起来（§6.1）：宿主持有 [hidden]，滚动只往它里面写。
+///
+/// 只认**纵向**的滚动通知——面板里那层横向 PageView 也会冒通知上来，按
+/// `metrics.axis` 筛；**不按 `depth` 筛**，页面列表冒到这一层时 `depth`
+/// 已经是 1（与编排页的退出手势同一个坑，见 `plan_panel.dart`）。
+///
+/// 藏 = 手指往上推累计过 12dp；回来只认**下滑**或**滚回顶部**——停手不自动
+/// 弹回（宿主换页时自己复位）。
+class DockScrollListener extends StatefulWidget {
+  final ValueNotifier<bool> hidden;
+  final Widget child;
+
+  const DockScrollListener({
+    super.key,
+    required this.hidden,
+    required this.child,
+  });
+
+  @override
+  State<DockScrollListener> createState() => _DockScrollListenerState();
+}
+
+class _DockScrollListenerState extends State<DockScrollListener> {
+  /// 上推多少才算"真的在往前读"：一两个像素是点按带出来的抖动。
+  static const double _hideAfter = 12;
+
+  double _up = 0;
+
+  bool _onScroll(ScrollNotification n) {
+    if (n.metrics.axis != Axis.vertical) return false;
+    if (n is ScrollStartNotification) {
+      _up = 0;
+    } else if (n is ScrollUpdateNotification) {
+      final dy = n.scrollDelta ?? 0;
+      if (dy > 0) {
+        _up += dy;
+        if (_up >= _hideAfter) _set(true);
+      } else if (dy < 0) {
+        _up = 0;
+        _set(false);
+      }
+      // 已经在最顶：再往上没有内容可读，钮留着。
+      if (n.metrics.extentBefore <= 0) _set(false);
+    } else if (n is OverscrollNotification && n.overscroll < 0) {
+      // 到顶之后继续下拉（今日编排的入口）。
+      _set(false);
+    }
+    return false;
+  }
+
+  void _set(bool hidden) {
+    if (widget.hidden.value == hidden) return;
+    widget.hidden.value = hidden;
+  }
+
+  @override
+  Widget build(BuildContext context) => NotificationListener<ScrollNotification>(
+        onNotification: _onScroll,
+        child: widget.child,
+      );
+}
+
 
 /// 日历 + 添加待办。[heroTagPrefix] 区分面板/抽屉/悬浮窗几处实例，
 /// 避免 Hero 标签冲突。
