@@ -153,6 +153,11 @@ class MainlineService {
         return m.copyWith(logs: logs);
       });
 
+  /// 写 / 改某个月的月记。一个月只留一条，所以再写就是改；[text] 为空 = 删掉这条。
+  Future<void> setMonthNote(String id, int year, int month, String text) =>
+      _mutate(id,
+          (m) => m.copyWith(months: m.withMonthNote(year, month, text)));
+
   /// 归档：**行为链必须全部勾完**（空链也不行，见 [Mainline.isAllDone]）。
   ///
   /// 只改状态与归档时刻，数据一行不删——归档后可只读查看。

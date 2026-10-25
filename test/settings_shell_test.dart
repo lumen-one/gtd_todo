@@ -66,6 +66,9 @@ void main() {
     expect(find.text('展开后默认页面'), findsOneWidget);
     expect(find.text('重新打开窗口时左栏落在这一页；点通知定位时按定位目标走'),
         findsOneWidget);
+    // 『关于』同理整块不出现：桌面那一栏待整块重做（docs/roadmap.md 2.4），
+    // 不是"桌面没有版本号"。
+    expect(find.text('关于'), findsNothing);
   });
 
   testWidgets('桌面壳：通用项一个不少', (tester) async {
@@ -95,6 +98,10 @@ void main() {
     }
     expect(find.text('拖动把手展开时落在这一页；点通知定位时按定位目标走'),
         findsOneWidget);
+    // 关于：版本号（测试里没有插件实现 → 占位）+ 反馈 QQ
+    expect(find.text('关于'), findsOneWidget);
+    expect(find.text('版本'), findsOneWidget);
+    expect(find.text('QQ 3110741060（点一下复制）'), findsOneWidget);
   });
 
   /// 两个路径编辑弹窗都是底部弹窗：`showModalBottomSheet` 不会自己给输入法让位，

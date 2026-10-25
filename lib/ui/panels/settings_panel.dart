@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../application/settings.dart';
 import '../../domain/schedule.dart';
@@ -15,8 +16,10 @@ import 'settings_sync.dart';
 // 算成数字（§6.0）。
 import 'side_panel.dart';
 
-String _mm(int minuteOfDay) {
-  final h = (minuteOfDay ~/ 60).toString().padLeft(2, '0');
+/// 反馈用的 QQ：『关于』卡里点一下复制的就是它。
+const String _feedbackQq = '3110741060';
+
+String _mm(int minuteOfDay) {  final h = (minuteOfDay ~/ 60).toString().padLeft(2, '0');
   final m = (minuteOfDay % 60).toString().padLeft(2, '0');
   return '$h:$m';
 }
@@ -84,7 +87,7 @@ Widget _hotWidthButton(AppController c, AppSettings s, int dp) {
 /// 闹钟模式〔悬浮壳〕）；
 /// 7. 定期挑；8. 灵感文件路径；9. 周期任务在任务池的显示开关；
 /// 10. 主题（**明暗三选一：跟随系统/浅色/深黑** + 强调色预设）；
-/// 11. 回收站；12. 同步（§4.4：主机/从机，局域网文件同步）。
+/// 11. 回收站；12. 同步（§4.4：主机/从机，局域网文件同步）；13. 关于（版本号 + 反馈）。
 ///
 /// 标〔悬浮壳〕的项按 `AppController.caps` 整行裁掉（§9 开头）：桌面上它们
 /// 没有对应物，留着只会点了个没反应。
@@ -105,6 +108,9 @@ class _SettingsPanelState extends State<SettingsPanel> {
     super.initState();
     _c.addListener(_onChange);
     _c.refreshTrash();
+    // 版本号是异步从安装包元数据里读的，进设置页时问一次就够（幂等）。
+    // 桌面上没有这张卡，也就不必去问平台。
+    if (_c.caps.about) _c.loadAppVersion();
   }
 
   @override
@@ -159,6 +165,8 @@ class _SettingsPanelState extends State<SettingsPanel> {
         _SectionCard('主题', _themeSection(s)),
 
         _SectionCard('回收站', [_trashSection()]),
+
+        if (_c.caps.about) _SectionCard('关于', _aboutSection()),
       ],
     );
   }
@@ -391,6 +399,31 @@ class _SettingsPanelState extends State<SettingsPanel> {
         subtitle: const Text('删除的任务先进回收站，可捞回'),
         onTap: _c.trashTasks.isEmpty ? null : () => _purgeTrash(context),
       );
+
+  // ---------- 关于（§9 第 14 条）----------
+
+  /// 版本号由 [AppController.loadAppVersion] 从安装包元数据读回（安卓 versionName /
+  /// versionCode，桌面 exe 的版本资源），源码里不写死：升级只改 `pubspec.yaml`。
+  List<Widget> _aboutSection() => [
+        ListTile(
+          leading: const Icon(Icons.info_outline),
+          title: const Text('版本'),
+          subtitle: Text(_c.appVersion ?? '读取中…'),
+        ),
+        ListTile(
+          leading: const Icon(Icons.chat_bubble_outline),
+          title: const Text('反馈'),
+          subtitle: const Text('QQ $_feedbackQq（点一下复制）'),
+          onTap: _copyFeedback,
+        ),
+      ];
+
+  Future<void> _copyFeedback() async {
+    await Clipboard.setData(const ClipboardData(text: _feedbackQq));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('已复制 QQ：$_feedbackQq')));
+  }
 
   // ---------- 面板尺寸固定（§6.0 / §9 第 11 条）----------
 

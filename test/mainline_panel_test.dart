@@ -256,6 +256,49 @@ void main() {
     expect(find.text('2026 年 10 月'), findsNothing);
   });
 
+  testWidgets('记录页：点月头年月切成月记，写一句落库，再点切回日历', (tester) async {
+    final plain = Mainline(
+      id: 'ml-4',
+      title: '写作',
+      created: DateTime(2026, 10, 1, 9),
+      steps: const [MainlineStep(title: '开头')],
+    );
+    final controller = makeController(prefix: [plain]);
+    await tester.runAsync(() => controller.mainlineService!.load());
+    await pumpPanel(tester, controller);
+
+    await tester.tap(find.text('写作'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('1/2'));
+    await tester.pumpAndSettle();
+
+    // 日历落在哪个月由真实时钟决定，所以期望文本也照它算。
+    final now = DateTime.now();
+    final monthLabel = '${now.year} 年 ${now.month} 月';
+
+    await tester.tap(find.text(monthLabel));
+    await tester.pumpAndSettle();
+    expect(find.text('${now.year} 年'), findsOneWidget);
+    expect(find.text('记一句'), findsNWidgets(12), reason: '一年十二行，一月都没写');
+
+    await tester.tap(find.text('${now.month} 月'));
+    await tester.pumpAndSettle();
+    expect(find.text('一个月写一句：这个月在做什么'), findsOneWidget);
+    await tester.enterText(find.byType(TextField).last, '把第三章写完');
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+
+    final note = controller.activeMainline!.monthNoteOf(now.year, now.month);
+    expect(note?.text, '把第三章写完');
+    expect(find.text('把第三章写完'), findsOneWidget);
+    expect(find.text('记一句'), findsNWidgets(11), reason: '写过的那行不再提示');
+
+    // 再点年份 → 切回月历
+    await tester.tap(find.text('${now.year} 年'));
+    await tester.pumpAndSettle();
+    expect(find.text(monthLabel), findsOneWidget);
+  });
+
   testWidgets('窄面板 240dp：顶栏两行与覆盖页都不溢出', (tester) async {
     final controller = makeController(prefix: [sample()]);
     await tester.runAsync(() => controller.mainlineService!.load());

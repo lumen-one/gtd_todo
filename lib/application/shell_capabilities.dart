@@ -27,6 +27,10 @@ class ShellCapabilities {
   /// 全屏闹钟渠道（通知升级为全屏持续响铃）。
   final bool alarmChannel;
 
+  /// 『关于』卡（版本号 / 反馈方式）。桌面上暂时不摆——那一栏要整块重做
+  /// （`docs/roadmap.md` 的 2.4），不是"桌面没有版本号"。
+  final bool about;
+
   const ShellCapabilities({
     required this.systemHandle,
     required this.handleTuning,
@@ -34,9 +38,10 @@ class ShellCapabilities {
     required this.panelGuide,
     required this.permissionPrompts,
     required this.alarmChannel,
+    required this.about,
   });
 
-  /// 贴屏悬浮壳（安卓应用内壳 / 系统级悬浮面板）：六样齐全。
+  /// 贴屏悬浮壳（安卓应用内壳 / 系统级悬浮面板）：七样齐全。
   static const overlayShell = ShellCapabilities(
     systemHandle: true,
     handleTuning: true,
@@ -44,9 +49,10 @@ class ShellCapabilities {
     panelGuide: true,
     permissionPrompts: true,
     alarmChannel: true,
+    about: true,
   );
 
-  /// 普通窗口壳（Windows 桌面）：六样都没有——设置页只留通用项。
+  /// 普通窗口壳（Windows 桌面）：七样都没有——设置页只留通用项。
   static const plainWindow = ShellCapabilities(
     systemHandle: false,
     handleTuning: false,
@@ -54,5 +60,6 @@ class ShellCapabilities {
     panelGuide: false,
     permissionPrompts: false,
     alarmChannel: false,
+    about: false,
   );
 }

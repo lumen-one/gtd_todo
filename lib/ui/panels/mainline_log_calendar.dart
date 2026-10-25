@@ -12,7 +12,10 @@ const List<String> _weekLabels = ['一', '二', '三', '四', '五', '六', '日
 ///
 /// - 每天格子里只放日期数字；有内容（勾过步骤 / 圈覆盖）的日子下留一个小点；
 /// - **按住某天拖到另一天** → 松手写文字 → 这一段被一个圆角圈框住，文字在圈里；
-/// - 点某一天 → 下方列当天的自动流水（几点勾了哪一步）与覆盖它的圈。
+/// - 点某一天 → 下方列当天的自动流水（几点勾了哪一步）与覆盖它的圈；
+/// - **月头那行年月是视图开关**：点它把上半区换成这一年的十二行月记（一个月一句），
+///   再点切回日历。月记不覆盖任何一天，所以它不进格子、也不进当天详情
+///   （`docs/decisions/2026-10-25-mainline-month-note.md`）。
 ///
 /// 手势全部走一个 [Listener] + 几何换算（行高 = 可用高/周数、列宽 = 宽/7）：
 /// 日历放在**不滚动的**区域里，纵向拖动不会被外面的列表抢走——跨周圈选要的
@@ -20,6 +23,7 @@ const List<String> _weekLabels = ['一', '二', '三', '四', '五', '六', '日
 ///
 /// 横滑按区域分工：**日历里 = 圈日期**（这里不能让给翻页），
 /// **下半区（当天详情 / 空提示）= 翻页**（向右滑回行为链，见 [onSwipeBack]）。
+/// 月记模式下没有日历可圈，整块列表都归翻页那条手势。
 class MainlineLogCalendar extends StatefulWidget {
   final AppController controller;
   final Mainline mainline;
@@ -44,6 +48,9 @@ class _MainlineLogCalendarState extends State<MainlineLogCalendar> {
   DateTime _month = DateTime(DateTime.now().year, DateTime.now().month);
   DateTime? _selected;
 
+  /// 上半区是月历还是月记列表（点月头那行年月切换）。
+  bool _monthView = false;
+
   DateTime? _dragAnchor;
   DateTime? _dragCursor;
   bool _dragging = false;
@@ -67,18 +74,23 @@ class _MainlineLogCalendarState extends State<MainlineLogCalendar> {
     return Column(
       children: [
         _monthHeader(theme),
-        const SizedBox(height: 2),
-        _weekdayRow(theme),
-        Expanded(
-          flex: 3,
-          child: LayoutBuilder(builder: (context, box) {
-            final layout = _Layout.of(_month, box.maxWidth, box.maxHeight,
-                widget.mainline);
-            return _buildGrid(context, theme, layout, box);
-          }),
-        ),
-        const Divider(height: 1),
-        Expanded(flex: 2, child: _swipeBackLayer(_buildDayDetail(theme))),
+        if (_monthView)
+          // 月记没有日历可圈，整块列表让给"右滑回行为链"那条手势。
+          Expanded(child: _swipeBackLayer(_buildMonthList(theme)))
+        else ...[
+          const SizedBox(height: 2),
+          _weekdayRow(theme),
+          Expanded(
+            flex: 3,
+            child: LayoutBuilder(builder: (context, box) {
+              final layout = _Layout.of(
+                  _month, box.maxWidth, box.maxHeight, widget.mainline);
+              return _buildGrid(context, theme, layout, box);
+            }),
+          ),
+          const Divider(height: 1),
+          Expanded(flex: 2, child: _swipeBackLayer(_buildDayDetail(theme))),
+        ],
       ],
     );
   }
@@ -108,26 +120,57 @@ class _MainlineLogCalendarState extends State<MainlineLogCalendar> {
   Widget _monthHeader(ThemeData theme) {
     return Row(
       children: [
-        _chevron(Icons.chevron_left, () {
-          setState(() {
-            _month = DateTime(_month.year, _month.month - 1);
-            _selected = null;
-          });
-        }),
+        _chevron(Icons.chevron_left, () => _step(-1)),
         Expanded(
           child: Center(
-            child: Text('${_month.year} 年 ${_month.month} 月',
-                style: theme.textTheme.titleSmall),
+            // 这行年月就是视图开关：点它把上半区在月历与月记之间切。
+            child: Tooltip(
+              message: _monthView ? '回月历' : '按月记',
+              child: InkWell(
+                onTap: () => setState(() => _monthView = !_monthView),
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // 240dp 的窄面板上左右两个箭头 + 这行字本来就贴边，留个省略兜底
+                      // （真机上不会触发，测试字体是等宽方块才会）。
+                      Flexible(
+                        child: Text(
+                          _monthView
+                              ? '${_month.year} 年'
+                              : '${_month.year} 年 ${_month.month} 月',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleSmall,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Icon(Icons.swap_horiz,
+                          size: 14,
+                          color: theme.colorScheme.onSurfaceVariant),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ),
         ),
-        _chevron(Icons.chevron_right, () {
-          setState(() {
-            _month = DateTime(_month.year, _month.month + 1);
-            _selected = null;
-          });
-        }),
+        _chevron(Icons.chevron_right, () => _step(1)),
       ],
     );
+  }
+
+  /// 翻一格：月历翻月，月记翻年（月记列表是一年十二行）。
+  void _step(int delta) {
+    setState(() {
+      _month = _monthView
+          ? DateTime(_month.year + delta, _month.month)
+          : DateTime(_month.year, _month.month + delta);
+      _selected = null;
+    });
   }
 
   Widget _chevron(IconData icon, VoidCallback onTap) => SizedBox(
@@ -369,6 +412,84 @@ class _MainlineLogCalendarState extends State<MainlineLogCalendar> {
     return Stack(children: children);
   }
 
+  // ---------- 月记 ----------
+
+  /// 月记：一年十二行，一个月一句。写过的行左侧有圆点，没写的是灰字提示。
+  Widget _buildMonthList(ThemeData theme) {
+    final year = _month.year;
+    return ListView(
+      // 不满一屏也要能 overscroll：覆盖页的上滑退出发生在"末尾之后"。
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(10, 4, 10, 14),
+      children: [
+        for (var m = 1; m <= 12; m++) _monthRow(theme, year, m),
+        const SizedBox(height: 10),
+        Text(
+          '点某个月写一句，一个月只留一条；再点上面的年份回月历',
+          style: theme.textTheme.bodySmall
+              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+        ),
+      ],
+    );
+  }
+
+  Widget _monthRow(ThemeData theme, int year, int month) {
+    final text = widget.mainline.monthNoteOf(year, month)?.text ?? '';
+    final written = text.isNotEmpty;
+    final now = DateTime.now();
+    final isNow = year == now.year && month == now.month;
+    final muted = theme.colorScheme.onSurfaceVariant;
+    return InkWell(
+      onTap: widget.readOnly ? null : () => _promptMonthNote(year, month),
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 9),
+        child: Row(
+          children: [
+            // 写过的行左侧留一个点：与日历格子上那个点是同一个意思。
+            SizedBox(
+              width: 12,
+              child: written
+                  ? Center(
+                      child: SizedBox(
+                        width: 5,
+                        height: 5,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: AppColors.accent.withValues(alpha: 0.85),
+                          ),
+                        ),
+                      ),
+                    )
+                  : null,
+            ),
+            SizedBox(
+              width: 44,
+              child: Text(
+                '$month 月',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontWeight: isNow || written ? FontWeight.w600 : null,
+                  color: isNow ? AppColors.accent : null,
+                ),
+              ),
+            ),
+            Expanded(
+              child: Text(
+                written ? text : (widget.readOnly ? '—' : '记一句'),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: written ? theme.colorScheme.onSurface : muted,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // ---------- 当天详情 ----------
 
   Widget _buildDayDetail(ThemeData theme) {
@@ -510,11 +631,34 @@ class _MainlineLogCalendarState extends State<MainlineLogCalendar> {
         .updateMainlineLog(widget.mainline.id, index, text: outcome.text);
   }
 
+  /// 写 / 改某个月的月记：一个月只留一条，有字才给删除。
+  Future<void> _promptMonthNote(int year, int month) async {
+    if (widget.readOnly) return;
+    final existing = widget.mainline.monthNoteOf(year, month)?.text ?? '';
+    final outcome = await _textDialog(
+      title: '$year 年 $month 月',
+      subtitle: '一个月写一句：这个月在做什么',
+      initial: existing,
+      allowDelete: existing.isNotEmpty,
+      hint: '例：把第三章写完，图的配色也重画了一遍',
+      minLines: 1,
+    );
+    if (outcome == null) return;
+    await widget.controller.setMainlineMonthNote(
+      widget.mainline.id,
+      year,
+      month,
+      outcome.deleted ? '' : outcome.text,
+    );
+  }
+
   Future<_LogOutcome?> _textDialog({
     required String title,
     required String subtitle,
     required String initial,
     bool allowDelete = false,
+    String hint = '这段时间在做什么',
+    int minLines = 2,
   }) async {
     final ctrl = TextEditingController(text: initial);
     final result = await showDialog<_LogOutcome>(
@@ -532,11 +676,11 @@ class _MainlineLogCalendarState extends State<MainlineLogCalendar> {
             TextField(
               controller: ctrl,
               autofocus: true,
-              minLines: 2,
+              minLines: minLines,
               maxLines: 4,
-              decoration: const InputDecoration(
-                hintText: '这段时间在做什么',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                hintText: hint,
+                border: const OutlineInputBorder(),
               ),
             ),
           ],

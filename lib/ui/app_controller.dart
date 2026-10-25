@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show ThemeMode;
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../application/delivery.dart';
 import '../application/mainline_service.dart';
@@ -371,6 +372,30 @@ class AppController extends ChangeNotifier {
   /// 关闭侧边栏请求计数器（跳设置页时用）。
   int get panelCloseRequest => _panelCloseRequest;
 
+  // ---- 关于（ui-interaction.md §9 第 14 条）----
+
+  String? _appVersion;
+
+  /// 形如 `1.2.0 (4)`；还没读到 → null（界面显示占位）。
+  String? get appVersion => _appVersion;
+
+  /// 从**安装包自己的元数据**读版本号：安卓 versionName / versionCode，桌面 exe 的
+  /// 版本资源。两者都由 `flutter build` 从 `pubspec.yaml` 的 `version:` 灌进去，
+  /// 所以源码里不写死版本号，也不会出现"界面写着 1.2.0、装的是 1.3.0"。
+  ///
+  /// 幂等：读到一次就不再问平台。测试里没有插件实现，读不到就留 null（不算错误）。
+  Future<void> loadAppVersion() async {
+    if (_appVersion != null) return;
+    try {
+      final info = await PackageInfo.fromPlatform();
+      final build = info.buildNumber.trim();
+      _appVersion = build.isEmpty ? info.version : '${info.version} ($build)';
+      notifyListeners();
+    } catch (_) {
+      // 没有版本资源的壳（测试 / 某些桌面调试构建）：留 null，界面显示占位。
+    }
+  }
+
   AppController({
     required this.service,
     required this.taskDir,
@@ -668,6 +693,15 @@ class AppController extends ChangeNotifier {
 
   Future<void> removeMainlineLog(String id, int index) =>
       _mainlineCommand((svc) => svc.removeLog(id, index));
+
+  /// 月记：一个月一句（记录页切到月视图时写；空文本 = 删掉这个月那条）。
+  Future<void> setMainlineMonthNote(
+    String id,
+    int year,
+    int month,
+    String text,
+  ) =>
+      _mainlineCommand((svc) => svc.setMonthNote(id, year, month, text));
 
   /// 归档（行为链必须全勾完；没勾完会抛 StateError，由 UI 提示）。
   Future<void> completeMainline(String id) =>

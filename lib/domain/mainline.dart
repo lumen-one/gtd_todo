@@ -100,6 +100,34 @@ class MainlineLog {
   String toString() => 'MainlineLog($start~$end, $text)';
 }
 
+/// 月记：一个月一条文字（记录页切到"月视图"时写的那些）。
+///
+/// 与 [MainlineLog] 的分界线是**它不覆盖任何一天**：日历格子的小点、当天详情都不认
+/// 它，它只回答"这个月在干什么"。混进圈里会让整月每一天的详情都冒出同一句，
+/// 所以是独立的类型（`docs/decisions/2026-10-25-mainline-month-note.md`）。
+class MainlineMonthNote {
+  final int year;
+
+  /// 1–12。
+  final int month;
+
+  final String text;
+
+  const MainlineMonthNote({
+    required this.year,
+    required this.month,
+    required this.text,
+  });
+
+  bool isFor(int y, int m) => year == y && month == m;
+
+  MainlineMonthNote copyWith({String? text}) =>
+      MainlineMonthNote(year: year, month: month, text: text ?? this.text);
+
+  @override
+  String toString() => 'MainlineMonthNote($year-$month, $text)';
+}
+
 /// 一条主线。
 class Mainline {
   final String id;
@@ -111,6 +139,7 @@ class Mainline {
 
   final List<MainlineStep> steps;
   final List<MainlineLog> logs;
+  final List<MainlineMonthNote> months;
 
   Mainline({
     required this.id,
@@ -119,8 +148,10 @@ class Mainline {
     this.completedAt,
     List<MainlineStep> steps = const [],
     List<MainlineLog> logs = const [],
+    List<MainlineMonthNote> months = const [],
   })  : steps = List.unmodifiable(steps),
-        logs = List.unmodifiable(logs);
+        logs = List.unmodifiable(logs),
+        months = List.unmodifiable(months);
 
   /// 新建一条（[stepTitles] 可直接给几步空链）。
   factory Mainline.fresh({
@@ -177,12 +208,39 @@ class Mainline {
   List<MainlineLog> get logsInOrder =>
       [...logs]..sort((a, b) => a.start.compareTo(b.start));
 
+  /// 那个月的月记；没写过 → null。
+  MainlineMonthNote? monthNoteOf(int year, int month) {
+    for (final n in months) {
+      if (n.isFor(year, month)) return n;
+    }
+    return null;
+  }
+
+  /// 月记按年月升序。
+  List<MainlineMonthNote> get monthsInOrder => [...months]..sort((a, b) {
+        final byYear = a.year.compareTo(b.year);
+        return byYear != 0 ? byYear : a.month.compareTo(b.month);
+      });
+
+  /// 有就改、没有就加；[text] 去掉首尾空白后为空 = 删掉这个月那条。
+  ///
+  /// 一个月只留一条，所以"再写一次"就是改，不叠第二条。
+  List<MainlineMonthNote> withMonthNote(int year, int month, String text) {
+    final t = text.trim();
+    final next = [for (final n in months) if (!n.isFor(year, month)) n];
+    if (t.isNotEmpty) {
+      next.add(MainlineMonthNote(year: year, month: month, text: t));
+    }
+    return next;
+  }
+
   Mainline copyWith({
     String? title,
     DateTime? completedAt,
     bool clearCompleted = false,
     List<MainlineStep>? steps,
     List<MainlineLog>? logs,
+    List<MainlineMonthNote>? months,
   }) {
     return Mainline(
       id: id,
@@ -191,10 +249,12 @@ class Mainline {
       completedAt: clearCompleted ? null : (completedAt ?? this.completedAt),
       steps: steps ?? this.steps,
       logs: logs ?? this.logs,
+      months: months ?? this.months,
     );
   }
 
   @override
   String toString() =>
-      'Mainline($id, $title, $progressText, ${logs.length} logs)';
+      'Mainline($id, $title, $progressText, ${logs.length} logs, '
+      '${months.length} month notes)';
 }

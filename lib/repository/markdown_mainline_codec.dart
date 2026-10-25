@@ -20,11 +20,18 @@ import 'mainline_codec.dart';
 /// ### 记录
 ///
 /// - 2026-10-19 ~ 2026-10-21 连续三天都在写第三章
+///
+/// ### 月记
+///
+/// - 2026-10 这个月把第三章写完
 /// ```
 ///
 /// 保真：应用拥有的 frontmatter 字段**原地改写**，未知字段/注释/空行原样保留
 /// （与 routines.md 同档）。**正文不保真**——它本身就是数据，保存时按模型重写
 /// （局限登记在 B.6）。解析永不抛异常：坏条目记告警后跳过。
+///
+/// 月记（`### 月记`）与记录的分工见 `docs/decisions/2026-10-25-mainline-month-note.md`：
+/// 月记不覆盖任何一天，所以它单独一段、单独一行格式。
 class MarkdownMainlineCodec implements MainlineCodec {
   /// 应用拥有的 frontmatter 字段。
   static const List<String> _ownedKeys = ['id', 'title', 'created', 'completed'];
@@ -52,6 +59,7 @@ class MarkdownMainlineCodec implements MainlineCodec {
       }
       final steps = <MainlineStep>[];
       final logs = <MainlineLog>[];
+      final monthNotes = <MainlineMonthNote>[];
       var mode = _Section.other;
       for (final line in block.bodyLines) {
         final t = line.trim();
@@ -70,6 +78,13 @@ class MarkdownMainlineCodec implements MainlineCodec {
         } else if (mode == _Section.logs && t.startsWith('- ')) {
           final log = _parseLog(t);
           if (log != null) logs.add(log);
+        } else if (mode == _Section.months && t.startsWith('- ')) {
+          final note = _parseMonthNote(t);
+          if (note != null) {
+            // 手写重复行时后者为准（一个月只留一条）
+            monthNotes.removeWhere((n) => n.isFor(note.year, note.month));
+            monthNotes.add(note);
+          }
         }
       }
       mainlines.add(Mainline(
@@ -80,6 +95,7 @@ class MarkdownMainlineCodec implements MainlineCodec {
         completedAt: _parseIso(block.fields['completed']),
         steps: steps,
         logs: logs,
+        months: monthNotes,
       ));
     }
     return MainlineDecodeResult(mainlines, warnings);
@@ -128,6 +144,13 @@ class MarkdownMainlineCodec implements MainlineCodec {
       for (final l in m.logsInOrder) {
         out.write('${_encodeLog(l)}\n');
       }
+      // 一个月都没写就不留空段：老文件保存后形状不变。
+      if (m.months.isNotEmpty) {
+        out.write('\n### 月记\n\n');
+        for (final n in m.monthsInOrder) {
+          out.write('${_encodeMonthNote(n)}\n');
+        }
+      }
       if (i != mainlines.length - 1) out.write('\n');
     }
     return out.toString();
@@ -148,6 +171,12 @@ class MarkdownMainlineCodec implements MainlineCodec {
         ? _fmtDate(l.start)
         : '${_fmtDate(l.start)} ~ ${_fmtDate(l.end)}';
     final text = _oneLine(l.text).trim();
+    return text.isEmpty ? '- $head' : '- $head $text';
+  }
+
+  static String _encodeMonthNote(MainlineMonthNote n) {
+    final head = '${n.year.toString().padLeft(4, '0')}-${_two(n.month)}';
+    final text = _oneLine(n.text).trim();
     return text.isEmpty ? '- $head' : '- $head $text';
   }
 
@@ -189,6 +218,23 @@ class MarkdownMainlineCodec implements MainlineCodec {
     final end = _parseDate(m.group(2) ?? m.group(1)!);
     if (start == null || end == null) return null;
     return MainlineLog.range(start: start, end: end, text: m.group(3)!.trim());
+  }
+
+  /// 一行月记 → 月记。行首必须是 `年-月`（两位数月份），否则忽略。
+  ///
+  /// 与 [_parseLog] 的日期行不撞：那边要完整的 `年-月-日`，`2026-10` 匹配不上。
+  static MainlineMonthNote? _parseMonthNote(String line) {
+    final m =
+        RegExp(r'^-\s*(\d{4})-(\d{1,2})\s*(.*)$').firstMatch(line);
+    if (m == null) return null;
+    final year = int.parse(m.group(1)!);
+    final month = int.parse(m.group(2)!);
+    if (month < 1 || month > 12) return null;
+    return MainlineMonthNote(
+      year: year,
+      month: month,
+      text: m.group(3)!.trim(),
+    );
   }
 
   // ---------- frontmatter ----------
@@ -270,6 +316,7 @@ class MarkdownMainlineCodec implements MainlineCodec {
     if (!trimmedLine.startsWith('#')) return null;
     final text = trimmedLine.replaceFirst(RegExp(r'^#+\s*'), '').trim();
     if (text.startsWith('行为链')) return _Section.steps;
+    if (text.startsWith('月记')) return _Section.months;
     if (text.startsWith('记录')) return _Section.logs;
     return null;
   }
@@ -325,7 +372,7 @@ class MarkdownMainlineCodec implements MainlineCodec {
       original.endsWith('\r') ? '$value\r' : value;
 }
 
-enum _Section { steps, logs, other }
+enum _Section { steps, logs, months, other }
 
 class _Block {
   final List<String> frontLines;

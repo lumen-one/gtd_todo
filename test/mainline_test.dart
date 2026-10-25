@@ -89,6 +89,47 @@ owner: me
       expect(decoded.mainlines.last.isActive, isFalse);
     });
 
+    test('月记：一条一行，手写重复行以后者为准，往返不丢', () {
+      const raw = '''---
+id: ml-m
+title: 论文
+created: 2026-10-01T09:00
+---
+
+### 行为链
+
+- [ ] 列提纲
+
+### 记录
+
+- 2026-10-19 单天一条
+
+### 月记
+
+- 2026-10 这个月在写第三章
+- 2026-09 九月在找资料
+- 2026-10 十月改口了
+''';
+      final codec = MarkdownMainlineCodec();
+      final m = codec.decode(raw).mainlines.single;
+      expect(m.months, hasLength(2), reason: '同一个月只留一条');
+      expect(m.monthNoteOf(2026, 10)?.text, '十月改口了');
+      expect(m.monthsInOrder.map((n) => n.month), [9, 10]);
+      // 月记不参与"哪天有内容"的判定
+      expect(m.hasActivityOn(DateTime(2026, 10, 21)), isFalse);
+
+      final encoded = codec.encode([m]);
+      expect(encoded, contains('### 月记'));
+      expect(encoded, contains('- 2026-10 十月改口了'));
+      expect(codec.decode(encoded).mainlines.single.months, hasLength(2));
+    });
+
+    test('没有月记：保存后不留 `### 月记` 空段', () {
+      final codec = MarkdownMainlineCodec();
+      final m = codec.decode(sample).mainlines.single;
+      expect(codec.encode([m]), isNot(contains('### 月记')));
+    });
+
     test('宽容：缺 id / 未闭合 frontmatter 不抛异常', () {
       final codec = MarkdownMainlineCodec();
       final result = codec.decode('''
@@ -184,8 +225,24 @@ title: 没闭合
       expect(svc.byId(m.id)!.logs, isEmpty);
     });
 
-    test('落盘 → 新实例读回（仓储是唯一事实来源）', () async {
-      final repo = MemoryMainlineRepository();
+    test('月记：一个月一条，再写就是改；空文本删掉这条', () async {
+      final svc = MainlineService(repo: MemoryMainlineRepository());
+      final m = await svc.create(title: '论文');
+
+      await svc.setMonthNote(m.id, 2026, 10, '这个月在写第三章');
+      await svc.setMonthNote(m.id, 2026, 10, '改过');
+      expect(svc.byId(m.id)!.months, hasLength(1));
+      expect(svc.byId(m.id)!.monthNoteOf(2026, 10)!.text, '改过');
+
+      await svc.setMonthNote(m.id, 2026, 9, '九月在找资料');
+      expect(svc.byId(m.id)!.monthsInOrder.map((n) => n.month), [9, 10]);
+
+      await svc.setMonthNote(m.id, 2026, 10, '   ');
+      expect(svc.byId(m.id)!.months, hasLength(1));
+      expect(svc.byId(m.id)!.monthNoteOf(2026, 10), isNull);
+    });
+
+    test('落盘 → 新实例读回（仓储是唯一事实来源）', () async {      final repo = MemoryMainlineRepository();
       final one = MainlineService(repo: repo);
       final m = await one.create(title: '论文', steps: ['a']);
       await one.addLog(m.id,
