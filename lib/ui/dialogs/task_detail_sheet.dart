@@ -65,6 +65,7 @@ Widget _head(BuildContext context, Task task, TaskMenuKind kind) {
     TaskMenuKind.inProgress => '挂起中',
     TaskMenuKind.completed => '已完成',
     TaskMenuKind.routine => '例行',
+    TaskMenuKind.branch => '支线',
     TaskMenuKind.pool => task.type == TaskType.fixed
         ? '固定时点'
         : (task.deadline == null ? '三无散件' : null),

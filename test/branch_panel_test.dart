@@ -1,0 +1,147 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:gtd_todo/application/branch_service.dart';
+import 'package:gtd_todo/application/plan_service.dart';
+import 'package:gtd_todo/application/task_service.dart';
+import 'package:gtd_todo/domain/branch.dart';
+import 'package:gtd_todo/domain/time_context.dart';
+import 'package:gtd_todo/repository/memory_branch_repository.dart';
+import 'package:gtd_todo/repository/memory_plan_repository.dart';
+import 'package:gtd_todo/repository/memory_task_repository.dart';
+import 'package:gtd_todo/scheduler/slack_scheduler.dart';
+import 'package:gtd_todo/ui/app_controller.dart';
+import 'package:gtd_todo/ui/panels/plan_panel.dart';
+import 'package:gtd_todo/ui/panels/today_panel.dart';
+import 'package:gtd_todo/ui/widgets/task_selection.dart';
+
+/// 支线（§6.12）：入口、卡片渲染、勾完沉底。
+void main() {
+  final day = DateTime(2026, 10, 22);
+
+  Future<(AppController, TaskService)> makeController(
+      {List<Branch> branches = const []}) async {
+    final tasks = TaskService(
+      repo: MemoryTaskRepository(),
+      scheduler: const SlackScheduler(),
+      workRule: WorkTimeRule.standard,
+      clock: () => DateTime(2026, 10, 22, 9),
+    );
+    final branchService = BranchService(
+      repo: MemoryBranchRepository(branches),
+      titleOf: (id) => tasks.byId(id)?.title,
+    );
+    await branchService.load();
+    final controller = AppController(
+      service: tasks,
+      taskDir: '/tmp/tasks',
+      planService: PlanService(repo: MemoryPlanRepository()),
+      branchService: branchService,
+    );
+    return (controller, tasks);
+  }
+
+  Future<void> pumpOverlay(WidgetTester tester, AppController c) async {
+    c.openBranch();
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SizedBox(
+          width: 320,
+          height: 620,
+          child: AnimatedBuilder(
+            animation: c,
+            builder: (context, _) => PlanOverlay(
+              controller: c,
+              onClose: () {},
+              day: day,
+              now: DateTime(2026, 10, 22, 22, 30),
+            ),
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('空态：一句引导 + 新建一条就出现空文件夹', (tester) async {
+    final (c, _) = await makeController();
+    await pumpOverlay(tester, c);
+
+    expect(find.text('还没有支线'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, '新建支线'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField).first, '校招');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    expect(c.branches.single.name, '校招');
+    expect(find.text('校招'), findsOneWidget);
+    expect(find.text('空文件夹'), findsOneWidget);
+  });
+
+  testWidgets('行是任务本身：勾一下就完成，划掉的沉到卡片末尾', (tester) async {
+    final (c, tasks) = await makeController(branches: [Branch(name: 'A')]);
+    final first = await tasks.createTask(title: '第一件');
+    final second = await tasks.createTask(title: '第二件');
+    await c.addTaskToBranch(0, first.id);
+    await c.addTaskToBranch(0, second.id);
+    await pumpOverlay(tester, c);
+
+    expect(find.text('0/2'), findsOneWidget);
+    expect(tester.getTopLeft(find.text('第一件')).dy,
+        lessThan(tester.getTopLeft(find.text('第二件')).dy));
+
+    // 点勾 = 完成那个任务（不是给支线记一笔）。
+    await tester.tap(find.byType(Checkbox).first);
+    await tester.pumpAndSettle();
+
+    expect(tasks.byId(first.id)!.isCompleted, isTrue);
+    expect(find.text('1/2'), findsOneWidget);
+    // 已完成沉底：第一件跑到第二件下面。
+    expect(tester.getTopLeft(find.text('第一件')).dy,
+        greaterThan(tester.getTopLeft(find.text('第二件')).dy));
+  });
+
+  testWidgets('候选只列清单与池子里的任务，落一条就进支线', (tester) async {
+    final (c, tasks) = await makeController(branches: [Branch(name: 'A')]);
+    final only = await tasks.createTask(title: '写落地页');
+    await pumpOverlay(tester, c);
+
+    await tester.tap(find.text('添加任务'));
+    await tester.pumpAndSettle();
+    expect(find.text('写落地页'), findsOneWidget);
+
+    await tester.tap(find.text('写落地页'));
+    await tester.pumpAndSettle();
+    expect(c.branches.single.entries.single.taskId, only.id);
+  });
+
+  testWidgets('今日页日期行右端是支线入口，点了落支线视图', (tester) async {
+    final (c, _) = await makeController();
+    final selection = TaskSelection();
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SizedBox(
+          width: 320,
+          height: 620,
+          child: AnimatedBuilder(
+            animation: c,
+            builder: (context, _) => TodayPanel(
+              controller: c,
+              selection: selection,
+            ),
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    // 今日清单空着时日期行也在：空态不该把支线的入口吞掉。
+    expect(find.byTooltip('支线'), findsOneWidget);
+    await tester.tap(find.byTooltip('支线'));
+    await tester.pumpAndSettle();
+
+    expect(c.planOpen, isTrue);
+    expect(c.arrangeView, ArrangeView.branch);
+  });
+}

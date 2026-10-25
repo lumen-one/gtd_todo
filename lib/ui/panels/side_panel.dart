@@ -247,6 +247,7 @@ class _SidePanelState extends State<SidePanel> {
               borderRadius: BorderRadius.circular(20),
               child: _PlanReveal(
                 open: controller.planOpen,
+                instantEnter: controller.planEnterInstant,
                 pull: controller.planPull,
                 dragging: controller.planDragging,
                 exit: controller.planExit,
@@ -535,6 +536,10 @@ class _PlanReveal extends StatefulWidget {
   /// 覆盖页该不该在（= `AppController.planOpen`）。
   final bool open;
 
+  /// 打开时直接落位、不播补满动画（= 面板自己正滑进来，覆盖页得第一帧就在）。
+  /// 点日期行按钮打开支线时为 false：那时面板早已在屏幕上，凭空出现才是怪事。
+  final bool instantEnter;
+
   /// 跟手行程（逻辑像素；0 = 完全藏起来）。
   final ValueListenable<double> pull;
 
@@ -551,6 +556,7 @@ class _PlanReveal extends StatefulWidget {
 
   const _PlanReveal({
     required this.open,
+    required this.instantEnter,
     required this.pull,
     required this.dragging,
     required this.exit,
@@ -622,7 +628,7 @@ class _PlanRevealState extends State<_PlanReveal>
     }
     if (widget.open != oldWidget.open) {
       if (widget.open && !_visible) setState(() => _visible = true);
-      if (widget.open && _ctrl.value == 0) {
+      if (widget.open && _ctrl.value == 0 && widget.instantEnter) {
         // 从"整个藏着"直接打开 = 面板展开即落编排（§6.11）：这一下**不播进场
         // 动画**。播的话那 200ms 里露着的是它底下的今日清单，看着就是"先给清单、
         // 再切成编排"。跟手拉出来那一路此刻 `_ctrl.value` 已经大于 0，照旧补满。

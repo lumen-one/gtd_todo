@@ -35,6 +35,7 @@ Future<void> showTaskMenu(
       TaskMenuKind.inProgress => '挂起中',
       TaskMenuKind.completed => '已完成',
       TaskMenuKind.loose => '散件',
+      TaskMenuKind.branch => '支线',
       _ => null,
     },
     entries: taskMenuEntries(context, controller, task, kind),
@@ -258,8 +259,18 @@ class _SelectModeTile extends StatelessWidget {
 /// [loose] = 今日页 ⑥ 散件段（仅无排序档，ui 文档 §6.1）。
 /// [inProgress] = 今日页最顶的挂起组（决议 47：长期任务"正在做"）。
 /// [completed] = 已完成页（ui 文档 §6.7：只有恢复未完成 / 删除）。
+/// [branch] = 支线视图（ui 文档 §6.12：条目是任务引用，动作与今日清单同款）。
 enum TaskMenuKind {
-  overdue, fixed, flex, picked, routine, pool, loose, inProgress, completed
+  overdue,
+  fixed,
+  flex,
+  picked,
+  routine,
+  pool,
+  loose,
+  inProgress,
+  completed,
+  branch
 }
 
 class _MenuTag extends StatelessWidget {

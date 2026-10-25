@@ -6,6 +6,7 @@ import '../../domain/plan.dart';
 import '../../domain/task.dart';
 import '../app_controller.dart';
 import '../theme.dart';
+import 'branch_panel.dart';
 
 /// 编排覆盖页（panels/plan.md §6.11；格式见 docs/formats/plan.md）。
 ///
@@ -63,12 +64,16 @@ class _PlanOverlayState extends State<PlanOverlay> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final count = widget.controller.planEntriesFor(_dayAt(_index)).length;
+    // 同一块壳的两面（§6.11 / §6.12）：数据各是各的，只有页头与进出共用。
+    final branch = widget.controller.arrangeView == ArrangeView.branch;
+    final count = branch
+        ? widget.controller.branches.length
+        : widget.controller.planEntriesFor(_dayAt(_index)).length;
     return Material(
       color: theme.scaffoldBackgroundColor,
       child: Column(
         children: [
-          _header(theme, count),
+          _header(theme, count, branch: branch),
           const Divider(height: 1),
           Expanded(
             // 桌面：overscroll 只能靠按住鼠标拖出来（滚轮滚到头继续滚是常态，
@@ -80,20 +85,22 @@ class _PlanOverlayState extends State<PlanOverlay> {
               ),
               child: NotificationListener<ScrollNotification>(
                 onNotification: _onScroll,
-                child: PageView(
-                  controller: _pages,
-                  onPageChanged: (i) => setState(() => _index = i),
-                  children: [
-                    for (var i = 0; i < 3; i++)
-                      _DayTimeline(
-                        key: ValueKey(planDayKey(_dayAt(i))),
-                        controller: widget.controller,
-                        day: _dayAt(i),
-                        now: _now,
-                        readOnly: i == 0,
+                child: branch
+                    ? BranchBoard(controller: widget.controller)
+                    : PageView(
+                        controller: _pages,
+                        onPageChanged: (i) => setState(() => _index = i),
+                        children: [
+                          for (var i = 0; i < 3; i++)
+                            _DayTimeline(
+                              key: ValueKey(planDayKey(_dayAt(i))),
+                              controller: widget.controller,
+                              day: _dayAt(i),
+                              now: _now,
+                              readOnly: i == 0,
+                            ),
+                        ],
                       ),
-                  ],
-                ),
               ),
             ),
           ),
@@ -123,9 +130,10 @@ class _PlanOverlayState extends State<PlanOverlay> {
 
   // ---- 头部 ----
 
-  Widget _header(ThemeData theme, int count) {
+  Widget _header(ThemeData theme, int count, {required bool branch}) {
     final hint = theme.colorScheme.onSurfaceVariant;
-    final readOnly = _index == 0;
+    // 昨天只读是编排视图的事；支线不分天，没有"锁"这一说。
+    final readOnly = !branch && _index == 0;
     return Padding(
       padding: const EdgeInsets.fromLTRB(2, 4, 12, 0),
       child: Column(
@@ -137,30 +145,64 @@ class _PlanOverlayState extends State<PlanOverlay> {
                 icon: const Icon(Icons.arrow_back),
                 onPressed: widget.onClose,
               ),
-              // 标题不带"今日"：这一页同时装昨天和明天。
-              Expanded(
-                child: Text('编排',
-                    style: theme.textTheme.titleMedium,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis),
-              ),
+              // 这一页同时装昨天、明天和支线：标题位置给"视图切换"，
+              // 写死的「编排」在支线视图上是错的。
+              _viewTab(theme, ArrangeView.plan, '编排'),
+              const SizedBox(width: 8),
+              _viewTab(theme, ArrangeView.branch, '支线'),
+              const Spacer(),
               if (readOnly) ...[
                 Icon(Icons.lock_outline, size: 14, color: hint),
                 const SizedBox(width: 4),
               ],
               if (count > 0)
                 Text(
-                  '$count 项',
+                  branch ? '$count 条线' : '$count 项',
                   style: theme.textTheme.labelMedium?.copyWith(color: hint),
                 ),
             ],
           ),
-          Row(
-            children: [
-              for (var i = 0; i < 3; i++) Expanded(child: _tab(theme, i)),
-            ],
-          ),
+          if (!branch)
+            Row(
+              children: [
+                for (var i = 0; i < 3; i++) Expanded(child: _tab(theme, i)),
+              ],
+            ),
         ],
+      ),
+    );
+  }
+
+  /// 页头那两段视图切换：当前那段强调色加粗 + 下划线，点另一个就换视图。
+  ///
+  /// 切换只改这一次打开看到的东西，不动数据、不改开合；下次从哪个入口进来
+  /// 还是落哪个视图（[AppController.openPlan] / [AppController.openBranch]）。
+  Widget _viewTab(ThemeData theme, ArrangeView value, String label) {
+    final selected = widget.controller.arrangeView == value;
+    final accent = AppColors.accent;
+    return InkWell(
+      onTap: () => widget.controller.showArrangeView(value),
+      borderRadius: BorderRadius.circular(6),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 7),
+        child: Container(
+          padding: const EdgeInsets.only(bottom: 2),
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(
+                color: selected ? accent : Colors.transparent,
+                width: 2,
+              ),
+            ),
+          ),
+          child: Text(
+            label,
+            style: theme.textTheme.titleMedium?.copyWith(
+              color: selected ? accent : theme.colorScheme.onSurfaceVariant,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            ),
+          ),
+        ),
       ),
     );
   }

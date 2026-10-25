@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show ThemeMode;
 
+import '../application/branch_service.dart';
 import '../application/delivery.dart';
 import '../application/mainline_service.dart';
 import '../application/notification_window.dart';
@@ -15,6 +16,7 @@ import '../application/shell_capabilities.dart';
 import '../application/sync.dart';
 import '../application/task_service.dart';
 import '../application/today_view.dart';
+import '../domain/branch.dart';
 import '../domain/event.dart';
 import '../domain/mainline.dart';
 import '../domain/plan.dart';
@@ -25,6 +27,13 @@ import '../domain/task.dart';
 import '../domain/time_context.dart';
 import 'panel_pages.dart';
 import 'theme.dart';
+
+/// 编排那块覆盖页的两个视图（ui-interaction.md §6.11 / §6.12）。
+///
+/// 同一块壳、两套互不相干的数据：时间轴（编排）与文件夹（支线）。落哪个视图由
+/// **入口**决定——今日页到顶下拉落 [plan]，日期行右端那颗按钮落 [branch]；
+/// 页头切换只改这一次打开，下次进来重新按入口算。
+enum ArrangeView { plan, branch }
 
 String _dayMark(DateTime d) =>
     '${d.year}-${d.month.toString().padLeft(2, '0')}'
@@ -48,6 +57,12 @@ class AppController extends ChangeNotifier {
   ///
   /// 同样与 [service] 并列：编排条目不是任务，不参与调度、不响提醒。
   final PlanService? planService;
+
+  /// 支线服务（ui-interaction.md §6.12；null = 未装配，日期行那颗按钮不出现）。
+  ///
+  /// 第五份数据（`支线.md`），与 [service] / 主线 / 编排都不相交：条目是任务的
+  /// id 引用，但服务本身不认识任务——标题由 [BranchService.titleOf] 注入。
+  final BranchService? branchService;
 
   final String taskDir;
 
@@ -263,6 +278,27 @@ class AppController extends ChangeNotifier {
 
   bool get planOpen => _planOpen;
 
+  /// 这次打开落在哪个视图（页头切换会改它；关闭后保留，下次打开由入口重设）。
+  ArrangeView _arrangeView = ArrangeView.plan;
+
+  ArrangeView get arrangeView => _arrangeView;
+
+  /// 页头切换（编排 ↔ 支线）：只换这一页里显示什么，不动数据、不改开合。
+  void showArrangeView(ArrangeView view) {
+    if (_arrangeView == view) return;
+    _arrangeView = view;
+    notifyListeners();
+  }
+
+  /// 这次打开要不要跳过进场动画（= 面板自己正滑进来，覆盖页得第一帧就在）。
+  ///
+  /// 只有"面板展开即落编排"要跳过：那时底下露着今日清单，播 200ms 动画就成了
+  /// "先给清单、再切成编排"。点日期行按钮打开支线是另一回事——面板早已在屏幕上，
+  /// 不播动画等于凭空出现。
+  bool _planEnterInstant = false;
+
+  bool get planEnterInstant => _planEnterInstant;
+
   /// 下拉跟手的行程（逻辑像素，0 = 完全藏起来）。**单独一个 notifier**：拖动时
   /// 每帧都在变，走 [notifyListeners] 会把整棵面板（含可能很长的清单）一起重建。
   final ValueNotifier<double> planPull = ValueNotifier<double>(0);
@@ -304,9 +340,33 @@ class AppController extends ChangeNotifier {
     if (_planOpen) {
       planPull.value = 0;
       planDragging.value = false;
+      // 开在支线视图上时，"落编排"就是切回来。
+      if (_arrangeView != ArrangeView.plan) {
+        _arrangeView = ArrangeView.plan;
+        notifyListeners();
+      }
       return;
     }
     // 先立旗再松手：`_PlanReveal` 在"松手"的那一刻决定往哪边补。
+    _arrangeView = ArrangeView.plan;
+    _planEnterInstant = true;
+    _planOpen = true;
+    planPull.value = 0;
+    planDragging.value = false;
+    notifyListeners();
+  }
+
+  /// 从今日页日期行打开支线视图（§6.12）：与 [openPlan] 共用同一块覆盖页，
+  /// 只是落在另一个视图。面板早已在屏幕上，所以**不跳过进场动画**——不然那
+  /// 一整页是凭空出现的。
+  void openBranch() {
+    if (branchService == null) return;
+    _arrangeView = ArrangeView.branch;
+    if (_planOpen) {
+      notifyListeners();
+      return;
+    }
+    _planEnterInstant = false;
     _planOpen = true;
     planPull.value = 0;
     planDragging.value = false;
@@ -420,6 +480,7 @@ class AppController extends ChangeNotifier {
     this.routineService,
     this.mainlineService,
     this.planService,
+    this.branchService,
     this.settingsPort,
     this.bootstrapPort,
     this.permissions,
@@ -460,6 +521,11 @@ class AppController extends ChangeNotifier {
       await planService?.load();
     } catch (_) {
       // 编排读失败不阻塞启动：今日页照样能下拉，只是时间轴先空着
+    }
+    try {
+      await branchService?.load();
+    } catch (_) {
+      // 支线读失败不阻塞启动：日期行按钮照常，列表先空着
     }
   }
 
@@ -763,6 +829,59 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ---- 支线（§6.12）----
+
+  /// 支线是否接入（未装配 → 日期行那颗按钮不出现）。
+  bool get hasBranches => branchService != null;
+
+  List<Branch> get branches => branchService?.branches ?? const [];
+
+  /// 某条支线里的条目（文件里的行序；已完成的不在这儿沉底——那是渲染的事）。
+  List<BranchEntry> branchEntries(int index) {
+    final list = branches;
+    if (index < 0 || index >= list.length) return const [];
+    return list[index].entries;
+  }
+
+  /// 这条支线里的任务；查不到的 id 给 null（界面按失效引用显示，不删行）。
+  List<Task?> branchTasks(int index) => [
+        for (final e in branchEntries(index)) taskById(e.taskId),
+      ];
+
+  /// 这件任务挂在哪几条支线上（候选框右侧标注用；可以有好几条）。
+  List<String> branchNamesOf(String taskId) => [
+        for (final b in branches)
+          if (b.contains(taskId)) b.name,
+      ];
+
+  Future<void> addBranch(String name) =>
+      _branchCommand((svc) => svc.addBranch(name));
+
+  Future<void> renameBranch(int index, String name) =>
+      _branchCommand((svc) => svc.renameBranch(index, name));
+
+  /// 删一条支线：只删分组，任务一件都不动。
+  Future<void> removeBranch(int index) =>
+      _branchCommand((svc) => svc.removeBranch(index));
+
+  Future<void> addTaskToBranch(int index, String taskId) =>
+      _branchCommand((svc) => svc.addTask(index, taskId));
+
+  Future<void> removeTaskFromBranch(int index, String taskId) =>
+      _branchCommand((svc) => svc.removeTask(index, taskId));
+
+  /// 整段重写（拖动改顺序）。
+  Future<void> setBranchEntries(int index, List<BranchEntry> entries) =>
+      _branchCommand((svc) => svc.setEntries(index, entries));
+
+  Future<void> _branchCommand(
+      Future<void> Function(BranchService svc) op) async {
+    final svc = branchService;
+    if (svc == null) return;
+    await op(svc);
+    notifyListeners();
+  }
+
   // ---- 周期任务（决议 5/12/23）----
 
   List<Routine> get routines => routineService?.routines ?? const [];
@@ -1000,6 +1119,12 @@ class AppController extends ChangeNotifier {
     // 编排同理（`编排.md` 与 `主线.md` 是同一类：整份由应用维护）。
     try {
       await planService?.load();
+    } catch (_) {
+      // 读失败保留上次内存态
+    }
+    // 支线同理（`支线.md` 也是整份由应用维护的那一类）。
+    try {
+      await branchService?.load();
     } catch (_) {
       // 读失败保留上次内存态
     }

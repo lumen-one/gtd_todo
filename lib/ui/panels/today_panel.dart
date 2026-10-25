@@ -43,26 +43,31 @@ class TodayPanel extends StatelessWidget {
 
     if (view.isEmpty) {
       // 空态也要能下拉进编排（§6.11）：所以是一张可滚的列表，不是居中一块——
-      // "今天清单空着"恰恰是最想编排的时候。
+      // "今天清单空着"恰恰是最想编排的时候。日期行照留——支线的入口在那儿
+      // （§6.12），空态只把提示往下推。
       return _withPlanPull(
         ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.only(top: 110),
+          padding: const EdgeInsets.only(bottom: 96),
           children: [
-            FadeIn(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.wb_sunny_outlined,
-                      size: 44, color: theme.colorScheme.onSurfaceVariant),
-                  const SizedBox(height: 8),
-                  const Text('今天没有会响的事'),
-                  const SizedBox(height: 12),
-                  FilledButton.tonal(
-                    onPressed: () => _pickRandom(context),
-                    child: const Text('从池子随机挑一件'),
-                  ),
-                ],
+            _dateRow(theme, view.day),
+            Padding(
+              padding: const EdgeInsets.only(top: 84),
+              child: FadeIn(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.wb_sunny_outlined,
+                        size: 44, color: theme.colorScheme.onSurfaceVariant),
+                    const SizedBox(height: 8),
+                    const Text('今天没有会响的事'),
+                    const SizedBox(height: 12),
+                    FilledButton.tonal(
+                      onPressed: () => _pickRandom(context),
+                      child: const Text('从池子随机挑一件'),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -78,10 +83,7 @@ class TodayPanel extends StatelessWidget {
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(0, 6, 0, 96),
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(18, 8, 18, 6),
-          child: Text(_dateLabel(view.day), style: theme.textTheme.titleMedium),
-        ),
+        _dateRow(theme, view.day),
         // ⓿ 挂起组：长期任务"正在做"（v0.17，决议 47）：无编号、置于本页最顶
         // （逾期组之上），组内可上下拖动调序；三档调度模式下都在。
         if (view.inProgress.isNotEmpty) ...[
@@ -225,6 +227,36 @@ class TodayPanel extends StatelessWidget {
       ],
     );
     return _withPlanPull(list);
+  }
+
+  /// 顶部日期行 + 右端的支线入口（§6.12）。
+  ///
+  /// 支线未装配时只剩日期——不为一个进不去的地方摆颗按钮。日期与按钮同一行：
+  /// 窄面板 240dp 上也放得下 `10 月 25 日 · 周日` 加一颗 34dp 的图标钮。
+  Widget _dateRow(ThemeData theme, DateTime day) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 6, 8, 2),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(_dateLabel(day), style: theme.textTheme.titleMedium),
+          ),
+          if (controller.hasBranches)
+            IconButton(
+              tooltip: '支线',
+              iconSize: 20,
+              color: theme.colorScheme.onSurfaceVariant,
+              style: IconButton.styleFrom(
+                minimumSize: const Size(34, 34),
+                padding: EdgeInsets.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              icon: const Icon(Icons.call_split),
+              onPressed: controller.openBranch,
+            ),
+        ],
+      ),
+    );
   }
 
   /// 点条目：选择模式下是勾选，平时是详情卡（"点击看、长按做"）。

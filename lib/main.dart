@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import 'application/branch_service.dart';
 import 'application/event_log.dart';
 import 'application/mainline_service.dart';
 import 'application/notification_window.dart';
@@ -15,6 +16,7 @@ import 'platform/android_adapters.dart';
 import 'platform/app_adapters.dart';
 import 'platform/desktop_adapters.dart';
 import 'platform/lan_sync.dart';
+import 'repository/markdown_branch_repository.dart';
 import 'repository/markdown_routine_repository.dart';
 import 'repository/markdown_mainline_repository.dart';
 import 'repository/markdown_plan_repository.dart';
@@ -90,6 +92,14 @@ Future<void> main() async {
   final planService = PlanService(repo: MarkdownPlanRepository(taskDir));
   await planService.load();
 
+  // 支线（§6.12）：第五份数据（`支线.md`），条目是任务 id 的引用。标题由服务在
+  // 落盘时按任务的实时值重写——application 层不认识 TaskService，靠这个函数注入。
+  final branchService = BranchService(
+    repo: MarkdownBranchRepository(taskDir),
+    titleOf: (id) => service.byId(id)?.title,
+  );
+  await branchService.load();
+
   // 交付层（§4.2/§4.3）：安卓走自建原生适配器；桌面用前台适配器
   // （Timer 闹钟 + 应用内弹窗回流）。
   final bridge = isAndroid ? AndroidNativeBridge() : null;
@@ -110,6 +120,7 @@ Future<void> main() async {
     routineService: routineService,
     mainlineService: mainlineService,
     planService: planService,
+    branchService: branchService,
     settingsPort: FileSettingsPort(taskDir),
     bootstrapPort: bootstrap,
     permissions: permissions,

@@ -2,12 +2,14 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'application/branch_service.dart';
 import 'application/mainline_service.dart';
 import 'application/plan_service.dart';
 import 'application/routine_service.dart';
 import 'application/task_service.dart';
 import 'domain/time_context.dart';
 import 'platform/app_adapters.dart';
+import 'repository/markdown_branch_repository.dart';
 import 'repository/markdown_mainline_repository.dart';
 import 'repository/markdown_plan_repository.dart';
 import 'repository/markdown_routine_repository.dart';
@@ -91,12 +93,21 @@ Future<_OverlayCore> _assembleOverlayCore() async {
   );
   await plans.load();
 
+  // 支线（§6.12）：同一份 `支线.md`，各持一个服务实例（读整份 → 改一段 →
+  // 整份写回）。标题同样按本引擎内存里的任务实时值重写。
+  final branches = BranchService(
+    repo: MarkdownBranchRepository(resolved.taskDir),
+    titleOf: (id) => service.byId(id)?.title,
+  );
+  await branches.load();
+
   final controller = AppController(
     service: service,
     taskDir: resolved.taskDir,
     routineService: routines,
     mainlineService: mainlines,
     planService: plans,
+    branchService: branches,
     settingsPort: FileSettingsPort(resolved.taskDir),
     bootstrapPort: resolved.bootstrap,
     // 调度模式也要跟上（面板不装交付插座，但清单的"排什么顺序、会不会响"口径
