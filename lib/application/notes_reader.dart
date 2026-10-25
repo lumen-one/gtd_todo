@@ -11,8 +11,8 @@
 /// 写入规则（v1.29，从只读改为可编辑）：
 /// - 只替换正文段，frontmatter 与其余行**逐行原样保留**；
 /// - 换行风格（CRLF/LF）与"是否以换行结尾"沿用原文件，不整篇重排；
-/// - 编辑器的初值是正文段**完整**原文（含被屏蔽的 `[[` 行）——
-///   看不见的行不能在保存时被悄悄抹掉；
+/// - 编辑器的初值是正文段去掉被屏蔽的 `[[` 行（与只读态同一批），保存时按原行号
+///   插回——看不见的行不能在保存时被悄悄抹掉；
 /// - frontmatter 未闭合（正文段边界本身不确定）→ 拒绝写入。
 enum NotesStatus { ok, notConfigured, notFound, empty }
 
@@ -67,6 +67,50 @@ NotesReadResult extractNotesSection(String raw) {
   }
   return NotesReadResult(NotesStatus.ok,
       lines: List.unmodifiable(visible), bodyLines: bodyLines, canEdit: true);
+}
+
+/// 编辑态草稿：正文段里"只读态看不见的行"（含 `[[`）不进编辑框，保存时按原行号
+/// 插回——眼不见的行既然不给改，也不该在保存时被悄悄抹掉（§6.2）。
+class NotesDraft {
+  /// 编辑框初值：正文段去掉屏蔽行。
+  final String text;
+
+  /// 被扣掉的行及其在正文段里的行号（**升序**，见 [buildNotesDraft]）。
+  final List<({int index, String line})> hidden;
+
+  const NotesDraft(this.text, {this.hidden = const []});
+
+  /// 把编辑结果还原成正文段：按行切开，屏蔽行按原行号插回（超出新行数就落到
+  /// 末尾）。
+  ///
+  /// 多条一起插时升序逐个插入即可：前面插回的那几条正好补回被扣掉的位次，
+  /// 后面那条的原行号仍然指向它该在的位置。
+  String merge(String edited) {
+    final text = edited.replaceAll('\r\n', '\n');
+    // 全清空时按"零行"算：否则那一天空白会夹在插回的屏蔽行之间。
+    final lines = text.trim().isEmpty ? <String>[] : text.split('\n');
+    for (final h in hidden) {
+      lines.insert(h.index > lines.length ? lines.length : h.index, h.line);
+    }
+    return lines.join('\n');
+  }
+}
+
+/// 纯函数：由正文段原文生成编辑草稿。
+///
+/// 屏蔽谓词与只读态同一份（`contains('[[')`）——编辑态与只读态看到的必须是
+/// 同一批行，否则"看不见的行"两头对不上。
+NotesDraft buildNotesDraft(List<String> bodyLines) {
+  final hidden = <({int index, String line})>[];
+  final kept = <String>[];
+  for (var i = 0; i < bodyLines.length; i++) {
+    if (bodyLines[i].contains('[[')) {
+      hidden.add((index: i, line: bodyLines[i]));
+    } else {
+      kept.add(bodyLines[i]);
+    }
+  }
+  return NotesDraft(_trimTrailingBlank(kept).join('\n'), hidden: hidden);
 }
 
 /// 纯函数：把 [body] 写进 Markdown 原文的正文段，其余部分逐行原样保留。

@@ -23,6 +23,9 @@ class _NotesPanelState extends State<NotesPanel> {
   bool _editing = false;
   bool _saving = false;
 
+  /// 本次编辑的草稿：屏蔽行不在输入框里，保存时由它插回（§6.2）。
+  NotesDraft _draft = const NotesDraft('');
+
   @override
   void initState() {
     super.initState();
@@ -51,10 +54,11 @@ class _NotesPanelState extends State<NotesPanel> {
     if (mounted) setState(() {});
   }
 
-  /// 进编辑态：初值取正文段**完整**原文——只读态被 `[[` 屏蔽的行也要带进来，
-  /// 否则保存一次就把那些行抹掉了（§6.2）。
+  /// 进编辑态：初值 = 正文段去掉被 `[[` 屏蔽的行（与只读态看到的是同一份）。
+  /// 那些行留在 [_draft] 里，保存时按原行号插回，不会被抹掉（§6.2）。
   void _startEdit(NotesReadResult r) {
-    _textCtrl.text = r.bodyLines.join('\n');
+    _draft = buildNotesDraft(r.bodyLines);
+    _textCtrl.text = _draft.text;
     setState(() => _editing = true);
   }
 
@@ -64,7 +68,7 @@ class _NotesPanelState extends State<NotesPanel> {
 
   Future<void> _save() async {
     setState(() => _saving = true);
-    final ok = await widget.controller.saveNotes(_textCtrl.text);
+    final ok = await widget.controller.saveNotes(_draft.merge(_textCtrl.text));
     if (!mounted) return;
     setState(() {
       _saving = false;
