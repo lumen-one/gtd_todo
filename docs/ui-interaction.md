@@ -406,7 +406,11 @@ App 主体，桌面上它是侧边栏右边那一栏（[桌面布局](panels/des
 14. **关于**：设置页最底部一张卡，只有两行——**版本号**（形如 `1.2.0 (4)`：主版本 + 构建号）
     与**反馈方式**（QQ 号，点一下复制到剪贴板并 toast 一句）。版本号取自**安装包自己的元数据**
     （安卓 `versionName` / `versionCode`），源码里不写死：升级只改 `pubspec.yaml` 的
-    `version:`，界面自己跟上。桌面上这张卡暂不摆——那一栏要整块重做
+    `version:`，界面自己跟上。读它走**自建原生通道**（`gtd/native` 的 `appVersion`），
+    不引第三方插件——`package_info_plus` 那类插件的安卓 Gradle 脚本会自己 apply Kotlin
+    Gradle Plugin，而 AGP 9 起 Kotlin 内置、Flutter 往后要禁掉这条路。拼成
+    `主版本 (构建号)` 的规则在 `AppController.loadAppVersion`，原生只回两截事实。
+    桌面上这张卡暂不摆——那一栏要整块重做
     （[路线图](roadmap.md)），裁它的仍是同一张能力表，所以桌面设置页里连"关于"这个分区标题
     都不出现，也不去问平台读版本。
 
