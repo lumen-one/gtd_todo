@@ -87,6 +87,7 @@
 | 覆盖页上滑退出（跟手段） | 1:1 跟手，不插值 | — | `side_panel.dart`、`mainline_panel.dart` |
 | 覆盖页上滑退出（松手后补满 / 弹回） | 200ms | easeOutCubic | `side_panel.dart` |
 | 今日编排覆盖页松手补满 / 弹回（进、出两向） | 200ms | easeOutCubic | `side_panel.dart` |
+| 今日编排覆盖页"展开即落位" | 不播，当帧全开 | — | `side_panel.dart` |
 | 主线覆盖页内翻页（`1/2`、记录页下半区右滑） | 240ms | easeOutCubic | `mainline_panel.dart` |
 | 快记从方块展开成输入框 | 360ms（前 60% 走位、后 40% 展开） | 两段 easeOutCubic | `side_panel.dart` |
 | 右下角双钮 ↔ 批处理条（选择模式进出） | 160ms | 默认淡入淡出 | `panel_dock.dart` |
