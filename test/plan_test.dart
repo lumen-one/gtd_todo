@@ -217,5 +217,26 @@ void main() {
       expect([for (final d in disk) planDayKey(d.day)], ['2026-10-22', '2026-10-21']);
       expect(disk.first.entries.single.title, '今天');
     });
+
+    test('落盘不换对象：拖出来的顺序换了位，条目还是原来那几个', () async {
+      final svc = PlanService(repo: MemoryPlanRepository());
+      await svc.load();
+      await svc.addEntry(today, const PlanEntry(title: '晨会', minutesOfDay: 8 * 60));
+      await svc.addEntry(today, const PlanEntry(title: '评审', minutesOfDay: 9 * 60));
+
+      final before = svc.entriesFor(today);
+      await svc.setEntries(today, [before[1], before[0]]);
+      final after = svc.entriesFor(today);
+      // 列表按对象身份做行 key：每落一次盘就造一批新对象，拖动松手那一格会被
+      // 当成新行重建（落下动画白做）。
+      expect(identical(after.first, before[1]), isTrue);
+      expect(identical(after.last, before[0]), isTrue);
+
+      // 带空白的标题仍然被规整——那种才需要造新对象。
+      await svc.setEntries(today, [
+        const PlanEntry(title: '  评审  ', minutesOfDay: 9 * 60),
+      ]);
+      expect(svc.entriesFor(today).single.title, '评审');
+    });
   });
 }

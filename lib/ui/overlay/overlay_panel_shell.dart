@@ -88,9 +88,11 @@ class _OverlayPanelShellState extends State<OverlayPanelShell>
       // 每次展开都落一遍默认页：跟手拖出那一路的起手页已由 [_syncLandingPage]
       // 摆对，但原生也可能不经拖动直接广播展开（降级打开 / 通知拉起），
       // 那一路上没有拖动起手——这里兜住。
+      // 编排也在这一拍先立起来（§6.11）：等帧后再亮的话，面板的第一帧是今日
+      // 清单，随后才被覆盖页盖住——那一下正是"滑出来先看见清单"。
       if (s.expanded && !wasExpanded) {
+        _c.landOnPlanForToday();
         _landOnDefaultPage();
-        _landOnPlan();
       }
       if (s.expanded) _maybeOnboard();
     });
@@ -133,17 +135,6 @@ class _OverlayPanelShellState extends State<OverlayPanelShell>
       if (!mounted || !_pageCtrl.hasClients) return;
       _pageCtrl.jumpToPage(defaultPanelPageIndex(_c.settings));
     });
-    // 默认页是今日清单时，每次展开先把编排亮出来（§6.11）：收起再拉会再亮。
-    // 默认页是别的页就不亮——控制器自己判。
-    _landOnPlan();
-  }
-
-  /// 今天排过就把编排亮出来：帧后执行，让面板先把页摆对。
-  void _landOnPlan() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _c.landOnPlanForToday();
-    });
   }
 
   /// 把控制器的起手页对齐到当前设置（§9 第 12 条）。
@@ -180,7 +171,12 @@ class _OverlayPanelShellState extends State<OverlayPanelShell>
     if (e is PanelDragProgress) {
       // 面板即将挂上（收起时 PageView 是拆掉的）：先把起手页摆对，跟手拖出来
       // 的第一帧就落在设置里的默认页，别等松手补满才纠（§9 第 12 条）。
-      if (_dragProgress == null) _syncLandingPage();
+      if (_dragProgress == null) {
+        _syncLandingPage();
+        // 编排同样要先立起来（§6.11）：跟手拖出来的每一帧都该是编排，
+        // 不能先让人看见清单。
+        _c.landOnPlanForToday();
+      }
       setState(() => _dragProgress = _progressFor(e.dx));
     } else if (e is PanelDragEnd) {
       _settle(e.open);
@@ -258,6 +254,9 @@ class _OverlayPanelShellState extends State<OverlayPanelShell>
   /// 滑回屏外后收起：与点遮罩收起同一条路（原生摘窗口 + 广播状态）。
   Future<void> _collapseFromDrag() async {
     widget.controller.closeMainline();
+    // 拖出去又拖回来的那一路：拖着的时候已经把编排立起来了，这里收回，
+    // 免得下一次拉出来还挂着一块上次没看成的东西。
+    widget.controller.closePlan();
     await widget.bridge.collapse();
     if (mounted) setState(() => _dragProgress = null);
   }

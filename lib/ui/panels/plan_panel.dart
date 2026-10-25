@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 
 import '../../domain/plan.dart';
 import '../../domain/task.dart';
@@ -246,14 +247,20 @@ class _DayTimelineState extends State<_DayTimeline> {
   final TextEditingController _draft = TextEditingController();
   final FocusNode _draftFocus = FocusNode();
 
+  /// 『现在』游标的锚：打开时把镜头挪到它身上（`ensureVisible` 要 context）。
+  final GlobalKey _nowKey = GlobalKey();
+
   /// 添加行展开着吗（提交后不收起，可以连着写）。
   bool _adding = false;
 
   /// 正在写的那一条的时刻；null = 没有时刻。
   int? _draftMinutes;
 
+  /// 拖动改顺序后、落盘完成前的行序（见 [_reorder]）。null = 用控制器那份。
+  List<PlanEntry>? _dragged;
+
   List<PlanEntry> get _entries =>
-      widget.controller.planEntriesFor(widget.day);
+      _dragged ?? widget.controller.planEntriesFor(widget.day);
 
   bool get _isToday {
     final now = widget.now;
@@ -264,10 +271,32 @@ class _DayTimelineState extends State<_DayTimeline> {
   int get _nowMinutes => widget.now.hour * 60 + widget.now.minute;
 
   @override
+  void initState() {
+    super.initState();
+    // 打开就把镜头落到『现在』：编排一长就得滚，落在顶部等于先给人看一段早就
+    // 过完的安排。得等第一帧排完版才量得到游标的位置，所以推到帧后。
+    if (!widget.readOnly) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _revealNow());
+    }
+  }
+
+  @override
   void dispose() {
     _draft.dispose();
     _draftFocus.dispose();
     super.dispose();
+  }
+
+  /// 把时间轴滚到『现在』：游标停在视口上方三分之一处，前面留一小截已过的、
+  /// 后面露出还没到的。
+  ///
+  /// 游标没建出来就不动（不是今天那一页；或者一天长得超出列表的预建范围）——
+  /// 那种情况下"现在"本来也不在这个视口里，硬滚只会滚到一个猜出来的位置。
+  void _revealNow() {
+    if (!mounted) return;
+    final anchor = _nowKey.currentContext;
+    if (anchor == null) return;
+    Scrollable.ensureVisible(anchor, alignment: 0.32, duration: Duration.zero);
   }
 
   @override
@@ -292,6 +321,10 @@ class _DayTimelineState extends State<_DayTimeline> {
     return ReorderableListView.builder(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(10, 8, 12, 32),
+      // 把视口外的行也建出来：打开时要滚到『现在』，而 `ensureVisible` 只认识
+      // 已经建好的 context——游标在屏幕外就滚不过去。一天几十条的量，全建下来
+      // 也不值钱。
+      scrollCacheExtent: const ScrollCacheExtent.pixels(3000),
       buildDefaultDragHandles: false,
       // newIndex 已按"移除旧位"调整好，直接就是落点（同挂起组）。
       onReorderItem: (from, to) => _reorder(entries, from, to),
@@ -338,6 +371,7 @@ class _DayTimelineState extends State<_DayTimeline> {
   Widget _cursorRow(ThemeData theme) {
     final accent = AppColors.accent;
     return SizedBox(
+      key: _nowKey,
       height: 24,
       child: Stack(
         children: [
@@ -401,10 +435,13 @@ class _DayTimelineState extends State<_DayTimeline> {
     final inverted = minutes != null && prev != null && minutes < prev;
     final past = _isToday && minutes != null && minutes < _nowMinutes;
     final hint = theme.colorScheme.onSurfaceVariant;
+    // 过了的那几条整行压淡：时刻与标题用同一个值，游标就是界线。只压字，
+    // 底色不动——铺淡一层会让"已过"看着像"被划掉"。
+    final pastInk = hint.withValues(alpha: 0.45);
     final timeColor = inverted
         ? AppColors.timeBadge
         : past
-            ? hint.withValues(alpha: 0.45)
+            ? pastInk
             : hint;
     final line = theme.colorScheme.outlineVariant;
     // 游标以上的竖线用强调色：这一段是今天已经走完的部分（进度条的"已过"）。
@@ -465,7 +502,8 @@ class _DayTimelineState extends State<_DayTimeline> {
                   entry.title,
                   maxLines: 3,
                   overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodyMedium,
+                  style: theme.textTheme.bodyMedium
+                      ?.copyWith(color: past ? pastInk : null),
                 ),
               ),
             ),
@@ -789,11 +827,21 @@ class _DayTimelineState extends State<_DayTimeline> {
 
   // ---- 排序 ----
 
+  /// 拖动改顺序：**先把新序摆上去，再落盘**。
+  ///
+  /// 落盘是"读整份 → 改一天 → 整份写回"，等它回来才重排的话，松手那一帧会先
+  /// 弹回原位、写完再跳到新位——看着就是来回闪两下。所以顺序在本地先定住，
+  /// 控制器的数据跟上之后再交回它（那时两边一致，交换不产生任何位移）。
   Future<void> _reorder(List<PlanEntry> entries, int from, int to) async {
     final next = [...entries]
       ..removeAt(from)
       ..insert(to, entries[from]);
-    await widget.controller.setPlanEntries(widget.day, next);
+    setState(() => _dragged = next);
+    try {
+      await widget.controller.setPlanEntries(widget.day, next);
+    } finally {
+      if (mounted) setState(() => _dragged = null);
+    }
   }
 
   // ---- 时间小工具 ----

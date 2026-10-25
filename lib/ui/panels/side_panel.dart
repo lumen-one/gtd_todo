@@ -622,8 +622,15 @@ class _PlanRevealState extends State<_PlanReveal>
     }
     if (widget.open != oldWidget.open) {
       if (widget.open && !_visible) setState(() => _visible = true);
-      _ctrl.animateTo(widget.open ? 1 : 0,
-          duration: _settle, curve: Curves.easeOutCubic);
+      if (widget.open && _ctrl.value == 0) {
+        // 从"整个藏着"直接打开 = 面板展开即落编排（§6.11）：这一下**不播进场
+        // 动画**。播的话那 200ms 里露着的是它底下的今日清单，看着就是"先给清单、
+        // 再切成编排"。跟手拉出来那一路此刻 `_ctrl.value` 已经大于 0，照旧补满。
+        _ctrl.value = 1;
+      } else {
+        _ctrl.animateTo(widget.open ? 1 : 0,
+            duration: _settle, curve: Curves.easeOutCubic);
+      }
     }
   }
 

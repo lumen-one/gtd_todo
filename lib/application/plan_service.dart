@@ -94,13 +94,16 @@ class PlanService {
   }
 
   /// 空标题的条目直接丢掉（输入框里按了回车又没写字的场景）。
+  ///
+  /// 已经规整的条目**原样拿回去**，不重新造成新对象：`PlanEntry` 没有值相等，
+  /// 列表按对象身份做行 key——每次落盘都换一批新对象的话，拖动松手那一刻整列
+  /// 行都会被当成新行重建（落下动画白做，看着像闪）。
   static List<PlanEntry> _normalize(List<PlanEntry> entries) => [
         for (final e in entries)
           if (e.title.trim().isNotEmpty)
-            PlanEntry(
-              title: e.title.trim(),
-              minutesOfDay: e.minutesOfDay,
-            ),
+            e.title == e.title.trim()
+                ? e
+                : PlanEntry(title: e.title.trim(), minutesOfDay: e.minutesOfDay),
       ];
 
   static List<DayPlan> _sort(List<DayPlan> days) =>

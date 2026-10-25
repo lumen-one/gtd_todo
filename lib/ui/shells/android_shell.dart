@@ -128,6 +128,10 @@ class _AndroidShellState extends State<AndroidShell>
   }
 
   void _openPanel({bool locate = false}) {
+    // 先把编排立起来，再让面板露面（§6.11）：默认页是今日清单且今天排过东西时，
+    // 面板一出来就该是编排。顺序反过来——先开面板、帧后再亮覆盖页——露出的第一帧
+    // 是今日清单，随后才被盖住，正是"滑出来先看见清单"的那一下。定位进来的不盖。
+    if (!locate) widget.controller.landOnPlanForToday();
     setState(() {
       _panelOpen = true;
       _panelSliding = false;
@@ -137,15 +141,6 @@ class _AndroidShellState extends State<AndroidShell>
     // `_jumpToPage(focusPage)`，两帧后同批执行，后者生效——定位优先于默认值。
     _jumpToPage(defaultPanelPageIndex(widget.controller.settings),
         animate: false);
-    // 默认页是今日清单时，每次展开先把编排亮出来（§6.11）——收起再拉会再亮一遍，
-    // 判断在控制器里（它也就判这一次展开里有没有已经亮过）。定位进来的不盖，
-    // 目标那一件才是用户点的。
-    if (!locate) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        widget.controller.landOnPlanForToday();
-      });
-    }
     _maybeOnboard();
   }
 

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gtd_todo/application/plan_service.dart';
@@ -6,6 +8,7 @@ import 'package:gtd_todo/domain/plan.dart';
 import 'package:gtd_todo/domain/time_context.dart';
 import 'package:gtd_todo/repository/memory_plan_repository.dart';
 import 'package:gtd_todo/repository/memory_task_repository.dart';
+import 'package:gtd_todo/repository/plan_repository.dart';
 import 'package:gtd_todo/scheduler/slack_scheduler.dart';
 import 'package:gtd_todo/ui/app_controller.dart';
 import 'package:gtd_todo/ui/panel_pages.dart';
@@ -13,11 +16,30 @@ import 'package:gtd_todo/ui/panels/plan_panel.dart';
 import 'package:gtd_todo/ui/panels/side_panel.dart';
 import 'package:gtd_todo/ui/panels/today_panel.dart';
 
+/// 落盘永远不回来的编排仓储：用来验证"顺序不等落盘"。
+class _StuckPlanRepository implements PlanRepository {
+  _StuckPlanRepository(this._days);
+
+  final List<DayPlan> _days;
+
+  final Completer<void> saved = Completer<void>();
+
+  @override
+  List<String> get warnings => const [];
+
+  @override
+  Future<List<DayPlan>> loadAll() async => List.of(_days);
+
+  @override
+  Future<void> saveAll(List<DayPlan> days) => saved.future;
+}
+
 /// 今日编排（§6.11）：下拉进覆盖页、时间轴渲染、添加与拖动。
 void main() {
   final day = DateTime(2026, 10, 22);
 
-  AppController makeController({List<DayPlan> plan = const []}) {
+  AppController makeController(
+      {List<DayPlan> plan = const [], PlanRepository? repo}) {
     final tasks = TaskService(
       repo: MemoryTaskRepository(),
       scheduler: const SlackScheduler(),
@@ -27,7 +49,7 @@ void main() {
     return AppController(
       service: tasks,
       taskDir: '/tmp/tasks',
-      planService: PlanService(repo: MemoryPlanRepository(plan)),
+      planService: PlanService(repo: repo ?? MemoryPlanRepository(plan)),
     );
   }
 
@@ -237,6 +259,64 @@ void main() {
     expect(moved.timeText, '08:30');
   });
 
+  /// 游标（带 GlobalKey 的定位锚）就挂在某一条的 Column 里：拖那一条时它会被
+  /// 搬到拖拽代理里重建，两处不能同时挂在树上（重复 GlobalKey 会直接炸）。
+  testWidgets('拖动游标所在的那一条不炸（锚点不会重复挂）', (tester) async {
+    final c = makeController(plan: [
+      DayPlan(day: day, entries: const [
+        PlanEntry(title: '晨会', minutesOfDay: 9 * 60),
+        PlanEntry(title: '收尾', minutesOfDay: 23 * 60 + 50),
+      ]),
+    ]);
+    await c.planService!.load();
+    await pumpOverlay(tester, c);
+    // 现在 22:30：游标正好落在"收尾"这一条的前面
+    expect(tester.getCenter(find.text('现在')).dy,
+        lessThan(tester.getCenter(find.text('收尾')).dy));
+
+    final gesture = await tester.startGesture(tester.getCenter(find.text('收尾')));
+    await tester.pump(const Duration(milliseconds: 700));
+    await gesture.moveBy(const Offset(0, -40));
+    await tester.pump();
+    await gesture.moveBy(const Offset(0, -80));
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect([for (final e in c.planEntriesFor(day)) e.title], ['收尾', '晨会']);
+  });
+
+  /// 落盘是"读整份 → 改一天 → 整份写回"，等它回来才重排的话，松手那一帧会先
+  /// 弹回原位、写完再跳到新位——看着就是来回闪两下。
+  testWidgets('拖动松手：新序当帧生效，不等落盘', (tester) async {
+    final repo = _StuckPlanRepository([
+      DayPlan(day: day, entries: const [
+        PlanEntry(title: '晨会', minutesOfDay: 8 * 60 + 30),
+        PlanEntry(title: '评审', minutesOfDay: 9 * 60 + 30),
+        PlanEntry(title: '写方案', minutesOfDay: 11 * 60),
+      ]),
+    ]);
+    final c = makeController(repo: repo);
+    await c.planService!.load();
+    await pumpOverlay(tester, c);
+
+    final gesture = await tester.startGesture(tester.getCenter(find.text('晨会')));
+    await tester.pump(const Duration(milliseconds: 700)); // 长按起拖
+    await gesture.moveBy(const Offset(0, 90));
+    await tester.pump();
+    await gesture.up();
+    // 松手 → 代理落回动画跑完（250ms）→ 新序生效；这期间落盘一直没回来
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(tester.getCenter(find.text('晨会')).dy,
+        greaterThan(tester.getCenter(find.text('评审')).dy));
+    // 控制器的数据还没变（saveAll 卡着）：界面这一份是本地先定住的
+    expect(c.planEntriesFor(day).first.title, '晨会');
+    expect(repo.saved.isCompleted, isFalse);
+  });
+
   testWidgets('时间轴：现在游标落在"第一个还没到的条目"之前', (tester) async {
     final c = makeController(plan: [
       DayPlan(day: day, entries: const [
@@ -252,6 +332,46 @@ void main() {
     final cursorY = tester.getCenter(find.text('现在')).dy;
     expect(cursorY, greaterThan(tester.getCenter(find.text('09:00')).dy));
     expect(cursorY, lessThan(tester.getCenter(find.text('23:50')).dy));
+  });
+
+  testWidgets('打开就落在『现在』：日子一长也不会停在开头', (tester) async {
+    // 06:00 起每半小时一条排到 23:30：一屏放不下，"现在 22:30" 落在靠后。
+    final c = makeController(plan: [
+      DayPlan(day: day, entries: [
+        for (var m = 6 * 60; m <= 23 * 60 + 30; m += 30)
+          PlanEntry(title: '第 $m 分钟', minutesOfDay: m),
+      ]),
+    ]);
+    await c.planService!.load();
+    await pumpOverlay(tester, c);
+
+    final panel = tester.getRect(find.byType(PlanOverlay));
+    final cursor = tester.getRect(find.text('现在'));
+    expect(cursor.center.dy, greaterThan(panel.top));
+    expect(cursor.center.dy, lessThan(panel.bottom));
+    // 而且确实滚下去了：第一条（06:00）被推到面板上方。它在预建范围里但已经
+    // 不在视口内（offstage），所以按"看不见的"去找。
+    final first = tester.getRect(find.text('06:00', skipOffstage: false));
+    expect(first.bottom, lessThan(panel.top));
+  });
+
+  testWidgets('已过的条目：标题跟时刻一起压淡', (tester) async {
+    final c = makeController(plan: [
+      DayPlan(day: day, entries: const [
+        PlanEntry(title: '已经过去的事', minutesOfDay: 9 * 60),
+        PlanEntry(title: '还没到的事', minutesOfDay: 23 * 60 + 50),
+      ]),
+    ]);
+    await c.planService!.load();
+    await pumpOverlay(tester, c);
+
+    final pastTime = tester.widget<Text>(find.text('09:00')).style!.color;
+    final pastTitle = tester.widget<Text>(find.text('已经过去的事')).style!.color;
+    final futureTitle = tester.widget<Text>(find.text('还没到的事')).style!.color;
+
+    // 与时刻列同一个值：整行是一档，不是时刻淡、标题正常
+    expect(pastTitle, pastTime);
+    expect(pastTitle, isNot(futureTitle));
   });
 
   testWidgets('时间轴滚到底再上滑：覆盖页收回', (tester) async {
@@ -331,6 +451,41 @@ void main() {
     await tester.tap(find.byTooltip('返回'));
     await tester.pumpAndSettle();
     expect(c.planOpen, isFalse);
+  });
+
+  /// 展开面板那一拍先立编排（`landOnPlanForToday`），覆盖页第一帧就该是全开位。
+  ///
+  /// 反例是"帧后再亮"：那 200ms 里滑下来的是覆盖页，露着的是它底下的今日清单，
+  /// 看着就是先给清单、再切成编排。
+  testWidgets('展开即编排：一出来就是全开位，不播进场动画', (tester) async {
+    final c = makeController(plan: [
+      DayPlan(day: day, entries: const [
+        PlanEntry(title: '晨会', minutesOfDay: 8 * 60 + 30),
+      ]),
+    ]);
+    await c.planService!.load();
+    final pageCtrl = PageController(initialPage: PanelPage.today.index);
+    await tester.pumpWidget(MaterialApp(
+      home: Center(
+        child: SizedBox(
+          width: 300,
+          height: 620,
+          child: SidePanel(
+            controller: c,
+            pageCtrl: pageCtrl,
+            onOpenCalendar: () {},
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('编排'), findsNothing);
+
+    expect(c.landOnPlanForToday(today: day), isTrue);
+    await tester.pump(); // 只推一帧：还在播动画的话，这一帧覆盖页还在面板顶上
+
+    final panelTop = tester.getRect(find.byType(SidePanel)).top;
+    expect(tester.getRect(find.text('编排')).top, greaterThan(panelTop));
   });
 
   testWidgets('没拉到一截就松手：不进覆盖页', (tester) async {
