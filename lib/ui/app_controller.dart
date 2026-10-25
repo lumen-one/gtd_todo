@@ -379,9 +379,9 @@ class AppController extends ChangeNotifier {
   /// 形如 `1.2.0 (4)`；还没读到 → null（界面显示占位）。
   String? get appVersion => _appVersion;
 
-  /// 从**安装包自己的元数据**读版本号：安卓 versionName / versionCode，桌面 exe 的
-  /// 版本资源。两者都由 `flutter build` 从 `pubspec.yaml` 的 `version:` 灌进去，
-  /// 所以源码里不写死版本号，也不会出现"界面写着 1.2.0、装的是 1.3.0"。
+  /// 从**安装包自己的元数据**读版本号（安卓 `versionName` / `versionCode`）。它由
+  /// `flutter build` 从 `pubspec.yaml` 的 `version:` 灌进包里，所以源码里不写死版本号，
+  /// 也不会出现"界面写着 1.2.0、装的是 1.3.0"。
   ///
   /// 幂等：读到一次就不再问平台。测试里没有插件实现，读不到就留 null（不算错误）。
   Future<void> loadAppVersion() async {

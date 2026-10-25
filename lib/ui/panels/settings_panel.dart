@@ -403,7 +403,7 @@ class _SettingsPanelState extends State<SettingsPanel> {
   // ---------- 关于（§9 第 14 条）----------
 
   /// 版本号由 [AppController.loadAppVersion] 从安装包元数据读回（安卓 versionName /
-  /// versionCode，桌面 exe 的版本资源），源码里不写死：升级只改 `pubspec.yaml`。
+  /// versionCode），源码里不写死：升级只改 `pubspec.yaml`。
   List<Widget> _aboutSection() => [
         ListTile(
           leading: const Icon(Icons.info_outline),
