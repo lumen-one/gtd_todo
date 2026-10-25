@@ -140,9 +140,10 @@
 | `Task` | 任务事实：id、title、**created（= 人类文档的「创建」，由人类文档持有）**、**deadline（可空：fixed=时点 / flex=截止 / null=散件）**、**estimatedWork（可表达'长期'：三无缺省，标记而非分钟数；长期任务同时没有 remainingWork 与 importance）**、remainingWork、importance、status、snoozedUntil、description、**tags**、**completedAt**、**remindEnabled（metadata `remind`，标准模式下的逐任务提醒开关）**、metadata；**不可变 + copyWith（由编译器强制写路径唯一）**；类型 TaskType 走 metadata 缓冲带 |
 | `TaskType` | flex（可推）/ fixed（不可推）/ **routine（周期实例）**——三者的调度与完成语义不同 |
 | `Routine` | 周期规则：频率（每天/每周 X）、时点、响不响、启用开关；**不是任务**（住在 `routines.md`），每天生成一个当天实例（TaskType.routine） |
-| `Mainline` | 主线：当前在推进的一件大事（同时只有一条在跑）。行为链（`MainlineStep`）是它自己的步骤、**不是任务**；记录（`MainlineLog`）是一段连续日期 + 文字。住在 `tasks/主线.md`（[主线文件](formats/mainline.md)） |
+| `Mainline` | 主线：当前在推进的一件大事（同时只有一条在跑）。行为链（`MainlineStep`）是它自己的步骤、**不是任务**；记录（`MainlineLog`）是一段连续日期 + 文字；月记（`MainlineMonthNote`）是一个月一条文字。住在 `tasks/主线.md`（[主线文件](formats/mainline.md)） |
 | `MainlineStep` | 行为链的一步：标题、完成时刻（`doneAt`，null = 未完成）、写在这一步上的备注（手写 log 挂在这里） |
 | `MainlineLog` | 记录（日历上的"圈"）：起始日 + 结束日（含）+ 文字；可跨周、可与别的圈重叠 |
+| `MainlineMonthNote` | 月记：年月 + 一行文字，一个月最多一条；**不覆盖任何一天**，所以不进日历、不进"当天详情"（[记录页](panels/mainline.md)） |
 | `RoutineOccurrence` | 一次具体发生（规则 + 时刻）：任务池计划段插入与日历打点用 |
 | `TaskDocument` / `TaskLine` | 人类文档 `tasks.md` 的解析结果：整篇行数组 + 识别出的任务行（行号/小节/行指纹/人类那半边字段） |
 | `TaskStatus` | pending / active / snoozed / completed / **overdue（派生，不写入存储）**；只增不改 |
@@ -608,9 +609,10 @@ DOWN…UP 要么整个归把手、要么整个归底下的 App，没有"识别�
 （§4.2），不挂这一层 `StreamNotificationPort` 发出的事件就没人渲染。窗口窄于
 720 逻辑像素时退回单栏：只摆面板，设置页从标题栏
 那颗『设置』按钮 push 成独立页面。交互细节见 [桌面布局](panels/desktop.md)。
-**设置页里只属于悬浮壳的项**（权限引导 / 贴屏把手 / 把手与面板尺寸 / 闹钟渠道）
-在桌面上**整行不渲染**，判据是组装点注入的 `ShellCapabilities` 能力表
+**设置页里只属于悬浮壳的项**（权限引导 / 贴屏把手 / 把手与面板尺寸 / 闹钟渠道 /
+关于卡）在桌面上**整行不渲染**，判据是组装点注入的 `ShellCapabilities` 能力表
 （`lib/application/shell_capabilities.dart`）——UI 读表、不问平台，与 §5.3 的口诀一致。
+关于卡被裁的理由与那几项不同（桌面那一栏整块待重做），见 [UI 文档](ui-interaction.md) §9 第 14 条。
 
 安卓 shell 用 Drawer 摆面板，Windows shell 用侧边栏摆**同样的面板**。
 布局上允许 `Platform.isAndroid` 分支——那是摆法不同；能力差异必须走插座。

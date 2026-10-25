@@ -56,8 +56,9 @@
 | [2026-10-22-today-plan.md](2026-10-22-today-plan.md) | 今日编排：独立文件、覆盖页、不并入任务 |
 | [2026-10-23-plan-three-days.md](2026-10-23-plan-three-days.md) | 编排：三天窗口、昨天只读、改时刻即归位 |
 | [2026-10-24-android-markdown-pick.md](2026-10-24-android-markdown-pick.md) | 安卓挑灵感文件自己发 SAF：file_picker 只回缓存副本 |
-| [2026-10-24-calendar-add-and-done-dot.md](2026-10-24-calendar-add-and-done-dot.md) | 日历：长按某天加任务，干完的活留蓝点 |
+| [2026-10-24-calendar-add-and-done-dot.md](2026-10-24-calendar-add-and-done-dot.md) | 日历：长按某天加任务，干完的活留蓝点 |
 | [2026-10-24-create-date-first.md](2026-10-24-create-date-first.md) | 新建先问日期再填表单：日期不当默认值 |
+| [2026-10-25-mainline-month-note.md](2026-10-25-mainline-month-note.md) | 月记单独一段：不把整月折成一条圈 |
 
 待补（都是"会被重新质疑"的取舍，按需要慢慢写）：
 
