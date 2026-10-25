@@ -5,6 +5,7 @@ import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -174,6 +175,7 @@ class NativeBridge(
                 "setHandleLocked" -> result.success(setHandleLocked(call))
                 "setHandleHotWidth" -> result.success(setHandleHotWidth(call))
                 "isIgnoringBatteryOptimizations" -> result.success(isIgnoringBatteryOptimizations())
+                "appVersion" -> result.success(appVersion())
                 "pickMarkdownFile" -> {
                     // 异步：结果从 onActivityResult 回来，这里先不回话。
                     pickMarkdownFile(result)
@@ -309,6 +311,35 @@ class NativeBridge(
         } catch (_: Throwable) {
             false
         }
+
+    // ------------------------------------------------------------------- 关于
+
+    /**
+     * 安装包的版本：`versionName` + `versionCode`（设置页那张关于卡，ui-interaction §9 #14）。
+     *
+     * 不引 `package_info_plus`——那个插件的安卓 Gradle 脚本自己 apply 了 Kotlin Gradle
+     * Plugin，而 AGP 9 起 Kotlin 内置、Flutter 往后会禁掉这条路。这里只回两截事实，
+     * `1.2.0 (4)` 这种拼法留在 Dart 侧。
+     */
+    private fun appVersion(): Map<String, String> {
+        val pm = activity.packageManager
+        val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            pm.getPackageInfo(activity.packageName, PackageManager.PackageInfoFlags.of(0))
+        } else {
+            @Suppress("DEPRECATION")
+            pm.getPackageInfo(activity.packageName, 0)
+        }
+        val code = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            info.longVersionCode
+        } else {
+            @Suppress("DEPRECATION")
+            info.versionCode.toLong()
+        }
+        return mapOf(
+            "version" to (info.versionName ?: ""),
+            "build" to code.toString(),
+        )
+    }
 
     private fun setOverlayHandle(call: MethodCall): Boolean {
         val enabled = call.argument<Boolean>("enabled") ?: false

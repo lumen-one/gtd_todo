@@ -22,6 +22,7 @@ void main() {
     required ShellCapabilities caps,
     Size size = const Size(900, 4000),
     FolderPickerPort? picker,
+    Future<({String version, String build})?> Function()? appVersionReader,
   }) async {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1.0;
@@ -38,7 +39,7 @@ void main() {
       taskDir: 'ignored',
       caps: caps,
       folderPicker: picker,
-    );
+    )..appVersionReader = appVersionReader;
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(body: SettingsPanel(controller: controller)),
     ));
@@ -98,10 +99,35 @@ void main() {
     }
     expect(find.text('拖动把手展开时落在这一页；点通知定位时按定位目标走'),
         findsOneWidget);
-    // 关于：版本号（测试里没有插件实现 → 占位）+ 反馈 QQ
+    // 关于：版本号（测试里没接版本号插座 → 占位）+ 反馈 QQ
     expect(find.text('关于'), findsOneWidget);
     expect(find.text('版本'), findsOneWidget);
     expect(find.text('QQ 3110741060（点一下复制）'), findsOneWidget);
+  });
+
+  /// 版本号由装配点注入（安卓是原生 `PackageManager` 读回来的两截），
+  /// 拼成 `主版本 (构建号)` 的规则在 `AppController.loadAppVersion` 里。
+  testWidgets('关于：版本号按原生报的两截拼出来，只问一次', (tester) async {
+    var calls = 0;
+    await pumpSettings(
+      tester,
+      caps: ShellCapabilities.overlayShell,
+      appVersionReader: () async {
+        calls++;
+        return (version: '1.2.0', build: '4');
+      },
+    );
+
+    expect(find.text('1.2.0 (4)'), findsOneWidget);
+    expect(find.text('读取中…'), findsNothing);
+    // 幂等：读到就不再问平台（设置页每次进都调一次 loadAppVersion）
+    expect(calls, 1);
+  });
+
+  testWidgets('关于：没接插座就留占位，不假装读到了', (tester) async {
+    await pumpSettings(tester, caps: ShellCapabilities.overlayShell);
+
+    expect(find.text('读取中…'), findsOneWidget);
   });
 
   /// 两个路径编辑弹窗都是底部弹窗：`showModalBottomSheet` 不会自己给输入法让位，

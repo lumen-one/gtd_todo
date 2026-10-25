@@ -141,6 +141,9 @@ Future<void> main() async {
   // 把手热区宽度（§6.0 / §9 第 10 条）：同上，桌面 = null。
   controller.handleHotWidthControl =
       bridge == null ? null : (dp) => bridge.setHandleHotWidth(dp);
+  // 版本号（§9 第 14 条）：安卓原生读安装包元数据；桌面那张关于卡整块不摆，
+  // 不去问平台（也不为它引插件）。
+  controller.appVersionReader = bridge?.appVersion;
 
   dispatcher = ReminderDispatcher(
     service: service,

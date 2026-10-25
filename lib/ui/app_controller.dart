@@ -3,7 +3,6 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show ThemeMode;
-import 'package:package_info_plus/package_info_plus.dart';
 
 import '../application/delivery.dart';
 import '../application/mainline_service.dart';
@@ -383,20 +382,35 @@ class AppController extends ChangeNotifier {
   /// 形如 `1.2.0 (4)`；还没读到 → null（界面显示占位）。
   String? get appVersion => _appVersion;
 
+  /// 装配点注入：读**安装包自己的版本**（安卓原生 `PackageManager`）。
+  /// null = 这套壳不读（桌面那张关于卡整块不摆，也不去问平台）。
+  ///
+  /// 回的是 (versionName, versionCode) 两截事实；拼成 `1.2.0 (4)` 的规则留在
+  /// [loadAppVersion]——格式属于界面，不散到原生去。
+  Future<({String version, String build})?> Function()? appVersionReader;
+
   /// 从**安装包自己的元数据**读版本号（安卓 `versionName` / `versionCode`）。它由
   /// `flutter build` 从 `pubspec.yaml` 的 `version:` 灌进包里，所以源码里不写死版本号，
   /// 也不会出现"界面写着 1.2.0、装的是 1.3.0"。
   ///
-  /// 幂等：读到一次就不再问平台。测试里没有插件实现，读不到就留 null（不算错误）。
+  /// **不走 `package_info_plus`**：那个插件的安卓 Gradle 脚本自己 apply 了 Kotlin
+  /// Gradle Plugin，而 AGP 9 起 Kotlin 内置、Flutter 往后会禁掉这条路（构建时也会
+  /// 打一条 KGP 警告）。版本号本来就是我们自己原生里的几行，不值得为它引一个插件。
+  ///
+  /// 幂等：读到一次就不再问平台。没接插座的壳（桌面 / 测试）与读失败都留 null，
+  /// 界面显示占位——不算错误。
   Future<void> loadAppVersion() async {
     if (_appVersion != null) return;
+    final read = appVersionReader;
+    if (read == null) return;
     try {
-      final info = await PackageInfo.fromPlatform();
-      final build = info.buildNumber.trim();
+      final info = await read();
+      if (info == null || info.version.isEmpty) return;
+      final build = info.build.trim();
       _appVersion = build.isEmpty ? info.version : '${info.version} ($build)';
       notifyListeners();
     } catch (_) {
-      // 没有版本资源的壳（测试 / 某些桌面调试构建）：留 null，界面显示占位。
+      // 原生没实现（老版本 / 误装配）：留 null，界面显示占位。
     }
   }
 

@@ -12,7 +12,7 @@ import '../domain/task.dart';
 /// 全屏闹钟）+ 权限引导 + 任务目录选择。
 ///
 /// 原生侧（android/app/src/main/kotlin/com/example/gtd_todo/）：
-/// - MethodChannel `gtd/native`：Dart 调原生（挂闹钟/弹通知/权限/悬浮把手）；
+/// - MethodChannel `gtd/native`：Dart 调原生（挂闹钟/弹通知/权限/悬浮把手/读版本号）；
 /// - MethodChannel `gtd/native/events`：原生回传（到点、通知按钮、点通知定位、
 ///   把手拖出）。应用被杀时原生接收器自己按"内容草案"弹通知；
 ///   事件先入队，Dart 启动后 `drainEvents` 取走。
@@ -119,6 +119,23 @@ class AndroidNativeBridge {
 
   Future<bool> isIgnoringBatteryOptimizations() =>
       _invoke('isIgnoringBatteryOptimizations');
+
+  /// 安装包的版本（§9 第 14 条）：`versionName` + `versionCode`，读不到 → null。
+  ///
+  /// 走自建通道而不是 `package_info_plus`：那个插件的安卓 Gradle 脚本自己
+  /// apply 了 Kotlin Gradle Plugin，而 AGP 9 起 Kotlin 内置、Flutter 往后会禁掉
+  /// 这条路（构建时会打一条 KGP 警告）。
+  Future<({String version, String build})?> appVersion() async {
+    try {
+      final raw = await channel.invokeMapMethod<String, Object?>('appVersion');
+      final version = raw?['version'];
+      if (version is! String || version.isEmpty) return null;
+      final build = raw?['build'];
+      return (version: version, build: build is String ? build : '');
+    } catch (_) {
+      return null;
+    }
+  }
 
   /// 灵感文件（见 docs/panels/notes.md §6.2）：原生 SAF 挑一个文档，回**真实文件路径**
   /// （`/storage/…`），取消或换不出路径 → null。

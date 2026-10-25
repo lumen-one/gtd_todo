@@ -36,9 +36,11 @@ dependencies:
   # - permission_handler：通知/精确闹钟/电池白名单/悬浮窗/所有文件访问的申请与查询；
   # - file_picker：任务目录选择（SAF；授予"所有文件访问"后取真实路径）。
   # 系统闹钟与系统通知走自建原生适配器（android/…/gtd/），不引第三方通知库。
+  # 版本号同理自建（NativeBridge 的 appVersion）：不引 package_info_plus——那个
+  # 插件的安卓 Gradle 脚本自己 apply 了 Kotlin Gradle Plugin，AGP 9 起 Kotlin
+  # 内置，Flutter 往后会禁掉这条路。
   permission_handler: ^11.4.0
   file_picker: ^8.3.7
-  package_info_plus: ^9.0.1
 
 dev_dependencies:
   flutter_test:
