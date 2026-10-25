@@ -218,11 +218,45 @@ title: 没闭合
       expect(log.start, DateTime(2026, 10, 19));
       expect(log.end, DateTime(2026, 10, 21));
 
-      await svc.updateLog(m.id, 0, text: '改过');
+      await svc.updateLog(m.id, MainlineLogRef.of(log), text: '改过');
       expect(svc.byId(m.id)!.logs.single.text, '改过');
 
-      await svc.removeLog(m.id, 0);
+      await svc.removeLog(
+          m.id, MainlineLogRef.of(svc.byId(m.id)!.logs.single));
       expect(svc.byId(m.id)!.logs, isEmpty);
+    });
+
+    test('记录按内容定位：另一份引擎插了一条更早的圈也不会改错', () async {
+      final repo = MemoryMainlineRepository();
+      final mine = MainlineService(repo: repo);
+      final m = await mine.create(title: '论文');
+      await mine.addLog(m.id,
+          start: DateTime(2026, 10, 19),
+          end: DateTime(2026, 10, 21),
+          text: '写第三章');
+      final ref = MainlineLogRef.of(mine.byId(m.id)!.logs.single);
+
+      // 另一个引擎（同一份盘）在这中间插了一条起始日更早的：排序后同一个下标
+      // 就不再指原来那条了。
+      final other = MainlineService(repo: repo);
+      await other.load();
+      await other.addLog(m.id,
+          start: DateTime(2026, 9, 1), end: DateTime(2026, 9, 2), text: '九月');
+
+      await mine.updateLog(m.id, ref, text: '改过');
+      final logs = mine.byId(m.id)!.logs;
+      expect(logs.firstWhere((l) => l.text == '改过').start,
+          DateTime(2026, 10, 19));
+      expect(logs.firstWhere((l) => l.text == '九月').start,
+          DateTime(2026, 9, 1),
+          reason: '别人那条不能动');
+      expect(logs.any((l) => l.text == '写第三章'), isFalse);
+
+      // 那条已经不在了：改要报错（不猜），删是幂等的（目的已达成）
+      await expectLater(
+          mine.updateLog(m.id, ref, text: '再来'), throwsStateError);
+      await mine.removeLog(m.id, ref);
+      expect(mine.byId(m.id)!.logs, hasLength(2));
     });
 
     test('月记：一个月一条，再写就是改；空文本删掉这条', () async {

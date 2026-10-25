@@ -681,18 +681,20 @@ class AppController extends ChangeNotifier {
       _mainlineCommand((svc) =>
           svc.addLog(id, start: start, end: end, text: text));
 
+  /// 改一段记录：按内容（起止日 + 原文）定位，不传下标——中间多一条别人的圈就
+  /// 会改错（见 `MainlineLogRef`）。已经不在时会抛错，由界面提示。
   Future<void> updateMainlineLog(
     String id,
-    int index, {
+    MainlineLogRef ref, {
     DateTime? start,
     DateTime? end,
     String? text,
   }) =>
       _mainlineCommand((svc) =>
-          svc.updateLog(id, index, start: start, end: end, text: text));
+          svc.updateLog(id, ref, start: start, end: end, text: text));
 
-  Future<void> removeMainlineLog(String id, int index) =>
-      _mainlineCommand((svc) => svc.removeLog(id, index));
+  Future<void> removeMainlineLog(String id, MainlineLogRef ref) =>
+      _mainlineCommand((svc) => svc.removeLog(id, ref));
 
   /// 月记：一个月一句（记录页切到月视图时写；空文本 = 删掉这个月那条）。
   Future<void> setMainlineMonthNote(

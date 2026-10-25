@@ -127,29 +127,31 @@ class MainlineService {
           ]));
 
   /// 改一段记录（文字 / 起止日期）。
+  ///
+  /// 按 [ref] 找回原条目，**不按下标**：界面算出的下标是"排完序后的位置"，而这里
+  /// 每次都要重新读盘再排序，中间别人加了一条更早的圈就会改到别人身上
+  /// （见 [MainlineLogRef]）。找不到 = 这条已经不在了，抛错让界面提示，不猜。
   Future<void> updateLog(
     String id,
-    int index, {
+    MainlineLogRef ref, {
     DateTime? start,
     DateTime? end,
     String? text,
   }) =>
       _mutate(id, (m) {
         final logs = [...m.logsInOrder];
-        if (index < 0 || index >= logs.length) return m;
-        logs[index] = logs[index].copyWith(
-          start: start,
-          end: end,
-          text: text,
-        );
+        final i = logs.indexWhere(ref.matches);
+        if (i < 0) throw StateError('这段记录已经不在了');
+        logs[i] = logs[i].copyWith(start: start, end: end, text: text);
         return m.copyWith(logs: logs);
       });
 
-  /// 删一段记录。
-  Future<void> removeLog(String id, int index) => _mutate(id, (m) {
+  /// 删一段记录：同样按 [ref] 定位；已经不在 = 目的已达成，什么都不做。
+  Future<void> removeLog(String id, MainlineLogRef ref) => _mutate(id, (m) {
         final logs = [...m.logsInOrder];
-        if (index < 0 || index >= logs.length) return m;
-        logs.removeAt(index);
+        final i = logs.indexWhere(ref.matches);
+        if (i < 0) return m;
+        logs.removeAt(i);
         return m.copyWith(logs: logs);
       });
 

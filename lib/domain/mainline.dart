@@ -100,6 +100,39 @@ class MainlineLog {
   String toString() => 'MainlineLog($start~$end, $text)';
 }
 
+/// 定位一段记录用的**身份**：起止日 + 当时的文字。
+///
+/// 命令通道不传下标。界面手里的下标是"按起始日排完序后的位置"，而 service 每条命令
+/// 都先重新读盘、再重新排序：中间若另一个引擎（悬浮面板）或人在 Obsidian 里加了一条
+/// 更早的圈，同一个下标就指到别人身上，改错和删错都不会报错。三元组是内容的证据，
+/// 落盘后按它找回原条目。
+class MainlineLogRef {
+  final DateTime start;
+  final DateTime end;
+  final String text;
+
+  const MainlineLogRef({
+    required this.start,
+    required this.end,
+    required this.text,
+  });
+
+  factory MainlineLogRef.of(MainlineLog log) => MainlineLogRef(
+        start: log.start,
+        end: log.end,
+        text: log.text,
+      );
+
+  /// 这段记录是不是它（起止按天比，文字逐字比）。
+  bool matches(MainlineLog log) =>
+      isSameDay(start, log.start) &&
+      isSameDay(end, log.end) &&
+      text == log.text;
+
+  @override
+  String toString() => 'MainlineLogRef($start~$end, $text)';
+}
+
 /// 月记：一个月一条文字（记录页切到"月视图"时写的那些）。
 ///
 /// 与 [MainlineLog] 的分界线是**它不覆盖任何一天**：日历格子的小点、当天详情都不认

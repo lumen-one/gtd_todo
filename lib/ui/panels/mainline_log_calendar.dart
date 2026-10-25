@@ -246,7 +246,7 @@ class _MainlineLogCalendarState extends State<MainlineLogCalendar> {
         final week = layout.weekAt(e.localPosition);
         final hit = week == null ? null : layout.bandAt(week, e.localPosition);
         if (hit != null) {
-          _promptEditLog(hit.logIndex);
+          _promptEditLog(hit.log);
           return;
         }
         final day = layout.dayAt(e.localPosition);
@@ -543,7 +543,7 @@ class _MainlineLogCalendarState extends State<MainlineLogCalendar> {
           ),
         for (final log in logs)
           InkWell(
-            onTap: widget.readOnly ? null : () => _promptEditLog(_logIndexOf(log)),
+            onTap: widget.readOnly ? null : () => _promptEditLog(log),
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 3),
               child: Row(
@@ -573,20 +573,6 @@ class _MainlineLogCalendarState extends State<MainlineLogCalendar> {
     );
   }
 
-  int _logIndexOf(MainlineLog log) {
-    final logs = widget.mainline.logsInOrder;
-    for (var i = 0; i < logs.length; i++) {
-      final l = logs[i];
-      if (identical(l, log) ||
-          (isSameDay(l.start, log.start) &&
-              isSameDay(l.end, log.end) &&
-              l.text == log.text)) {
-        return i;
-      }
-    }
-    return -1;
-  }
-
   static String _timeText(DateTime d) =>
       '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
 
@@ -611,11 +597,8 @@ class _MainlineLogCalendarState extends State<MainlineLogCalendar> {
     );
   }
 
-  Future<void> _promptEditLog(int index) async {
-    if (widget.readOnly || index < 0) return;
-    final logs = widget.mainline.logsInOrder;
-    if (index >= logs.length) return;
-    final log = logs[index];
+  Future<void> _promptEditLog(MainlineLog log) async {
+    if (widget.readOnly) return;
     final outcome = await _textDialog(
       title: '改这一段',
       subtitle: _rangeText(log.start, log.end),
@@ -623,12 +606,24 @@ class _MainlineLogCalendarState extends State<MainlineLogCalendar> {
       allowDelete: true,
     );
     if (outcome == null) return;
-    if (outcome.deleted) {
-      await widget.controller.removeMainlineLog(widget.mainline.id, index);
-      return;
+    // 身份取"打开对话框那一刻"的样子：这期间别处把它改了或删了，命令就找不到它、
+    // 明确报错——而不是按下标改到另一条上。
+    final ref = MainlineLogRef.of(log);
+    try {
+      if (outcome.deleted) {
+        await widget.controller.removeMainlineLog(widget.mainline.id, ref);
+        return;
+      }
+      await widget.controller
+          .updateMainlineLog(widget.mainline.id, ref, text: outcome.text);
+    } on StateError {
+      _toast('这一段已经不在了（可能被别处改过）');
     }
-    await widget.controller
-        .updateMainlineLog(widget.mainline.id, index, text: outcome.text);
+  }
+
+  void _toast(String message) {
+    ScaffoldMessenger.maybeOf(context)
+        ?.showSnackBar(SnackBar(content: Text(message)));
   }
 
   /// 写 / 改某个月的月记：一个月只留一条，有字才给删除。
@@ -767,8 +762,9 @@ class _Layout {
       final weekStart = DateTime(month.year, month.month, 1 + w * 7 - lead);
       final weekEnd = weekStart.add(const Duration(days: 6));
       final bands = <_BandSegment>[];
-      for (var i = 0; i < logs.length; i++) {
-        final log = logs[i];
+      // 圈只存对象引用，不存下标：命令通道按"起止日 + 原文"定位（见 MainlineLogRef），
+      // 界面这边的下标也用不上。
+      for (final log in logs) {
         if (log.end.isBefore(weekStart) || log.start.isAfter(weekEnd)) continue;
         final startCol =
             math.max(0, log.start.difference(weekStart).inDays);
@@ -780,7 +776,7 @@ class _Layout {
           slot++;
         }
         bands.add(_BandSegment(
-          logIndex: i,
+          log: log,
           startCol: startCol,
           endCol: endCol,
           slot: slot,
@@ -854,14 +850,14 @@ class _Week {
 }
 
 class _BandSegment {
-  final int logIndex;
+  final MainlineLog log;
   final int startCol;
   final int endCol;
   final int slot;
   final String text;
 
   const _BandSegment({
-    required this.logIndex,
+    required this.log,
     required this.startCol,
     required this.endCol,
     required this.slot,

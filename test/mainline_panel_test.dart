@@ -256,6 +256,48 @@ void main() {
     expect(find.text('2026 年 10 月'), findsNothing);
   });
 
+  testWidgets('记录页：点当天详情里的圈改文字，改的是那一条', (tester) async {
+    final now = DateTime.now();
+    final mainline = Mainline(
+      id: 'ml-5',
+      title: '写作',
+      created: DateTime(2026, 10, 1, 9),
+      steps: const [MainlineStep(title: '开头')],
+      logs: [
+        MainlineLog.range(
+          start: DateTime(now.year, now.month, 11),
+          end: DateTime(now.year, now.month, 12),
+          text: '这一段在改稿',
+        ),
+      ],
+    );
+    final controller = makeController(prefix: [mainline]);
+    await tester.runAsync(() => controller.mainlineService!.load());
+    await pumpPanel(tester, controller);
+
+    await tester.tap(find.text('写作'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('1/2'));
+    await tester.pumpAndSettle();
+
+    // 点圈里的 11 号 → 下半区列出覆盖这天的圈（格子上那条横条也带同样的文字）
+    await tester.tap(find.text('11'));
+    await tester.pumpAndSettle();
+    expect(find.text('这一段在改稿'), findsWidgets);
+
+    await tester.tap(find.text('这一段在改稿').last);
+    await tester.pumpAndSettle();
+    expect(find.text('改这一段'), findsOneWidget);
+    await tester.enterText(find.byType(TextField).last, '改成新的说法');
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+
+    final logs = controller.activeMainline!.logs;
+    expect(logs, hasLength(1));
+    expect(logs.single.text, '改成新的说法');
+    expect(logs.single.start, DateTime(now.year, now.month, 11));
+  });
+
   testWidgets('记录页：点月头年月切成月记，写一句落库，再点切回日历', (tester) async {
     final plain = Mainline(
       id: 'ml-4',
