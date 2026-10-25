@@ -16,6 +16,7 @@
 | 6.9 主线覆盖页 | [mainline.md](mainline.md) |
 | 6.10 桌面（Windows）布局 | [desktop.md](desktop.md) |
 | 6.11 今日编排（今日页下拉 → 时间轴覆盖页） | [plan.md](plan.md) |
+| 6.12 支线（今日页日期行 → 文件夹视图，与编排同页） | [branch.md](branch.md) |
 | 过渡时长（面板内每处动画的毫秒数） | 本页 |
 
 ## 跨页共用：页序、默认页、面板头
@@ -67,7 +68,7 @@
 - **上滑就藏**：列表往上推（手指上滑）累计过 12dp，两颗钮下滑淡出；**只有下滑或滚回
   顶部才回来**——停手不自动弹回，读长清单时右下角不会一直飘着两块东西。
 - **选择模式一律显示**：批处理条不能藏在屏外。
-- 覆盖页（[主线覆盖页](mainline.md) / [今日编排](plan.md)）盖住整块面板，那两页本来
+- 覆盖页（[主线覆盖页](mainline.md) / 编排与支线共用的那一块，[今日编排](plan.md)）盖住整块面板，那几页本来
   就看不清双钮。
 
 
@@ -83,10 +84,10 @@
 | 跳页（点页序圆点 / 通知定位） | 260ms | easeOutCubic | `side_panel.dart`、`android_shell.dart` |
 | 页名切换 | 180ms | 线性淡入淡出 | `side_panel.dart` |
 | 页序圆点换色 | 220ms | easeOutCubic | `side_panel.dart` |
-| 主线覆盖页进 / 退（『返回』与返回键） | 260 / 200ms | easeOutCubic / easeInCubic | `side_panel.dart` |
+| 主线与支线覆盖页进 / 退（『返回』与返回键） | 260 / 200ms | easeOutCubic / easeInCubic | `side_panel.dart` |
 | 覆盖页上滑退出（跟手段） | 1:1 跟手，不插值 | — | `side_panel.dart`、`mainline_panel.dart` |
 | 覆盖页上滑退出（松手后补满 / 弹回） | 200ms | easeOutCubic | `side_panel.dart` |
-| 今日编排覆盖页松手补满 / 弹回（进、出两向） | 200ms | easeOutCubic | `side_panel.dart` |
+| 编排与支线共用的覆盖页松手补满 / 弹回（进、出两向） | 200ms | easeOutCubic | `side_panel.dart` |
 | 今日编排覆盖页"展开即落位" | 不播，当帧全开 | — | `side_panel.dart` |
 | 主线覆盖页内翻页（`1/2`、记录页下半区右滑） | 240ms | easeOutCubic | `mainline_panel.dart` |
 | 快记从方块展开成输入框 | 360ms（前 60% 走位、后 40% 展开） | 两段 easeOutCubic | `side_panel.dart` |

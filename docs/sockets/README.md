@@ -11,6 +11,7 @@
 | 计算 | `TaskRepository` / `TaskCodec` / `Scheduler` | domain | [架构文档](../architecture.md) §4.1（接口草图） |
 | 计算 | 周期任务 | domain | [routine.md](routine.md) |
 | 计算 | 主线 | domain | [mainline.md](mainline.md) |
+| 计算 | 支线（任务分组） | domain | [branch.md](branch.md) |
 | 计算 | 灵感 / 设置 / 操作流水 | application | [app-ports.md](app-ports.md) |
 | 计算 | 今日与池子查询 | application | [views.md](views.md) |
 | 交付 | 通知 / 闹钟 / 权限 / 目录选择 + 两平台适配器 | application | [delivery.md](delivery.md) |
