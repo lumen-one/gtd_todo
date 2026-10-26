@@ -9,11 +9,12 @@ import 'package:gtd_todo/scheduler/slack_scheduler.dart';
 import 'package:gtd_todo/ui/app_controller.dart';
 import 'package:gtd_todo/ui/panels/settings_panel.dart';
 
-/// 设置页按**壳能力表**裁剪（ui-interaction.md §9 开头，v1.33）。
+/// 设置页按**壳能力表**裁剪（ui-interaction.md §9 开头）。
 ///
 /// 桌面壳接上四页之后，设置页里那组"只对贴屏悬浮壳有意义"的项就露馅了：在
-/// Windows 上照常显示、点了什么也不发生。这里守住两条：桌面上它们**整行不在**，
-/// 安卓上一条不少；判据是 `AppController.caps`，不是平台名。
+/// Windows 上照常显示、点了什么也不发生。这里守住三条：桌面上它们**整行不在**，
+/// 安卓上一条不少，判据是 `AppController.caps` 而不是平台名；而**把手恒开**，
+/// 所以两种壳的设置页里都没有那颗开关。
 void main() {
   /// 视口给得很高：ListView 惰性构建，只有进了视口才在树上——高视口让"找不到"
   /// 确实等于"没渲染"，而不是"还没滚到"。
@@ -46,10 +47,9 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  /// 只对悬浮壳有意义的那七行（§9 开头那张表）。
+  /// 只对悬浮壳有意义的那六行（§9 开头那张表）。
   const overlayOnly = [
     '权限引导',
-    '系统级贴屏把手',
     '固定把手位置',
     '固定侧边栏大小',
     '把手热区宽度',
@@ -57,12 +57,14 @@ void main() {
     '闹钟模式',
   ];
 
-  testWidgets('桌面壳：这七行整行不渲染（不是灰掉）', (tester) async {
+  testWidgets('桌面壳：这六行整行不渲染（不是灰掉）', (tester) async {
     await pumpSettings(tester, caps: ShellCapabilities.plainWindow);
 
     for (final label in overlayOnly) {
       expect(find.text(label), findsNothing, reason: '桌面上没有「$label」这个能力');
     }
+    // 把手恒开（§6.0）：它不是一个设置项，桌面上自然也没有这颗开关。
+    expect(find.text('系统级贴屏把手'), findsNothing);
     // 只剩默认页面一项，副标题改口（桌面上没有"展开"这一步）。
     expect(find.text('展开后默认页面'), findsOneWidget);
     expect(find.text('重新打开窗口时左栏落在这一页；点通知定位时按定位目标走'),
@@ -91,18 +93,23 @@ void main() {
     expect(find.text('灵感'), findsWidgets);
   });
 
-  testWidgets('悬浮壳：七行都在，副标题仍是"拖动把手展开"', (tester) async {
+  testWidgets('悬浮壳：六行都在，副标题仍是"拖动把手展开"', (tester) async {
     await pumpSettings(tester, caps: ShellCapabilities.overlayShell);
 
     for (final label in overlayOnly) {
       expect(find.text(label), findsWidgets, reason: '「$label」是悬浮壳的能力');
     }
+    // 把手恒开（§6.0）：能力表里仍有 systemHandle（默认页副标题要用），但
+    // **没有开关**——连灰掉的都不摆。
+    expect(find.text('系统级贴屏把手'), findsNothing);
     expect(find.text('拖动把手展开时落在这一页；点通知定位时按定位目标走'),
         findsOneWidget);
-    // 关于：版本号（测试里没接版本号插座 → 占位）+ 反馈 QQ
+    // 关于：版本号（测试里没接版本号插座 → 占位）+ 反馈 QQ + GitHub
     expect(find.text('关于'), findsOneWidget);
     expect(find.text('版本'), findsOneWidget);
     expect(find.text('QQ 3110741060（点一下复制）'), findsOneWidget);
+    expect(find.text('https://github.com/lumen-one/gtd_todo（点一下复制）'),
+        findsOneWidget);
   });
 
   /// 版本号由装配点注入（安卓是原生 `PackageManager` 读回来的两截），

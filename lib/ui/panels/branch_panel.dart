@@ -28,8 +28,9 @@ class _BranchBoardState extends State<BranchBoard> {
   /// 候选最多几条（与编排的添加行同一档：再多就该用输入框筛了）。
   static const int _maxCandidates = 6;
 
-  /// 折叠着的支线（默认全展开，所以存"折了哪些"；折叠状态不落盘）。
-  final Set<int> _collapsed = {};
+  /// 展开着的支线（**默认全收起**，所以存"展开了哪些"；折叠状态不落盘）。
+  /// 收起态一页只露文件夹名，装得下更多条；要看里面就在卡片头上点一下。
+  final Set<int> _expanded = {};
 
   /// 正在挑任务的是哪条支线；null = 没有。
   int? _addingFor;
@@ -76,7 +77,7 @@ class _BranchBoardState extends State<BranchBoard> {
     final branch = _branches[index];
     final rows = _rowsOf(index);
     final done = rows.where((r) => r.done).length;
-    final collapsed = _collapsed.contains(index);
+    final collapsed = !_expanded.contains(index);
     final allDone = rows.isNotEmpty && done == rows.length;
 
     return Container(
@@ -163,7 +164,7 @@ class _BranchBoardState extends State<BranchBoard> {
   }
 
   void _toggle(int index) => setState(() {
-        if (!_collapsed.remove(index)) _collapsed.add(index);
+        if (!_expanded.remove(index)) _expanded.add(index);
       });
 
   /// 两段渲染：未完成（含失效引用）在前、已完成在后，各段内保持文件里的行序。
@@ -620,10 +621,13 @@ class _BranchBoardState extends State<BranchBoard> {
     await widget.controller.addBranch(name);
     if (!mounted) return;
     // 建完紧接着挑第一批任务：空文件夹停在原地，下一步必然是往里放东西。
+    // 刚建的那条**展开**——默认收起是为了"一页看得下更多条"，不是让新建的
+    // 东西立刻消失在合着的卡片里。
     setState(() {
       _creating = false;
       _newName.clear();
       _addingFor = at;
+      _expanded.add(at);
       _draft.clear();
     });
   }
@@ -684,9 +688,9 @@ class _BranchBoardState extends State<BranchBoard> {
       if (ok == true) {
         await widget.controller.removeBranch(index);
         if (!mounted) return;
-        // 删掉一条之后下标整体前移：折叠态与"正在挑任务"的那个下标都对不上了。
+        // 删掉一条之后下标整体前移：展开态与"正在挑任务"的那个下标都对不上了。
         setState(() {
-          _collapsed.clear();
+          _expanded.clear();
           _addingFor = null;
         });
       }

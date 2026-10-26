@@ -171,7 +171,6 @@ class NativeBridge(
                 "hasOverlayPermission" -> result.success(hasOverlayPermission())
                 "requestOverlayPermission" -> result.success(requestOverlayPermission())
                 "setOverlayHandle" -> result.success(setOverlayHandle(call))
-                "isOverlayHandleEnabled" -> result.success(isOverlayHandleEnabled())
                 "setHandleLocked" -> result.success(setHandleLocked(call))
                 "setHandleHotWidth" -> result.success(setHandleHotWidth(call))
                 "isIgnoringBatteryOptimizations" -> result.success(isIgnoringBatteryOptimizations())
@@ -369,10 +368,6 @@ class NativeBridge(
         OverlayHandleService.setHotZoneWidth(activity, dp)
         return true
     }
-
-    /** 把手开关的真实状态（设置页据此初始化开关，而不是靠本地假设）。 */
-    private fun isOverlayHandleEnabled(): Boolean =
-        OverlayHandleService.isEnabled(activity)
 
     // -------------------------------------------------------------- 事件投递
 

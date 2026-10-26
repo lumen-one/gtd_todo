@@ -529,12 +529,10 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  /// 回到前台：SAF 无文件监听时靠它回流（附录 B），同时补当天的实例，
-  /// 并把系统级把手的真实开关状态同步回设置页。
+  /// 回到前台：SAF 无文件监听时靠它回流（附录 B），同时补当天的实例。
   Future<void> onResumed() async {
     await refresh();
     await syncRoutineInstances();
-    await refreshOverlayHandleState();
     await syncNow(); // 回前台补一轮同步（§4.4；未接入主机时是无操作）
   }
 
@@ -979,19 +977,13 @@ class AppController extends ChangeNotifier {
     );
   }
 
-  /// 贴屏把手（系统级悬浮窗）；返回是否成功（无权限 = false → 抽屉兜底）。
-  Future<bool> setOverlayHandle(bool enabled) async {
-    final ok = await overlayHandleControl?.call(enabled) ?? false;
-    _overlayHandleEnabled = ok && enabled;
-    notifyListeners();
-    return ok;
-  }
-
-  bool _overlayHandleEnabled = false;
-
-  /// 系统级把手是否开着（开着时应用内把手不隐藏——两者分工：应用在前台
-  /// 由应用内把手负责，退到后台由系统把手负责，原生侧自动切换）。
-  bool get overlayHandleEnabled => _overlayHandleEnabled;
+  /// 系统级贴屏把手**恒开**（ui-interaction.md §6.0）：启动时、"授予悬浮窗权限"
+  /// 之后各拉一次，设置页里**没有开关**。
+  ///
+  /// 返回 false = 没权限 / 系统拒绝拉起前台服务——此时 App 内只剩抽屉
+  /// （§10 的降级路），不弹提示：权限引导那一区自己会显示状态。
+  Future<bool> ensureOverlayHandle() async =>
+      await overlayHandleControl?.call(true) ?? false;
 
   /// 装配点注入：把手位置上锁（安卓原生；桌面无此能力 = null）。
   Future<bool> Function(bool locked)? handleLockControl;
@@ -1030,23 +1022,6 @@ class AppController extends ChangeNotifier {
   Future<void> setHandleHotWidth(int widthDp) async {
     await handleHotWidthControl?.call(widthDp);
     await updateSettings(_settings.copyWith(handleHotWidth: widthDp));
-  }
-
-  /// 装配点注入：查询把手真实状态（安卓原生；桌面无此能力 = null）。
-  Future<bool> Function()? overlayHandleState;
-
-  /// 启动/回前台时同步把手真实状态（设置页开关据此显示，避免与系统不一致）。
-  Future<void> refreshOverlayHandleState() async {
-    final query = overlayHandleState;
-    if (query == null) return;
-    try {
-      final enabled = await query();
-      if (enabled == _overlayHandleEnabled) return;
-      _overlayHandleEnabled = enabled;
-      notifyListeners();
-    } catch (_) {
-      // 原生不可用：保持现值
-    }
   }
 
   /// 装配点注入：把手开关（安卓原生；桌面无此能力 = null）。

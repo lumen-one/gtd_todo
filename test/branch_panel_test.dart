@@ -87,7 +87,12 @@ void main() {
     await c.addTaskToBranch(0, second.id);
     await pumpOverlay(tester, c);
 
+    // 默认收起（§6.12）：卡片头挂着进度，里面的行不摆出来。
     expect(find.text('0/2'), findsOneWidget);
+    expect(find.text('第一件'), findsNothing);
+    await tester.tap(find.text('A'));
+    await tester.pumpAndSettle();
+
     expect(tester.getTopLeft(find.text('第一件')).dy,
         lessThan(tester.getTopLeft(find.text('第二件')).dy));
 
@@ -107,6 +112,10 @@ void main() {
     final only = await tasks.createTask(title: '写落地页');
     await pumpOverlay(tester, c);
 
+    // 收起态里没有『添加任务』那一行：先点开卡片头。
+    expect(find.text('添加任务'), findsNothing);
+    await tester.tap(find.text('A'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('添加任务'));
     await tester.pumpAndSettle();
     expect(find.text('写落地页'), findsOneWidget);

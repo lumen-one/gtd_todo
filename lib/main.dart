@@ -141,11 +141,10 @@ Future<void> main() async {
       FileNotesPort(() => controller.settings.notesPath);
   // 局域网同步（§4.4）：本机名进 UDP 广播与冲突存档文件名。
   controller.attachSync(sync, Platform.localHostname);
-  // 系统级贴屏把手（安卓原生；桌面无此能力）。
+  // 系统级贴屏把手（安卓原生；桌面无此能力）。**恒开**，没有开关：
+  // 启动时与"授予悬浮窗权限"之后由控制器各拉一次（`ensureOverlayHandle`）。
   controller.overlayHandleControl =
       bridge == null ? null : (enabled) => bridge.setOverlayHandle(enabled);
-  controller.overlayHandleState =
-      bridge == null ? null : () => bridge.isOverlayHandleEnabled();
   // 把手位置上锁（§6.0）：桌面无系统级把手 = null，设置项只落 settings.json。
   controller.handleLockControl =
       bridge == null ? null : (locked) => bridge.setHandleLocked(locked);
@@ -201,7 +200,9 @@ Future<void> main() async {
   ).attach(service.events);
   AppColors.applyPreset(controller.themePreset);
   await bridge?.markReady(); // 取回应用被杀期间入队的事件
-  await controller.refreshOverlayHandleState(); // 设置页开关显示真实状态
+  // 贴屏把手**恒开**（§6.0）：启动就把原生那套拉起来。设置页里没有开关，
+  // 拉不起来（没给悬浮窗权限 / 系统拒绝前台服务）也不吭声——App 内本来就有抽屉。
+  await controller.ensureOverlayHandle();
 
   controller.startTicking(); // 前台兜底轮询（C2：只在到点后重锚 + 跨日生成）
   // Obsidian 手改实时回流（事件驱动重锚）；watch() 返回 null 时

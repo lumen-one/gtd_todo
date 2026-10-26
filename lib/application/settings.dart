@@ -70,6 +70,12 @@ int clampHandleHotWidth(Object? raw) {
   return raw.toInt().clamp(minHandleHotWidth, maxHandleHotWidth).toInt();
 }
 
+/// 侧边栏宽高的**安装默认值**（逻辑像素）：窄栏那一档——页内容本来就是单列，
+/// 再宽只是把空白摊开。两个值都给成数字而不是公式，是因为用户拖到哪儿就是哪儿
+/// （口径见 ui-interaction.md §6.0 / §9 第 11 条），没有"随屏宽按比例变"这一层。
+const double defaultPanelWidth = 240;
+const double defaultPanelHeight = 425;
+
 /// 应用设置（ui-interaction.md §9）：调度模式、提醒时间段、定期挑、灵感路径等。
 /// application 只定义形状与缺省值；落盘走 [SettingsPort]（组装点装配，
 /// 本期实现 = 任务目录下 settings.json，Obsidian 目录里多一个文件可接受）。
@@ -121,21 +127,21 @@ class AppSettings {
   final String themeMode;
 
   /// 侧边栏宽度（逻辑像素；可拖拽调整，松手落盘，口径见 ui-interaction.md §6.0）。
-  /// null = 用默认公式 min(0.80 × 屏宽, 360)；老设置文件缺 `panel_width`
-  /// 键即此态，向后兼容。
-  final double? panelWidth;
+  /// 缺键 = [defaultPanelWidth]（240）——拖到哪儿就是哪儿，没有"随屏宽按比例变"
+  /// 这一层；读取时仍会按当时屏宽夹一次，换屏不会溢出。
+  final double panelWidth;
 
-  /// 侧边栏高度（逻辑像素；同 [panelWidth]）。null = 默认 0.85 × 可用高度
-  /// （屏高 − 上下安全区 − 上下贴靠 inset）。
-  final double? panelHeight;
+  /// 侧边栏高度（逻辑像素；同 [panelWidth]）。缺键 = [defaultPanelHeight]（425）。
+  final double panelHeight;
 
   /// 侧边栏尺寸是否**固定**（§6.0 / §9 第 11 条）。true = 两条改尺寸的把手
   /// 撤掉（底边那条不渲染、内侧竖条换成跟手收起把手），宽高按 [panelWidth] /
-  /// [panelHeight] 的现值走，不再随屏宽/横竖屏按默认公式变。
+  /// [panelHeight] 的现值走。
   ///
-  /// 落 settings.json 的 `panel_size_locked`，默认不锁。锁上时 UI 层会把此刻
-  /// 生效的宽高算成数字写进 [panelWidth] / [panelHeight]（"固定当前的"——
-  /// 之前没拖过的话就是把默认公式的结果冻住）；解锁只清这个开关，数值留着。
+  /// 落 settings.json 的 `panel_size_locked`，**默认就是锁的**：新装即
+  /// 240 × 425 固定，想自己调尺寸得先关掉这个开关。锁上时 UI 层会把此刻
+  /// 生效的宽高算成数字写进 [panelWidth] / [panelHeight]；解锁只清这个开关，
+  /// 数值留着。
   ///
   /// 与 [handleLocked] 是两件事：一个锁**把手的竖向位置**，一个锁**面板宽高**。
   final bool panelSizeLocked;
@@ -186,9 +192,9 @@ class AppSettings {
     this.routineShowInPool = true,
     this.themePreset = 'orange',
     this.themeMode = 'system',
-    this.panelWidth,
-    this.panelHeight,
-    this.panelSizeLocked = false,
+    this.panelWidth = defaultPanelWidth,
+    this.panelHeight = defaultPanelHeight,
+    this.panelSizeLocked = true,
     this.handleLocked = false,
     this.defaultPage = 'today',
     this.handleHotWidth = defaultHandleHotWidth,
@@ -220,8 +226,6 @@ class AppSettings {
     List<List<int>>? workWindows,
     bool clearNotesPath = false,
     bool clearLastPickDate = false,
-    bool clearPanelWidth = false,
-    bool clearPanelHeight = false,
   }) {
     return AppSettings(
       notificationWindows: notificationWindows ?? this.notificationWindows,
@@ -236,8 +240,8 @@ class AppSettings {
       routineShowInPool: routineShowInPool ?? this.routineShowInPool,
       themePreset: themePreset ?? this.themePreset,
       themeMode: themeMode ?? this.themeMode,
-      panelWidth: clearPanelWidth ? null : (panelWidth ?? this.panelWidth),
-      panelHeight: clearPanelHeight ? null : (panelHeight ?? this.panelHeight),
+      panelWidth: panelWidth ?? this.panelWidth,
+      panelHeight: panelHeight ?? this.panelHeight,
       panelSizeLocked: panelSizeLocked ?? this.panelSizeLocked,
       handleLocked: handleLocked ?? this.handleLocked,
       defaultPage: defaultPage ?? this.defaultPage,
@@ -267,8 +271,8 @@ class AppSettings {
         'routine_show_in_pool': routineShowInPool,
         'theme_preset': themePreset,
         'theme_mode': themeMode,
-        if (panelWidth != null) 'panel_width': panelWidth,
-        if (panelHeight != null) 'panel_height': panelHeight,
+        'panel_width': panelWidth,
+        'panel_height': panelHeight,
         'panel_size_locked': panelSizeLocked,
         'handle_locked': handleLocked,
         'default_page': defaultPage,
@@ -298,9 +302,12 @@ class AppSettings {
       routineShowInPool: json['routine_show_in_pool'] != false,
       themePreset: (json['theme_preset'] as String?) ?? 'orange',
       themeMode: (json['theme_mode'] as String?) ?? 'system',
-      panelWidth: (json['panel_width'] as num?)?.toDouble(),
-      panelHeight: (json['panel_height'] as num?)?.toDouble(),
-      panelSizeLocked: json['panel_size_locked'] == true,
+      // 老设置文件里没有这两个键 → 直接抬到安装默认值（240 × 425），
+      // 与"新装"同一个落点。
+      panelWidth: (json['panel_width'] as num?)?.toDouble() ?? defaultPanelWidth,
+      panelHeight:
+          (json['panel_height'] as num?)?.toDouble() ?? defaultPanelHeight,
+      panelSizeLocked: json['panel_size_locked'] != false,
       handleLocked: json['handle_locked'] == true,
       defaultPage: (json['default_page'] as String?) ?? 'today',
       handleHotWidth: clampHandleHotWidth(json['handle_hot_width']),

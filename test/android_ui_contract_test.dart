@@ -345,19 +345,35 @@ void main() {
       expect(locked.handleLocked, isTrue);
       expect(decodeSettings(encodeSettings(locked)).handleLocked, isTrue);
       // 上锁不动别的字段（与侧边栏宽高、主题各管一段）。
-      expect(locked.panelWidth, isNull);
+      expect(locked.panelWidth, defaultPanelWidth);
       expect(locked.themeMode, 'system');
     });
 
-    test('侧边栏宽高：拖拽持久化往返，老文件缺键回退默认 null', () {
+    test('把手热区宽度：缺省 12dp，三档值与夹取范围一致，越界夹回', () {
+      expect(AppSettings.defaults.handleHotWidth, defaultHandleHotWidth);
+      expect(handleHotWidthOptions, [8, 12, 20]);
+      expect(minHandleHotWidth, 8);
+      expect(maxHandleHotWidth, 20);
+
+      final s = AppSettings.defaults.copyWith(handleHotWidth: 20);
+      expect(decodeSettings(encodeSettings(s)).handleHotWidth, 20);
+      // 老设置文件没有这个键 → 默认档，不报错。
+      expect(decodeSettings('{}').handleHotWidth, 12);
+      // 手改坏了：太小 / 太大 / 不是数字，一律夹回区间或回默认。
+      expect(decodeSettings('{"handle_hot_width": 1}').handleHotWidth, 8);
+      expect(decodeSettings('{"handle_hot_width": 999}').handleHotWidth, 20);
+      expect(decodeSettings('{"handle_hot_width": "wide"}').handleHotWidth, 12);
+    });
+
+    test('侧边栏宽高：拖拽持久化往返，老文件缺键抬到安装默认值', () {
       const s = AppSettings(panelWidth: 512, panelHeight: 640);
       final back = decodeSettings(encodeSettings(s));
       expect(back.panelWidth, 512);
       expect(back.panelHeight, 640);
-      // 老设置文件没有这些键 → null → 用默认公式（不因缺键报错、不写死尺寸）
+      // 老设置文件没有这些键 → 抬到 240 × 425（与"新装"同一个落点）
       final legacy = AppSettings.fromJson(const {'alarm_mode': true});
-      expect(legacy.panelWidth, isNull);
-      expect(legacy.panelHeight, isNull);
+      expect(legacy.panelWidth, defaultPanelWidth);
+      expect(legacy.panelHeight, defaultPanelHeight);
     });
   });
 }

@@ -73,7 +73,7 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    // 面板停右、宽 360（测试屏 800）：左边那一大片是遮罩。
+    // 面板停右、宽 240（测试屏 800）：左边那一大片是遮罩。
     await tester.tapAt(const Offset(60, 300));
     await tester.pumpAndSettle();
 
@@ -105,7 +105,8 @@ void main() {
     await tester.pumpAndSettle();
 
     // 往右拖 = 上一页（任务池 → 今日清单），临时看一眼别的页。
-    await tester.drag(find.byType(PageView), const Offset(400, 0));
+    // 位移按面板宽算：240 宽时拖 400 会甩过两页，这里给 3/4 页。
+    await tester.drag(find.byType(PageView), const Offset(160, 0));
     await tester.pumpAndSettle();
     expect(find.text('今日清单'), findsOneWidget);
 
@@ -261,9 +262,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // 默认高 ≈ 0.85×(600−16) = 496.4 → 面板顶 ≈ 300−248.2 = 51.8，
-    // 文本顶 = 51.8 + 2 + 5 = 58.8（比贴顶的 15 低出约 43.8 = 锚点−半高−8）
-    expect(tester.getTopLeft(find.text('今日清单')).dy, closeTo(58.8, 1));
+    // 默认高 425 → 面板顶 ≈ 300−212.5 = 87.5，
+    // 文本顶 = 87.5 + 2 + 5 = 94.5（比贴顶的 15 低出约 79.5 = 锚点−半高−8）
+    expect(tester.getTopLeft(find.text('今日清单')).dy, closeTo(94.5, 1));
   });
 
   testWidgets('panelDrag：侧边栏跟着手指滑出（露多少跟多少）', (tester) async {
@@ -277,11 +278,12 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    // 800×600、默认宽 = min(0.8×800, 360) = 360；贴右停靠（6）：
-    // 文本 left = 800 − 6 − 360 + 10（面板头左 padding）= 444。
-    expect(tester.getTopLeft(find.text('今日清单')).dx, closeTo(444, 1));
+    // 800×600、默认宽 240（安装值）；贴右停靠（6）：
+    // 文本 left = 800 − 6 − 240 + 10（面板头左 padding）= 564。
+    expect(tester.getTopLeft(find.text('今日清单')).dx, closeTo(564, 1));
 
-    // 原生广播跟手进度：dx = 180 = 半个面板宽 → 右缘不动、左缘内收 180。
+    // 原生广播跟手进度：dx = 180 = 面板宽的 3/4 → 只露四分之一，
+    // 左缘（含 6dp 贴边）落在 554 + (1−0.75)×240 + 10 = 624。
     sendOverlayCall(const MethodCall('panelDrag', {'dx': 180.0}));
     await tester.pumpAndSettle();
     expect(tester.getTopLeft(find.text('今日清单')).dx, closeTo(624, 1));
@@ -289,7 +291,7 @@ void main() {
     // dx 超过面板宽 → 夹到全展开（拖不滑出头）。
     sendOverlayCall(const MethodCall('panelDrag', {'dx': 999.0}));
     await tester.pumpAndSettle();
-    expect(tester.getTopLeft(find.text('今日清单')).dx, closeTo(444, 1));
+    expect(tester.getTopLeft(find.text('今日清单')).dx, closeTo(564, 1));
   });
 
   testWidgets('panelDragEnd{open=false}：滑回屏外后才收起（调 collapse 摘窗口）',
@@ -337,8 +339,8 @@ void main() {
     sendOverlayCall(const MethodCall('panelDragEnd', {'open': true}));
     await tester.pumpAndSettle();
 
-    // 补满后停在展开位，且没有顺手收起。
-    expect(tester.getTopLeft(find.text('今日清单')).dx, closeTo(444, 1));
+    // 补满后停在展开位（800 − 6 − 240 + 10 = 564），且没有顺手收起。
+    expect(tester.getTopLeft(find.text('今日清单')).dx, closeTo(564, 1));
     expect(calls.map((c) => c.method), isNot(contains('collapse')));
   });
 
@@ -356,12 +358,12 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    // 全展开位：贴右停靠（6）、面板宽 360 → 页名 left = 800 − 6 − 360 + 10。
-    expect(tester.getTopLeft(find.text('今日清单')).dx, closeTo(444, 1));
+    // 全展开位：贴右停靠（6）、面板宽 240 → 页名 left = 800 − 6 − 240 + 10。
+    expect(tester.getTopLeft(find.text('今日清单')).dx, closeTo(564, 1));
 
     final grip = find.byWidgetPredicate(
         (w) => w is SizedBox && w.width == 12 && w.height == null);
-    // 朝屏外（右）推 300dp：扣掉触摸 slop 也远过面板宽的一半（180dp）。
+    // 朝屏外（右）推 300dp：扣掉触摸 slop 也远过面板宽的一半（120dp）。
     await tester.drag(grip, const Offset(300, 0));
     await tester.pumpAndSettle();
 
@@ -388,7 +390,7 @@ void main() {
     await tester.drag(grip, const Offset(40, 0));
     await tester.pumpAndSettle();
 
-    expect(tester.getTopLeft(find.text('今日清单')).dx, closeTo(444, 1));
+    expect(tester.getTopLeft(find.text('今日清单')).dx, closeTo(564, 1));
     expect(calls.map((c) => c.method), isNot(contains('collapse')));
   });
 

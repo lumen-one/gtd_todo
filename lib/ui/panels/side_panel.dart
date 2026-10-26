@@ -936,12 +936,6 @@ const double _kEdgeGrab = 12;
 /// 展开时面板与屏缘的贴靠 inset（上下同用；可用高度 = 屏高 − 安全区 − 2×它）。
 const double _kPanelInset = 8;
 
-/// 默认尺寸（没拖过时）：宽 = min(0.80 × 屏宽, 360)，高 = 0.85 × 可用高度。
-/// 都是手感参数，口径见 ui-interaction.md §6.0——改数只动这一处。
-const double _kDefaultWidthFraction = 0.80;
-const double _kDefaultWidthCap = 360;
-const double _kDefaultHeightFraction = 0.85;
-
 /// 尺寸固定后收起把手的判定阈值：**面板宽的一半**（§6.0）。
 ///
 /// 只看距离不看速度——与"拉开"侧（72dp 或快甩）刻意不对称：推回去是"看完了"
@@ -956,22 +950,16 @@ double panelAvailableHeight(BuildContext context) {
   return mq.size.height - mq.padding.top - mq.padding.bottom - 2 * _kPanelInset;
 }
 
-/// 当前侧边栏宽度：拖宽持久化在 `settings.panelWidth`；没拖过 = 默认公式。
-/// 结果必过 [clampPanelWidth]——换屏（旋转 / 分屏 / 悬浮窗尺寸变化）时
-/// 旧宽度按当时屏幕重新夹，不会溢出屏幕。
+/// 当前侧边栏宽度：`settings.panelWidth`（安装默认 [defaultPanelWidth]）。
+///
+/// 结果必过 [clampPanelWidth]——换屏（旋转 / 分屏 / 悬浮窗尺寸变化）时旧宽度
+/// 按当时屏幕重新夹，不会溢出屏幕。
 double panelWidthFor(AppSettings settings, double screenWidth) =>
-    clampPanelWidth(
-        settings.panelWidth ??
-            (screenWidth * _kDefaultWidthFraction > _kDefaultWidthCap
-                ? _kDefaultWidthCap
-                : screenWidth * _kDefaultWidthFraction),
-        screenWidth);
+    clampPanelWidth(settings.panelWidth, screenWidth);
 
-/// 当前侧边栏高度：拖高持久化在 `settings.panelHeight`；没拖过 = 默认公式。
+/// 当前侧边栏高度：`settings.panelHeight`（安装默认 [defaultPanelHeight]）。
 double panelHeightFor(AppSettings settings, double availableHeight) =>
-    clampPanelHeight(
-        settings.panelHeight ?? availableHeight * _kDefaultHeightFraction,
-        availableHeight);
+    clampPanelHeight(settings.panelHeight, availableHeight);
 
 /// 宽度夹紧：[_kMinPanelWidth, 屏宽 − 24]。屏宽窄于下限时给"能多宽多宽"
 /// （默认公式本身也随屏宽缩，不会把面板顶出屏外）。
@@ -1011,8 +999,7 @@ double clampPanelTop(double top, double min, double max) {
 /// 施加，因为它才知道面板该往哪个方向滑多远。
 ///
 /// **尺寸只有一个来源**：拖拽中 = 本地 `_dragWidth` / `_dragHeight`，其余
-/// 时候 = settings（或默认公式）。两个宿主（应用内壳 / 系统级悬浮窗）共用
-/// 这一个组件，拖拽语义与持久化行为完全一致；宿主只负责"摆哪儿"
+/// 时候 = settings。宿主只负责"摆哪儿"
 /// （Positioned / 滑入动画 + 停靠侧 + 顶部 inset），不再自己算尺寸。
 class ResizablePanel extends StatefulWidget {
   final AppController controller;
@@ -1053,7 +1040,7 @@ class ResizablePanel extends StatefulWidget {
 }
 
 class _ResizablePanelState extends State<ResizablePanel> {
-  /// 拖拽中的实时宽/高；null = 不在拖，用 settings 里的值（或默认公式）。
+  /// 拖拽中的实时宽/高；null = 不在拖，用 settings 里的值。
   double? _dragWidth;
   double? _dragHeight;
 

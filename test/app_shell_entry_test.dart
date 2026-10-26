@@ -2,31 +2,36 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gtd_todo/application/settings.dart';
 import 'package:gtd_todo/application/task_service.dart';
+import 'package:gtd_todo/domain/task.dart';
 import 'package:gtd_todo/domain/time_context.dart';
 import 'package:gtd_todo/repository/memory_task_repository.dart';
 import 'package:gtd_todo/scheduler/slack_scheduler.dart';
 import 'package:gtd_todo/ui/app_controller.dart';
+import 'package:gtd_todo/ui/panel_pages.dart';
 import 'package:gtd_todo/ui/shells/android_shell.dart';
 
-/// App 壳的侧边栏入口（ui-interaction.md §6.0，v1.31）。
+/// App 内的入口（ui-interaction.md §6.0 / §9 第 12 条）。
 ///
-/// 右下角那颗『▏▎ 侧边栏』FAB 撤掉了：同一动作上原本摆着三条路（把手拖出 /
-/// 抽屉 / FAB），而它是唯一一颗压在设置页**内容区**上的常驻按钮。留下的两条
-/// 各有分工——把手在哪都常驻，抽屉在页面内。这条测试守住"撤掉的那条别回来"。
+/// 侧边栏本体只有系统级悬浮面板那一套：贴屏把手恒开，App 内**没有**自己的一份
+/// 把手与滑出面板，也没有右下角那颗『侧边栏』FAB。App 内只剩抽屉一条路——它同时
+/// 是悬浮窗被拒时的兜底（§11），落点跟着设置的默认页走。
 void main() {
-  Future<AppController> pumpShell(WidgetTester tester) async {
+  final now = DateTime(2026, 10, 7, 10, 0);
+
+  Future<AppController> pumpShell(WidgetTester tester,
+      {String? defaultPage}) async {
     final svc = TaskService(
       repo: MemoryTaskRepository(),
       scheduler: const SlackScheduler(),
       workRule: WorkTimeRule.standard,
-      clock: () => DateTime(2026, 10, 7, 10, 0),
+      clock: () => now,
     );
     final controller = AppController(
       service: svc,
       taskDir: 'ignored',
       // guideSeen：否则首次展开会弹引导对话框，干扰后面的断言。
       settingsPort: _MemorySettingsPort(
-          AppSettings.defaults.copyWith(guideSeen: true)),
+          AppSettings.defaults.copyWith(guideSeen: true, defaultPage: defaultPage)),
     );
     await tester.binding.setSurfaceSize(const Size(400, 800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -36,6 +41,11 @@ void main() {
     await tester.pumpAndSettle();
     return controller;
   }
+
+  /// 抽屉当前停在哪一页：读 TabBarView 头上那个控制器，比"哪段文字在屏幕上"
+  /// 靠谱——TabBarView 会留着相邻页，文字只能证明它在树里。
+  int drawerPage(WidgetTester tester) =>
+      DefaultTabController.of(tester.element(find.byType(TabBarView))).index;
 
   testWidgets('设置页没有『侧边栏』FAB（v1.31 撤掉的那颗）', (tester) async {
     await pumpShell(tester);
@@ -53,6 +63,31 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(TabBar), findsOneWidget, reason: '抽屉已展开');
+  });
+
+  testWidgets('抽屉起手页 = 设置里的默认页（§9 第 12 条）', (tester) async {
+    final controller = await pumpShell(tester, defaultPage: 'completed');
+
+    controller.requestOpenPanel();
+    await tester.pumpAndSettle();
+
+    expect(drawerPage(tester), PanelPage.completed.index,
+        reason: '设成已完成，抽屉就该落在已完成页');
+  });
+
+  testWidgets('点通知定位压过默认页：落在目标页', (tester) async {
+    final controller = await pumpShell(tester, defaultPage: 'completed');
+
+    final task = await controller.service.createTask(
+      title: '交水电费',
+      deadline: DateTime(2026, 10, 7, 14, 0),
+      type: TaskType.fixed,
+    );
+    controller.locateTask(task.id);
+    await tester.pumpAndSettle();
+
+    expect(drawerPage(tester), PanelPage.today.index,
+        reason: '今天的件定位到今日清单，不被默认页（已完成）盖掉');
   });
 }
 

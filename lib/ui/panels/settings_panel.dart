@@ -19,6 +19,9 @@ import 'side_panel.dart';
 /// 反馈用的 QQ：『关于』卡里点一下复制的就是它。
 const String _feedbackQq = '3110741060';
 
+/// 仓库地址（§9 第 14 条）：与 QQ 同一套做法——点一下复制，不引 `url_launcher`。
+const String _repoUrl = 'https://github.com/lumen-one/gtd_todo';
+
 String _mm(int minuteOfDay) {  final h = (minuteOfDay ~/ 60).toString().padLeft(2, '0');
   final m = (minuteOfDay % 60).toString().padLeft(2, '0');
   return '$h:$m';
@@ -80,7 +83,7 @@ Widget _hotWidthButton(AppController c, AppSettings s, int dp) {
 
 /// 设置页（ui-interaction.md §9，暂定 App 唯一主体页面）：
 /// 1. 权限引导〔悬浮壳〕；2. 任务目录；3. 侧边栏（**展开后默认页面** /
-/// 系统级贴屏把手〔悬浮壳〕 / 固定把手位置〔悬浮壳〕 / 固定侧边栏大小〔悬浮壳〕 /
+/// 固定把手位置〔悬浮壳〕 / 固定侧边栏大小〔悬浮壳〕 /
 /// 把手热区宽度〔悬浮壳〕 / 重看首次引导〔悬浮壳〕）；
 /// 4. 周期任务管理（routines.md）；5. **工作时间（工作日 + 工作窗，slack 的分母）**；
 /// 6. 提醒与排序（**调度模式三档：完整/标准/无排序** + 时间段多段式 +
@@ -217,21 +220,6 @@ class _SettingsPanelState extends State<SettingsPanel> {
             ),
           ),
         ),
-        if (_c.caps.systemHandle)
-          SwitchListTile(
-            secondary: const Icon(Icons.view_sidebar_outlined),
-            title: const Text('系统级贴屏把手'),
-            subtitle: const Text('在别的 App 上方也能展开侧边栏'),
-            value: _c.overlayHandleEnabled,
-            onChanged: (v) async {
-              final ok = await _c.setOverlayHandle(v);
-              if (!context.mounted) return;
-              if (v && !ok) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                    content: Text('悬浮窗权限被拒：已退化为 App 内抽屉')));
-              }
-            },
-          ),
         if (_c.caps.handleTuning)
           SwitchListTile(
             secondary: const Icon(Icons.lock_outline),
@@ -416,6 +404,12 @@ class _SettingsPanelState extends State<SettingsPanel> {
           subtitle: const Text('QQ $_feedbackQq（点一下复制）'),
           onTap: _copyFeedback,
         ),
+        ListTile(
+          leading: const Icon(Icons.code),
+          title: const Text('GitHub'),
+          subtitle: const Text('$_repoUrl（点一下复制）'),
+          onTap: _copyRepoUrl,
+        ),
       ];
 
   Future<void> _copyFeedback() async {
@@ -423,6 +417,13 @@ class _SettingsPanelState extends State<SettingsPanel> {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
         .showSnackBar(const SnackBar(content: Text('已复制 QQ：$_feedbackQq')));
+  }
+
+  Future<void> _copyRepoUrl() async {
+    await Clipboard.setData(const ClipboardData(text: _repoUrl));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('已复制仓库地址：$_repoUrl')));
   }
 
   // ---------- 面板尺寸固定（§6.0 / §9 第 11 条）----------

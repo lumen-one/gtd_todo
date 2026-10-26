@@ -8,11 +8,11 @@ import 'package:gtd_todo/scheduler/slack_scheduler.dart';
 import 'package:gtd_todo/ui/app_controller.dart';
 import 'package:gtd_todo/ui/panels/side_panel.dart';
 
-/// ResizablePanel（ui/panels/side_panel.dart）契约测试：默认尺寸公式、
+/// ResizablePanel（ui/panels/side_panel.dart）契约测试：安装默认尺寸（240 × 425）、
 /// 垂直居中于把手锚点（触边夹紧）、拖底边把手改高并落盘；末了一组是
 /// **尺寸固定**后的把手换岗（§6.0 / §9 第 11 条）。
 ///
-/// 宿主姿势照应用内壳复刻：Stack + Positioned(top: 8, left: 6)——面板自己在
+/// 宿主姿势照悬浮面板复刻：Stack + Positioned(top: 8, left: 6)——面板自己在
 /// 可用区里 Padding 到锚点位，宿主的 top 就是可用区顶（`padding.top + 8`）。
 AppController makeController({AppSettings? settings}) {
   final svc = TaskService(
@@ -28,8 +28,8 @@ AppController makeController({AppSettings? settings}) {
   );
 }
 
-/// 800×600、无安全区：可用区 = [8, 592]；默认宽 = min(0.8×800, 360) = 360，
-/// 默认高 = 0.85 × (600 − 16) ≈ 496.4。
+/// 800×600、无安全区：可用区 = [8, 592]；默认宽高 = 安装值 240 × 425
+/// （不随屏宽按比例变，只按屏宽/可用高夹一次）。
 Widget host(
   AppController controller, {
   double? anchorCenterY,
@@ -80,14 +80,14 @@ Size contentSize(WidgetTester tester) =>
     tester.getSize(find.byKey(const Key('panel-content')));
 
 void main() {
-  testWidgets('无锚点（悬浮窗姿势）：贴可用区顶，默认宽高走公式', (tester) async {
+  testWidgets('无锚点（悬浮窗姿势）：贴可用区顶，宽高走安装默认值', (tester) async {
     final controller = makeController();
     await tester.pumpWidget(host(controller));
     await tester.pumpAndSettle();
 
     expect(contentTopLeft(tester).dy, 8);
-    expect(contentSize(tester).width, closeTo(360, 0.01));
-    expect(contentSize(tester).height, closeTo(496.4, 0.01));
+    expect(contentSize(tester).width, closeTo(240, 0.01));
+    expect(contentSize(tester).height, closeTo(425, 0.01));
   });
 
   testWidgets('有锚点：面板垂直居中于锚点', (tester) async {
@@ -95,8 +95,8 @@ void main() {
     await tester.pumpWidget(host(controller, anchorCenterY: 300));
     await tester.pumpAndSettle();
 
-    // 300 − 496.4/2 ≈ 51.8，不触边
-    expect(contentTopLeft(tester).dy, closeTo(51.8, 0.01));
+    // 300 − 425/2 = 87.5，不触边
+    expect(contentTopLeft(tester).dy, closeTo(87.5, 0.01));
   });
 
   testWidgets('锚点过高/过低：夹紧在可用区内', (tester) async {
@@ -108,11 +108,14 @@ void main() {
     final low = makeController();
     await tester.pumpWidget(host(low, anchorCenterY: 590));
     await tester.pumpAndSettle();
-    expect(contentTopLeft(tester).dy, closeTo(95.6, 0.01)); // 底边夹紧
+    expect(contentTopLeft(tester).dy, closeTo(167, 0.01)); // 底边夹紧
   });
 
   testWidgets('拖底边把手：高度实时变、围绕锚点重居中、松手落盘', (tester) async {
-    final controller = makeController();
+    // 默认是锁着的（§9 第 11 条）：要拖尺寸先解锁
+    final controller = makeController(
+        settings: AppSettings.defaults.copyWith(panelSizeLocked: false));
+    await tester.runAsync(controller.bootstrap);
     await tester.pumpWidget(host(controller, anchorCenterY: 300));
     await tester.pumpAndSettle();
 
@@ -145,10 +148,14 @@ void main() {
     Finder bottomGrip() =>
         find.byWidgetPredicate((w) => w is SizedBox && w.height == 12);
 
-    test('缺省不锁；panel_size_locked 往返，缺键回默认', () {
-      expect(AppSettings.defaults.panelSizeLocked, false);
-      expect(decodeSettings('{}').panelSizeLocked, false,
-          reason: '老设置文件没有这个键');
+    test('缺省就锁；panel_size_locked 往返，缺键即固定', () {
+      expect(AppSettings.defaults.panelSizeLocked, true);
+      expect(AppSettings.defaults.panelWidth, defaultPanelWidth);
+      expect(AppSettings.defaults.panelHeight, defaultPanelHeight);
+      expect(decodeSettings('{}').panelSizeLocked, true,
+          reason: '老设置文件没有这个键 → 与"新装"同一个落点');
+      expect(decodeSettings('{}').panelWidth, defaultPanelWidth,
+          reason: '缺键抬到安装默认值，不留在旧公式上');
 
       final locked = AppSettings.defaults.copyWith(
           panelSizeLocked: true, panelWidth: 300, panelHeight: 420);
@@ -195,7 +202,7 @@ void main() {
           onCollapsePull: pulls.add, onCollapseRelease: releases.add));
       await tester.pumpAndSettle();
 
-      // 停右（dockLeft=false）→ 往右推 = 朝屏外。面板宽 360，过半 = 180dp。
+      // 停右（dockLeft=false）→ 往右推 = 朝屏外。面板宽 240，过半 = 120dp。
       await tester.drag(verticalGrip(), const Offset(60, 0));
       await tester.pumpAndSettle();
       expect(pulls.isNotEmpty, true, reason: '拖动中实时上抛位移（跟手）');
@@ -208,16 +215,18 @@ void main() {
 
     testWidgets('没固定：拖竖把手仍是改宽，不触发收起', (tester) async {
       final releases = <bool>[];
-      final controller = makeController();
+      final controller = makeController(
+          settings: AppSettings.defaults.copyWith(panelSizeLocked: false));
       await tester.runAsync(controller.bootstrap);
       await tester.pumpWidget(host(controller, onCollapseRelease: releases.add));
       await tester.pumpAndSettle();
 
       final before = contentSize(tester).width;
-      // 停右时竖把手在左缘：往右拖 = 收窄（delta 在把手里按停靠侧翻了号）
-      await tester.drag(verticalGrip(), const Offset(60, 0));
+      // 停右时竖把手在左缘：往左拖 = 变宽（delta 在把手里按停靠侧翻了号）。
+      // 往右拖是收窄，但默认宽 240 正好是下限，拖不动——所以这里测放开那一侧。
+      await tester.drag(verticalGrip(), const Offset(-60, 0));
       await tester.pump();
-      expect(contentSize(tester).width, closeTo(before - 60, 20));
+      expect(contentSize(tester).width, closeTo(before + 60, 20));
       expect(releases, isEmpty, reason: '没固定就没有收起把手');
     });
   });
