@@ -81,7 +81,7 @@ abstract class PermissionPort {
 | ----------------- | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | 原生命令/事件通道 | `gtd/overlay`（MethodChannel）                          | 上行：`notifyReady` / `collapse` / `expand` / `openApp{target,routineId}` / `panelWidth{dp}`；下行：`state{expanded,dockedRight,handleCenterY}` / `panelDrag{dx}` / `panelDragEnd{open}` / `quickNoteStart` / `quickNoteCancel` / `quickNoteOpen{x,y}` |
 | 第二个引擎入口    | `lib/overlay_main.dart`（DartEntrypoint `overlayMain`） | 只剩入口与装配：装配**同一套** domain/application（自己的实例）；通道桥与面板宿主壳 `OverlayBridge` / `OverlayPanelShell` 在 `lib/ui/overlay/`                        |
-| 面板本体          | `lib/ui/panels/side_panel.dart`                         | `SidePanel` / `PanelActions` / `PanelPrivacyBar` / `QuickNoteLayer`（拖出头快记）/ `PanelOnboardDialog`：**应用内壳与悬浮窗共用同一份**（快记只在悬浮窗用） |
+| 面板本体          | `lib/ui/panels/side_panel.dart`                         | `SidePanel` / `PanelActions` / `PanelPrivacyBar` / `QuickNoteLayer`（拖出头快记）/ `PanelOnboardDialog`：**悬浮面板与 App 内抽屉共用同一份**（快记只在悬浮窗用） |
 | 窗口              | 原生 `OverlayHandleService`                             | 全屏**透明** `TYPE_APPLICATION_OVERLAY` 窗口承载引擎的 FlutterView；展开时隐藏原生把手                   |
 
 > `handleCenterY`（逻辑像素）= 原生把手的中心 Y：面板垂直居中于它（ui-interaction.md
