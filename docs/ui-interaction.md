@@ -403,9 +403,10 @@ App 主体，桌面上它是侧边栏右边那一栏（[桌面布局](panels/des
     入口只有设置页这一项，打开编辑面板（桌面的设置页就摆在侧边栏右边，标题栏不必
     再放一份）；
     应用内今日清单不再有只读版。**节假日/调休未做**（`WorkTimeRule.holidays` 留位未接线）。
-14. **关于**：设置页最底部一张卡，三行——**版本号**（形如 `1.2.0 (4)`：主版本 + 构建号）
-    与**反馈方式**（QQ 号）、**GitHub**（`github.com/lumen-one/gtd_todo`）。后两行都是
-    点一下复制到剪贴板并 toast 一句，不为一行字引 `url_launcher`。版本号取自**安装包自己的元数据**
+14. **关于**：设置页最底部一张卡，三行——**版本号**（形如 `1.2.0 (4)`：主版本 + 构建号）、
+    **反馈方式**（QQ 号）、**GitHub**（`github.com/lumen-one/gtd_todo`）。后两行点整行即
+    复制到剪贴板并 toast 一句结果，**行尾不写『点一下复制』**——给一长串地址缀四个字，
+    窄栏里只会折成第二行；也不为一行字引 `url_launcher`。版本号取自**安装包自己的元数据**
     （安卓 `versionName` / `versionCode`），源码里不写死：升级只改 `pubspec.yaml` 的
     `version:`，界面自己跟上。读它走**自建原生通道**（`gtd/native` 的 `appVersion`），
     不引第三方插件——`package_info_plus` 那类插件的安卓 Gradle 脚本会自己 apply Kotlin

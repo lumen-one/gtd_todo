@@ -16,10 +16,11 @@ import 'settings_sync.dart';
 // 算成数字（§6.0）。
 import 'side_panel.dart';
 
-/// 反馈用的 QQ：『关于』卡里点一下复制的就是它。
+/// 反馈用的 QQ：『关于』卡里点整行就把它复制走。
 const String _feedbackQq = '3110741060';
 
-/// 仓库地址（§9 第 14 条）：与 QQ 同一套做法——点一下复制，不引 `url_launcher`。
+/// 仓库地址（§9 第 14 条）：与 QQ 同一套做法——点整行复制，不引 `url_launcher`。
+/// 行尾不写『点一下复制』：一长串地址再缀四个字，窄栏里必然折成第二行。
 const String _repoUrl = 'https://github.com/lumen-one/gtd_todo';
 
 String _mm(int minuteOfDay) {  final h = (minuteOfDay ~/ 60).toString().padLeft(2, '0');
@@ -404,13 +405,13 @@ class _SettingsPanelState extends State<SettingsPanel> {
         ListTile(
           leading: const Icon(Icons.chat_bubble_outline),
           title: const Text('反馈'),
-          subtitle: const Text('QQ $_feedbackQq（点一下复制）'),
+          subtitle: const Text('QQ $_feedbackQq'),
           onTap: _copyFeedback,
         ),
         ListTile(
           leading: const Icon(Icons.code),
           title: const Text('GitHub'),
-          subtitle: const Text('$_repoUrl（点一下复制）'),
+          subtitle: const Text(_repoUrl),
           onTap: _copyRepoUrl,
         ),
       ];

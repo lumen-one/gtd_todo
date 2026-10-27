@@ -104,12 +104,12 @@ void main() {
     expect(find.text('系统级贴屏把手'), findsNothing);
     expect(find.text('拖动把手展开时落在这一页；点通知定位时按定位目标走'),
         findsOneWidget);
-    // 关于：版本号（测试里没接版本号插座 → 占位）+ 反馈 QQ + GitHub
+    // 关于：版本号（测试里没接版本号插座 → 占位）+ 反馈 QQ + GitHub。
+    // 行尾不缀『点一下复制』：复制靠点行本身（§9 第 14 条）。
     expect(find.text('关于'), findsOneWidget);
     expect(find.text('版本'), findsOneWidget);
-    expect(find.text('QQ 3110741060（点一下复制）'), findsOneWidget);
-    expect(find.text('https://github.com/lumen-one/gtd_todo（点一下复制）'),
-        findsOneWidget);
+    expect(find.text('QQ 3110741060'), findsOneWidget);
+    expect(find.text('https://github.com/lumen-one/gtd_todo'), findsOneWidget);
   });
 
   /// 版本号由装配点注入（安卓是原生 `PackageManager` 读回来的两截），
