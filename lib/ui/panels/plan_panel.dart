@@ -283,6 +283,9 @@ class _DayTimelineState extends State<_DayTimeline> {
   /// 候选最多几条（再多就该用输入框筛了，面板也就那么高）。
   static const int _maxCandidates = 6;
 
+  /// 候选框的高度上限（约四条半）：六条在窄面板里装不下，超过就在框里自己滚。
+  static const double _candidateMaxHeight = 176;
+
   /// 新条目默认离开上一条一小时。
   static const int _defaultGap = 60;
 
@@ -735,43 +738,56 @@ class _DayTimelineState extends State<_DayTimeline> {
     final hint = theme.colorScheme.onSurfaceVariant;
     return Container(
       margin: const EdgeInsets.only(top: 6),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         border: Border.all(
             color: theme.colorScheme.outlineVariant.withValues(alpha: 0.6)),
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final title in items)
-            InkWell(
-              borderRadius: BorderRadius.circular(10),
-              onTap: () => _pickCandidate(title),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
-                child: Row(
-                  children: [
-                    Icon(Icons.add, size: 15, color: hint),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxHeight: _candidateMaxHeight),
+        // 自己的滚动不外溢：这一页拿 overscroll 判"上滑退出"，候选滚到底再拖一下
+        // 就会被当成要退出覆盖页。
+        child: NotificationListener<ScrollNotification>(
+          onNotification: (_) => true,
+          child: SingleChildScrollView(
+            padding: EdgeInsets.zero,
+            physics: const ClampingScrollPhysics(),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final title in items)
+                  InkWell(
+                    borderRadius: BorderRadius.circular(10),
+                    onTap: () => _pickCandidate(title),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
+                      child: Row(
+                        children: [
+                          Icon(Icons.add, size: 15, color: hint),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodySmall,
+                            ),
+                          ),
+                          if (planned.contains(title))
+                            Text(
+                              '已排',
+                              style: theme.textTheme.labelSmall
+                                  ?.copyWith(color: AppColors.accent),
+                            ),
+                        ],
                       ),
                     ),
-                    if (planned.contains(title))
-                      Text(
-                        '已排',
-                        style: theme.textTheme.labelSmall
-                            ?.copyWith(color: AppColors.accent),
-                      ),
-                  ],
-                ),
-              ),
+                  ),
+              ],
             ),
-        ],
+          ),
+        ),
       ),
     );
   }

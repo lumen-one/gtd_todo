@@ -135,6 +135,36 @@ void main() {
     expect(find.text('已排'), findsOneWidget);
   });
 
+  testWidgets('快捷添加：六条候选撑满时在框里自己滚，不带动时间轴', (tester) async {
+    final c = makeController();
+    for (final title in ['任务一', '任务二', '任务三', '任务四', '任务五', '任务六']) {
+      await c.createTask(title: title);
+    }
+    await pumpOverlay(tester, c);
+    await tester.tap(find.text('添加一项'));
+    await tester.pumpAndSettle();
+
+    // 六条约 230dp，超过框高上限（176）：框内自己滚，不再把整页撑开。
+    final box = find.byType(SingleChildScrollView);
+    expect(box, findsOneWidget);
+    final boxed = tester
+        .state<ScrollableState>(
+            find.descendant(of: box, matching: find.byType(Scrollable)))
+        .position;
+    expect(boxed.maxScrollExtent, greaterThan(0));
+    final timeline = tester
+        .state<ScrollableState>(
+            find.ancestor(of: box, matching: find.byType(Scrollable)).first)
+        .position;
+    final timelineBefore = timeline.pixels;
+
+    // 手指按在候选上拖：滚的是候选框自己，时间轴一寸不动。
+    await tester.drag(box, const Offset(0, -120));
+    await tester.pumpAndSettle();
+    expect(boxed.pixels, greaterThan(0));
+    expect(timeline.pixels, timelineBefore);
+  });
+
   testWidgets('快捷添加：输入框里的字用来筛候选', (tester) async {
     final c = makeController();
     await c.createTask(title: '写方案');

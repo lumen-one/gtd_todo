@@ -125,6 +125,36 @@ void main() {
     expect(c.branches.single.entries.single.taskId, only.id);
   });
 
+  testWidgets('候选超过框高就在框里自己滚，不撑高卡片', (tester) async {
+    final (c, tasks) = await makeController(branches: [Branch(name: 'A')]);
+    for (final title in ['一', '二', '三', '四', '五', '六']) {
+      await tasks.createTask(title: '任务$title');
+    }
+    await pumpOverlay(tester, c);
+    await tester.tap(find.text('A'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('添加任务'));
+    await tester.pumpAndSettle();
+
+    final box = find.byType(SingleChildScrollView);
+    expect(box, findsOneWidget);
+    final boxed = tester
+        .state<ScrollableState>(
+            find.descendant(of: box, matching: find.byType(Scrollable)))
+        .position;
+    expect(boxed.maxScrollExtent, greaterThan(0));
+    final page = tester
+        .state<ScrollableState>(
+            find.ancestor(of: box, matching: find.byType(Scrollable)).first)
+        .position;
+    final pageBefore = page.pixels;
+
+    await tester.drag(box, const Offset(0, -120));
+    await tester.pumpAndSettle();
+    expect(boxed.pixels, greaterThan(0));
+    expect(page.pixels, pageBefore);
+  });
+
   testWidgets('今日页日期行右端是支线入口，点了落支线视图', (tester) async {
     final (c, _) = await makeController();
     final selection = TaskSelection();

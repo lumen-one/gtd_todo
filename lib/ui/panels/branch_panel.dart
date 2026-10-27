@@ -28,6 +28,10 @@ class _BranchBoardState extends State<BranchBoard> {
   /// 候选最多几条（与编排的添加行同一档：再多就该用输入框筛了）。
   static const int _maxCandidates = 6;
 
+  /// 候选框的高度上限（约四条半）。超过就在框里自己滚：交给外层滚会把整张卡片
+  /// 带着走，手指按在候选上、动的却是别处。
+  static const double _candidateMaxHeight = 176;
+
   /// 展开着的支线（**默认全收起**，所以存"展开了哪些"；折叠状态不落盘）。
   /// 收起态一页只露文件夹名，装得下更多条；要看里面就在卡片头上点一下。
   final Set<int> _expanded = {};
@@ -417,17 +421,32 @@ class _BranchBoardState extends State<BranchBoard> {
           if (items.isNotEmpty)
             Container(
               margin: const EdgeInsets.only(top: 6),
+              clipBehavior: Clip.antiAlias,
               decoration: BoxDecoration(
                 border: Border.all(
                     color: theme.colorScheme.outlineVariant
                         .withValues(alpha: 0.6)),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  for (final task in items) _candidateRow(theme, index, task),
-                ],
+              child: ConstrainedBox(
+                constraints:
+                    const BoxConstraints(maxHeight: _candidateMaxHeight),
+                // 自己的滚动不外溢：外层拿 overscroll 判"上滑退出覆盖页"，
+                // 候选滚到底再拖一下就会被当成要退出。
+                child: NotificationListener<ScrollNotification>(
+                  onNotification: (_) => true,
+                  child: SingleChildScrollView(
+                    padding: EdgeInsets.zero,
+                    physics: const ClampingScrollPhysics(),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        for (final task in items)
+                          _candidateRow(theme, index, task),
+                      ],
+                    ),
+                  ),
+                ),
               ),
             ),
         ],
