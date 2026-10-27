@@ -635,7 +635,9 @@ class _MainlineLogCalendarState extends State<MainlineLogCalendar> {
       subtitle: '一个月写一句：这个月在做什么',
       initial: existing,
       allowDelete: existing.isNotEmpty,
-      hint: '例：把第三章写完，图的配色也重画了一遍',
+      // 不写例句：上面那行 subtitle 已经说明这个框里写什么，框里再来一行灰字是同一句
+      // 话的第二次，还占掉一行高。
+      hint: null,
       minLines: 1,
     );
     if (outcome == null) return;
@@ -652,7 +654,7 @@ class _MainlineLogCalendarState extends State<MainlineLogCalendar> {
     required String subtitle,
     required String initial,
     bool allowDelete = false,
-    String hint = '这段时间在做什么',
+    String? hint = '这段时间在做什么',
     int minLines = 2,
   }) async {
     final ctrl = TextEditingController(text: initial);
