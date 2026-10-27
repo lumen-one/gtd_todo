@@ -370,6 +370,9 @@ class _SettingsPanelState extends State<SettingsPanel> {
             children: [
               for (final preset in AppThemePreset.values)
                 ChoiceChip(
+                  // 选中只靠底色（§9 第 7 条）：默认那颗勾画在色点上，压掉的正
+                  // 是这个预设自己——色点本身就是标识，不必再叠一层。
+                  showCheckmark: false,
                   avatar: CircleAvatar(backgroundColor: preset.seed, radius: 8),
                   label: Text(preset.label),
                   selected: s.themePreset == preset.id,

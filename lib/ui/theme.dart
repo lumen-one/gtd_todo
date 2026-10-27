@@ -8,7 +8,7 @@ import 'package:flutter/material.dart';
 /// 组件大量使用 `AppColors.accent`（进程内当前强调色，由装配点按设置
 /// 在启动与切换时调用 [AppColors.applyPreset]），切换后整体重建即可生效。
 enum AppThemePreset {
-  orange('orange', '橙（默认）', Color(0xFFEF6C00)),
+  orange('orange', '橙', Color(0xFFEF6C00)),
   ink('ink', '墨蓝', Color(0xFF1E5AA8)),
   moss('moss', '苔绿', Color(0xFF2E7D50)),
   plum('plum', '梅紫', Color(0xFF8E3B7A));
