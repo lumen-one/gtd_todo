@@ -17,7 +17,7 @@ class TaskFormValue {
   final TaskType type;
   final DateTime? deadline;
 
-  /// 工作强度 = '长期'：不估工时、不设优先级。只在可推时有意义。
+  /// 工作强度 = '长期'：不估工时、不设优先级。只在截止型时有意义。
   final bool longTerm;
   final int importance;
   final bool remind;
@@ -29,10 +29,12 @@ class TaskFormValue {
     this.deadline,
     this.longTerm = false,
     this.importance = 3,
-    this.remind = false,
+    // 新建默认打开：用户"设了时间"就是想要一条提醒，不该再让他去翻一个开关。
+    // 标准/无排序两档的提醒门槛靠它放行（§7.0），关掉才安静。
+    this.remind = true,
   });
 
-  /// 「不排期」= 没有截止：只能是可推散件，也不出声。
+  /// 「不排期」= 没有截止：只能是截止型散件，也不出声。
   bool get isLoose => deadline == null;
 
   TaskFormValue copyWith({
@@ -133,7 +135,10 @@ class TaskFormBody extends StatelessWidget {
               child: Text(
                 value.isLoose
                     ? '不排期（散件）'
-                    : '截止 ${fmtDateTime(value.deadline!)}',
+                    // 「截止」与「开始」是同一字段的两种语义（§4.1）：截止型数着
+                    // 剩余工时催，开始型到点响一次。文案跟着类型走。
+                    : '${value.type == TaskType.fixed ? '开始' : '截止'} '
+                        '${fmtDateTime(value.deadline!)}',
                 style: theme.textTheme.bodyMedium,
               ),
             ),
@@ -146,18 +151,18 @@ class TaskFormBody extends StatelessWidget {
             ButtonSegment(
               value: TaskType.flex,
               icon: Icon(Icons.schedule),
-              label: Text('可推'),
+              label: Text('截止型'),
             ),
             ButtonSegment(
               value: TaskType.fixed,
               icon: Icon(Icons.push_pin),
-              label: Text('不可推'),
+              label: Text('开始型'),
             ),
           ],
           selected: {value.type},
           onSelectionChanged: (s) {
             final type = s.first;
-            // 不可推必须有确切时刻：没日期就地补一个（一小时后），
+            // 开始型必须有确切时刻：没日期就地补一个（一小时后），
             // 不拦着用户先去点『选时间』。
             onChanged(
               type == TaskType.fixed && value.isLoose
@@ -229,7 +234,7 @@ class TaskFormBody extends StatelessWidget {
             subtitle: Text(
               controller.reminderMode == ReminderMode.full
                   ? '完整模式下该响的都会响'
-                  : '打开它，这一件才会出声',
+                  : '通知栏消息，关掉就不吵你',
               style: theme.textTheme.bodySmall,
             ),
             value: value.remind,

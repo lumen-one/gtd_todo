@@ -8,7 +8,7 @@ String _mm(int minuteOfDay) {
   return '$h:$m';
 }
 
-/// 通知时间段编辑（多段式，设置页「提醒与排序」区）：可推任务的提醒只落在
+/// 通知时间段编辑（多段式，设置页「提醒与排序」区）：截止型任务的提醒只落在
 /// 时间段内，段外顺延到下一时段开头（不吞掉）；时点性提醒不受限制。
 Future<void> showSettingsWindowsDialog(
     BuildContext context, AppController c) async {

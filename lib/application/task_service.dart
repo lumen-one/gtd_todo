@@ -40,7 +40,7 @@ class TaskService {
   /// 给内核的提醒门槛（三档 → 标准/完整两档：无排序也是"只排列不提醒"）。
   ReminderMode get reminderMode => scheduleMode.reminderMode;
 
-  /// 是否关掉排序（今日可推组改用手动序）。
+  /// 是否关掉排序（今日截止型组改用手动序）。
   bool get isManualSort => scheduleMode.isManual;
 
   /// 可注入时钟：测试与仿真可以自由拨动时间。
@@ -236,7 +236,7 @@ class TaskService {
       throw ArgumentError('周期实例不通过 createTask 创建（改规则即可）');
     }
     if (type == TaskType.fixed && deadline == null) {
-      throw ArgumentError.value(deadline, 'deadline', '固定时点任务必须有截止时刻');
+      throw ArgumentError.value(deadline, 'deadline', '开始型任务必须有截止时刻');
     }
     // flex 分支按截止拆开（v1.17，D18）：无截止（三无）→ 缺省'长期'（null）；
     // 有截止 → 缺省 30 分钟。fixed → 0（豁免 A2）。显式传值优先。
@@ -482,7 +482,7 @@ class TaskService {
       updated = updated.copyWith(description: description);
     }
     if (type != null) {
-      // 类型转换（散件转正 / 可推↔不可推）：metadata 缓冲带写 `type` 键。
+      // 类型转换（散件转正 / 截止型↔开始型）：metadata 缓冲带写 `type` 键。
       updated = _withMeta(updated, (m) {
         if (type == TaskType.fixed) return {...m, 'type': 'fixed'};
         return Map<String, String>.from(m)..remove('type');
@@ -501,7 +501,7 @@ class TaskService {
     }
     // 合并后校验：fixed 必须有截止；flex 无截止合法（散件）。
     if (updated.type == TaskType.fixed && updated.deadline == null) {
-      throw ArgumentError('固定时点任务必须有截止时刻');
+      throw ArgumentError('开始型任务必须有截止时刻');
     }
     await _persist(updated, origin, DomainEventType.taskUpdated);
     return updated;
@@ -509,7 +509,7 @@ class TaskService {
 
   /// **逐任务提醒开关**（v1.9 决议 38）：在标准模式下让**这一件**出声（metadata
   /// `remind`）。它**不改顺序**、不改其他字段；完整模式下开了也等于没开（本来就全响）。
-  /// 不可推（fixed）与周期实例也适用——时点性提醒走同一道门槛（D15）。
+  /// 开始型（fixed）与周期实例也适用——时点性提醒走同一道门槛（D15）。
   Future<Task> setTaskReminder(String id,
       {required bool enabled, EventOrigin origin = EventOrigin.user}) async {
     final updated = _withMeta(_require(id), (m) {
@@ -526,12 +526,12 @@ class TaskService {
   }
 
   /// 插队（决议 9）：持久意图记在任务上，保持到完成；栈式压顶（后插在上）。
-  /// 仅对可推任务生效（决议 11）。
+  /// 仅对截止型任务生效（决议 11）。
   Future<Task> pinToTop(String id,
       {EventOrigin origin = EventOrigin.user}) async {
     final cur = _require(id);
     if (cur.type != TaskType.flex) {
-      throw ArgumentError('插队仅对可推任务生效');
+      throw ArgumentError('插队仅对截止型任务生效');
     }
     final updated = _withMeta(
         cur, (m) => {...m, 'pinned': now().toIso8601String()});
@@ -616,7 +616,7 @@ class TaskService {
 
   // ---------- 提醒轮询 ----------
 
-  /// 时点性提醒候选（决议 3/18）：不可推到点 + 设了响的周期实例。
+  /// 时点性提醒候选（决议 3/18）：开始型到点 + 设了响的周期实例。
   /// 已响过（point_fired 与当前时刻一致）与超过补响宽限的不再返回。
   /// **v1.9：再过一道提醒门槛**（D15）——标准模式下只有被显式要求提醒的才出声。
   PointReminder? nextPointReminder() {

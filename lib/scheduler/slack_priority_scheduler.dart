@@ -13,7 +13,7 @@ import 'scheduler.dart';
 /// risk      = slack ≤ 0 ? 1 : exp(−(slack/τ)^γ)    # 非线性误期风险 ∈ (0,1]
 /// priority  = risk × importance                    # 调度优先级 = 排序键（缺省 3）
 /// interval  = reminderInterval(α·slack, 拐点 pivot) # 提醒节奏（两段：线性 + 对数）
-/// nextReminderAt = 沿用旧锚点 ?? addWorkMinutes(now, interval)
+/// nextReminderAt = min(沿用旧锚点 ?? addWorkMinutes(now, interval), deadline)
 /// ```
 ///
 /// 与旧 [SlackScheduler] 的差别只有**排序键**（priority 降序 vs urgency 降序）；
@@ -95,7 +95,7 @@ class SlackPriorityScheduler implements Scheduler {
 
     for (final task in tasks) {
       if (task.isCompleted) continue;
-      // ui-interaction.md §10 #2/#3：只有可推（flex）进调度。
+      // ui-interaction.md §10 #2/#3：只有截止型（flex）进调度。
       // fixed 不进调度（走 AlarmPort 时点闹钟）；周期实例不占工时、默认不响
       // （决议 5/12）；无截止 flex（散件）不参与 overdue/infeasible 派生、永不提醒。
       if (task.type != TaskType.flex) continue;
@@ -157,8 +157,13 @@ class SlackPriorityScheduler implements Scheduler {
           minIntervalMinutes: config.minIntervalMinutes,
           pivotMinutes: config.maxIntervalMinutes,
         );
-        nextReminderAt = carriedAnchor(anchors[task.id], now) ??
-            workRule.addWorkMinutes(now, interval);
+        // 夹到截止：`now + interval` 落进逾期区间时，提醒就永远响不了（见
+        // anchorWithinDeadline）。
+        nextReminderAt = anchorWithinDeadline(
+          carriedAnchor(anchors[task.id], now) ??
+              workRule.addWorkMinutes(now, interval),
+          deadline,
+        );
       }
 
       final metric = TaskMetric(

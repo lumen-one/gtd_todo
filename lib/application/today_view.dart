@@ -3,13 +3,13 @@ import '../domain/schedule.dart';
 import '../domain/task.dart';
 
 /// 今日清单聚合查询（D12 / ui-interaction.md §6.1）：
-/// 七种来源——挂起组（决议 47）+ ScheduleResult（可推/逾期）+ 固定时点组 +
+/// 七种来源——挂起组（决议 47）+ ScheduleResult（截止型/逾期）+ 开始型组 +
 /// 例行实例 + 被挑散件 + 散件段（v1.27，仅无排序档）。这是查询不是渲染：UI 只消费
 /// 结果，不含分组逻辑（守住"UI 不含逻辑"）。
 ///
 /// 分组构成（决议 11/12/25/47）：
 /// ⓿ 挂起进行（最顶、无编号、可拖；决议 47）→ ① 逾期（无编号置顶）→
-/// ② 固定时点（时间升序）→ ③ 可推（插队件栈式压顶 + 调度序）→
+/// ② 开始型（时间升序）→ ③ 截止型（插队件栈式压顶 + 调度序）→
 /// ④ 例行（周期实例，决议 12）→ ⑤ 被挑散件 → ⑥ 散件段（v1.27，仅无排序档，页底）。
 /// 编号跨 ②③④ 连续，由 UI 按 fixed→pinned→flex→routines 顺序生成。
 /// 挂起组与调度模式无关（三档都在最顶）：它是持久意图，不是算法排序。
@@ -24,13 +24,13 @@ class TodayView {
   /// ① 过截止未完成：橙红徽标置顶，完成/改期前不消失（决议 2）。
   final List<Task> overdue;
 
-  /// ② 今天到点的固定时点任务（时间升序，组内不可拖）。
+  /// ② 今天到点的开始型任务（时间升序，组内不可拖）。
   final List<Task> fixed;
 
   /// ③a 插队件（栈式：后插在上，保持到完成，决议 9）。
   final List<Task> pinned;
 
-  /// ③b 其余可推任务（Slack 调度排序，infeasible 优先）。
+  /// ③b 其余截止型任务（Slack 调度排序，infeasible 优先）。
   final List<Task> flex;
 
   /// ④ 周期任务当天实例（不占工时、默认不响；跳过今天的已剔除，决议 12/23）。
@@ -67,7 +67,7 @@ class TodayView {
       picked == null &&
       loose.isEmpty;
 
-  /// 今日清单上要编号的条目数（固定时点组 + 可推组 + 插队件；见 §1 名词表）。
+  /// 今日清单上要编号的条目数（开始型组 + 截止型组 + 插队件；见 §1 名词表）。
   /// **不含提醒门槛**（v1.9）："会不会真的响"要看 `ScheduleResult` 里各任务的
   /// `reminds` / `reminderAt`——分组与编号在两种模式下完全一致，所以这里也不需要模式。
   int get count => overdue.length + fixed.length + pinned.length + flex.length;
@@ -147,13 +147,13 @@ int compareLooseOrder(Task a, Task b) {
   return a.created.compareTo(b.created);
 }
 
-/// 聚合今日清单。[schedule] 为当前调度结果（可推组排序 + "提醒锚点"口径来源）。
+/// 聚合今日清单。[schedule] 为当前调度结果（截止型组排序 + "提醒锚点"口径来源）。
 ///
 /// [scheduleMode] 只改**两件**事（v1.12 决议 43 / D17 + v1.27）：
-/// ① 可推组的**顺序**——标准/完整是"插队件压顶 + 调度序"，无排序是手动序
+/// ① 截止型组的**顺序**——标准/完整是"插队件压顶 + 调度序"，无排序是手动序
 /// （`manual_order`）；② 页底 ⑥ 散件段只在无排序档出现（任务池那边同步隐藏）。
 /// 其余成员不变（仍按"锚点落在今天 / 今天到期"准入），
-/// 挂起组置顶、逾期置顶、固定时点按时刻、例行按发生时刻、被挑散件在倒数第二——
+/// 挂起组置顶、逾期置顶、开始型按时刻、例行按发生时刻、被挑散件在倒数第二——
 /// 三档全部一致（挂起组是持久意图，决议 47）。
 TodayView buildTodayView({
   required List<Task> tasks,
@@ -186,7 +186,7 @@ TodayView buildTodayView({
 
   for (final t in tasks) {
     if (t.isCompleted) continue;
-    // ⓿ 挂起组（决议 47）：持久意图顶置最顶——不进其余任何组（逾期/固定/可推/例行
+    // ⓿ 挂起组（决议 47）：持久意图顶置最顶——不进其余任何组（逾期/固定/截止型/例行
     // 都不收它），任务池也不重复出现（buildPoolView 同规则隐藏）。与调度模式无关。
     // **必须排在 picked 的 identical 跳过之前**：挂着又恰好被挑的件，显示位置是
     // 挂起组；取消挂起后它才回⑤（picked 是当日标记，还留在 metadata 里）。
@@ -205,7 +205,7 @@ TodayView buildTodayView({
       case TaskType.fixed:
         if (deadline == null) continue;
         if (deadline.isBefore(now)) {
-          overdue.add(t); // 固定时点过点未完成 → 逾期组
+          overdue.add(t); // 开始型过点未完成 → 逾期组
         } else if (_sameDay(deadline, now)) {
           fixed.add(t);
         }
@@ -248,7 +248,7 @@ TodayView buildTodayView({
     ..sort((a, b) => b.pinnedAt!.compareTo(a.pinnedAt!));
   final pinnedIds = pinned.map((t) => t.id).toSet();
 
-  // 其余可推按调度序（schedule.items 已按 priority 降序，infeasible 优先）。
+  // 其余截止型按调度序（schedule.items 已按 priority 降序，infeasible 优先）。
   final orderIndex = <String, int>{
     for (var i = 0; i < (schedule?.items.length ?? 0); i++)
       schedule!.items[i].taskId: i,

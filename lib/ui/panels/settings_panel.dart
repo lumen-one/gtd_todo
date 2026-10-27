@@ -35,7 +35,7 @@ String _mm(int minuteOfDay) {  final h = (minuteOfDay ~/ 60).toString().padLeft(
 /// 用户切一下就体会到了。
 String _modeHint(ScheduleMode mode) => switch (mode) {
       ScheduleMode.full => '完整：排先后，该响的都响',
-      ScheduleMode.standard => '标准：排先后，默认不响',
+      ScheduleMode.standard => '标准：排先后，只响开了提醒的',
       ScheduleMode.manual => '无排序：顺序全靠手动拖',
     };
 
@@ -284,13 +284,13 @@ class _SettingsPanelState extends State<SettingsPanel> {
           SwitchListTile(
             secondary: const Icon(Icons.alarm),
             title: const Text('闹钟模式'),
-            subtitle: const Text('到点提醒升级为全屏并持续响铃'),
+            subtitle: const Text('只对开始型生效：到点全屏 + 持续响铃；其余走通知栏'),
             value: s.alarmMode,
             onChanged: (v) => _c.updateSettings(s.copyWith(alarmMode: v)),
           ),
         ListTile(
           leading: const Icon(Icons.timelapse),
-          title: const Text('通知时间段（可推任务）'),
+          title: const Text('通知时间段（截止型任务）'),
           subtitle: Text(s.notificationWindows.isEmpty
               ? '不限制（全天送达）'
               : s.notificationWindows

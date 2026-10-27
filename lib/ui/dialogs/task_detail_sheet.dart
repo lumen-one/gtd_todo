@@ -60,14 +60,14 @@ Widget _head(BuildContext context, Task task, TaskMenuKind kind) {
   final theme = Theme.of(context);
   final tag = switch (kind) {
     TaskMenuKind.overdue => '逾期',
-    TaskMenuKind.fixed => '固定时点',
+    TaskMenuKind.fixed => '开始型',
     TaskMenuKind.picked => '被挑散件',
     TaskMenuKind.inProgress => '挂起中',
     TaskMenuKind.completed => '已完成',
     TaskMenuKind.routine => '例行',
     TaskMenuKind.branch => '支线',
     TaskMenuKind.pool => task.type == TaskType.fixed
-        ? '固定时点'
+        ? '开始型'
         : (task.deadline == null ? '三无散件' : null),
     _ => null,
   };
@@ -122,7 +122,7 @@ List<Widget> _facts(
     (
       '工时',
       task.type == TaskType.fixed
-          ? '不估工时（固定时点）'
+          ? '不估工时（开始型）'
           : (task.isLongTerm
               ? '长期（不估工时）'
               : '预计 ${task.estimatedWork} 分 · 剩 ${task.remainingWork} 分')
@@ -250,9 +250,11 @@ Widget _actions(BuildContext context, BuildContext sheetContext,
 }
 
 String _typeLabel(Task task) => switch (task.type) {
-      TaskType.fixed => '不可推（固定时点）',
+      TaskType.fixed => '开始型（某时发生）',
       TaskType.routine => '例行（当天实例）',
-      TaskType.flex => task.deadline == null ? '可推 · 无截止（三无散件）' : '可推（软任务）',
+      TaskType.flex => task.deadline == null
+          ? '截止型 · 无截止（三无散件）'
+          : '截止型（某时前完成）',
     };
 
 String _fmtMinutes(int m) {

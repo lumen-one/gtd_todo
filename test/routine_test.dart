@@ -188,7 +188,7 @@ void main() {
       expect(instance.routineRemind, isTrue);
       expect(instance.deadline, DateTime(2026, 10, 7, 7, 0));
 
-      // 不进 Slack 调度（可推组为空）
+      // 不进 Slack 调度（截止型组为空）
       await tasks.refreshSchedule();
       expect(tasks.lastSchedule!.items, isEmpty);
     });
@@ -356,7 +356,7 @@ void main() {
   });
 
   group('今日清单 ④ 例行组 + 任务池计划段（决议 12/27）', () {
-    test('实例进例行组、参与编号顺序（在可推组之后）', () async {
+    test('实例进例行组、参与编号顺序（在截止型组之后）', () async {
       final routineRepo = MemoryRoutineRepository();
       final tasks = TaskService(
         repo: MemoryTaskRepository(),

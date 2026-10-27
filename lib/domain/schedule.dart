@@ -29,9 +29,9 @@ enum ReminderMode {
 /// - [standard] **标准**：算法仍排先后，但默认不出声——
 ///   只有显式开了『提醒我』的那一件才响；
 /// - [manual] **无排序（新装默认）**：**标准的再弱化版**——标准那一套全保留
-///   （含不出声），再把"算法排先后"这一层也去掉，今日可推组的顺序由人拖出来。
+///   （含不出声），再把"算法排先后"这一层也去掉，今日截止型组的顺序由人拖出来。
 ///
-/// 无排序**不是**"把所有任务都塞进今天"：今日可推组的**成员与标准模式完全一致**
+/// 无排序**不是**"把所有任务都塞进今天"：今日截止型组的**成员与标准模式完全一致**
 /// （仍按"提醒锚点落在今天 / 今天到期"准入），变的只有组内顺序。
 /// 同样不动 `slack` / `risk` / `priority`、提醒锚点与间隔、逾期与不可行判定——
 /// 它们管"多久响一次""要不要升级"，与"谁排前面"是两件事。
@@ -55,11 +55,11 @@ enum ScheduleMode {
   ReminderMode get reminderMode =>
       this == ScheduleMode.full ? ReminderMode.full : ReminderMode.standard;
 
-  /// 是否关掉排序（今日可推组改用手动序）。
+  /// 是否关掉排序（今日截止型组改用手动序）。
   bool get isManual => this == ScheduleMode.manual;
 }
 
-/// 手动序比较器（D17）：无排序模式下今日可推组唯一的顺序来源。
+/// 手动序比较器（D17）：无排序模式下今日截止型组唯一的顺序来源。
 ///
 /// 有 [manualOrder] 的按序号升序；没有的**沉在末尾**，用 id 升序裁决
 /// （id 前缀定长 ≈ 创建先后，保证新任务从末尾开始、顺序稳定不抖）。
@@ -108,6 +108,14 @@ DateTime? carriedAnchor(DateTime? previous, DateTime now) {
   if (previous.isBefore(now.subtract(anchorCarryGrace))) return null;
   return previous;
 }
+
+/// 提醒锚点的**截止上限**：锚点排到截止之后没有行动价值——那一响的时候任务已经
+/// 逾期，`schedulable` 转 false，此后不再提醒。夹到截止，保证"设了时间"至少响一次。
+///
+/// 三种情况会算出晚于截止的锚点：截止前来不及准备（裕度薄）、工时超过剩余可用
+/// 时间（不可行）、锚点跨到非工作日。三种都不该把提醒推到逾期之后。
+DateTime anchorWithinDeadline(DateTime anchor, DateTime deadline) =>
+    anchor.isAfter(deadline) ? deadline : anchor;
 
 /// 提醒间隔（工作分钟，domain 词汇的一部分，§3.1 公式）：**分两段**。
 ///

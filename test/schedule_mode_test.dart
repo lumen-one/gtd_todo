@@ -129,7 +129,7 @@ void main() {
       expect(view.flex.map((t) => t.id).toList(), ['old', 'new-0', 'new-1']);
     });
 
-    test('三处不跟着变：逾期置顶 / 固定时点按时刻 / 例行按时点', () {
+    test('三处不跟着变：逾期置顶 / 开始型按时刻 / 例行按时点', () {
       final tasks = [
         task(id: 'overdue', deadline: DateTime(2026, 10, 6, 18, 0)),
         task(id: 'fixed-late', deadline: wed(19, 0), type: TaskType.fixed),

@@ -72,7 +72,7 @@ class AppColors {
   static Color overdueFor(Brightness brightness) =>
       brightness == Brightness.dark ? overdueOnDark : overdue;
 
-  /// 固定时点的时间徽标橙——状态语义，不随预设变化。
+  /// 开始型的时间徽标橙——状态语义，不随预设变化。
   static const Color timeBadge = Color(0xFFF57C00);
 
   /// 已完成蓝（§8）：日历上"这天有已经干完的"那颗点。它要跟橙点同屏并存，

@@ -14,7 +14,7 @@ import 'package:gtd_todo/repository/memory_routine_repository.dart';
 import 'package:gtd_todo/repository/memory_task_repository.dart';
 import 'package:gtd_todo/scheduler/slack_scheduler.dart';
 
-/// 时点性提醒（决议 3/18/26）：不可推到点 + 设了响的周期实例，
+/// 时点性提醒（决议 3/18/26）：开始型到点 + 设了响的周期实例，
 /// 原样响、不受静默段限制、可选闹钟模式；只到点响一次。
 class _FakeAlarm implements AlarmPort {
   DateTime? scheduledAt;

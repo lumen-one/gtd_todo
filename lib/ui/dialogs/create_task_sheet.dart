@@ -73,8 +73,8 @@ class _CreateFlowSheetState extends State<_CreateFlowSheet> {
   Future<void> _submit() async {
     final title = _titleCtrl.text.trim();
     if (title.isEmpty || _saving) return;
-    // 不可推进调度、'长期'不估工时：两种都不传分钟数。
-    // 可推 + 按时长却空着：有截止让服务补 30；不排期这边自己补，
+    // 开始型不进调度、'长期'不估工时：两种都不传分钟数。
+    // 截止型 + 按时长却空着：有截止让服务补 30；不排期这边自己补，
     // 否则"按时长"会被服务折回'长期'，用户选的那档就没了。
     final work = _value.type == TaskType.fixed || _value.longTerm
         ? null
@@ -89,7 +89,8 @@ class _CreateFlowSheetState extends State<_CreateFlowSheet> {
         importance: _value.importance,
         description: _noteCtrl.text,
       );
-      if (_value.remind) {
+      // 散件永不提醒（§7.0），别给它留一个没有意义的标记——表单默认是开着的。
+      if (_value.remind && !_value.isLoose) {
         await widget.controller.setTaskReminder(task.id, enabled: true);
       }
     } catch (e) {

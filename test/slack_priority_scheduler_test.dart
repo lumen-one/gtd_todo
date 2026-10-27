@@ -247,7 +247,7 @@ void main() {
     expect(r.nextTaskId, isNull);
   });
 
-  test('不进调度的三类：固定时点 / 散件 / 周期实例', () {
+  test('不进调度的三类：开始型 / 散件 / 周期实例', () {
     final r = scheduler.schedule(
       tasks: [
         task(
@@ -289,5 +289,56 @@ void main() {
     );
     expect(scheduler.id, 'slack-priority.v1');
     expect(scheduler.displayName, '时间裕度优先');
+  });
+
+  // ---------- 锚点夹到截止 ----------
+  //
+  // 算出来的锚点落到截止之后时，任务在那一响的时候已经逾期，`schedulable`
+  // 转 false，此后不再提醒——用户"设了时间"却收不到任何东西。夹到截止
+  // 保证至少响一次。
+
+  group('提醒锚点不越过截止', () {
+    test('截止就在眼前：最小间隔算到 16:30，取截止 16:00', () {
+      final r = scheduler.schedule(
+        tasks: [task(id: 'A', deadline: wed(16, 0))],
+        now: now,
+        workRule: rule,
+        reminderMode: ReminderMode.full,
+      );
+      expect(r.nextReminderAt, wed(16, 0),
+          reason: 'available=0 → 不可行 → 间隔取下限 30 分钟，锚点 16:30 已越过截止');
+      expect(r.nextReminderTaskId, 'A');
+    });
+
+    test('周末创建：锚点本来会飞到下周一 9 点，改取当天截止', () {
+      final sat = DateTime(2026, 10, 31, 15, 43); // 周六（默认非工作日）
+      final r = scheduler.schedule(
+        tasks: [task(id: 'B', deadline: DateTime(2026, 10, 31, 18, 0))],
+        now: sat,
+        workRule: rule,
+        reminderMode: ReminderMode.full,
+      );
+      expect(r.nextReminderAt, DateTime(2026, 10, 31, 18, 0));
+    });
+
+    test('裕度充足时不被夹：锚点仍按间隔走、早于截止', () {
+      final deadline = DateTime(2026, 10, 8, 18, 0);
+      final r = scheduler.schedule(
+        tasks: [task(id: 'C', deadline: deadline)],
+        now: now,
+        workRule: rule,
+        reminderMode: ReminderMode.full,
+      );
+      final at = r.metricOf('C')!.nextReminderAt!;
+      expect(at.isAfter(now), isTrue);
+      expect(at.isBefore(deadline), isTrue);
+    });
+
+    test('anchorWithinDeadline：只在越过时夹，相等或更早原样返回', () {
+      final d = wed(18, 0);
+      expect(anchorWithinDeadline(wed(17, 0), d), wed(17, 0));
+      expect(anchorWithinDeadline(d, d), d);
+      expect(anchorWithinDeadline(wed(19, 0), d), d);
+    });
   });
 }

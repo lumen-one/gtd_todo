@@ -54,7 +54,7 @@ void main() {
 
     test('flex 工时缺省：有截止 30 分钟、三无「长期」；0 工时仍拒绝（A2）', () async {
       final svc = makeService();
-      // 三无（可推无截止）→ 缺省「长期」：估不出来就不写（D18，v1.17）。
+      // 三无（截止型无截止）→ 缺省「长期」：估不出来就不写（D18，v1.17）。
       final longTerm = await svc.createTask(title: '回邮件');
       expect(longTerm.estimatedWork, isNull,
           reason: '三无缺省「长期」，estimatedWork 为 null');
@@ -72,7 +72,7 @@ void main() {
   });
 
   group('插队 / 挑散件 / 池子排序（决议 8/9/14）', () {
-    test('pinToTop：写 pinned 元数据；仅可推生效', () async {
+    test('pinToTop：写 pinned 元数据；仅截止型生效', () async {
       final svc = makeService();
       final a = await svc.createTask(title: 'A', estimatedWorkMinutes: 60,
           deadline: DateTime(2026, 10, 14, 18, 0));
@@ -139,7 +139,7 @@ void main() {
       final fixedA = await svc.createTask(
           title: '例会A', type: TaskType.fixed,
           deadline: DateTime(2026, 10, 7, 14, 0));
-      // 明天截止的可推（今天会响：slack 小）
+      // 明天截止的截止型（今天会响：slack 小）
       final flex = await svc.createTask(
           title: '写周报',
           deadline: DateTime(2026, 10, 8, 18, 0),
@@ -161,7 +161,7 @@ void main() {
       expect(view.pinned.single.id, pinned.id);
       expect(view.picked!.id, loose.id);
 
-      // 池子分段：逾期件保留在计划段标橙（决议 2），今天的固定时点不进池子
+      // 池子分段：逾期件保留在计划段标橙（决议 2），今天的开始型不进池子
       final pool = buildPoolView(
           tasks: svc.tasks, now: DateTime(2026, 10, 7, 12, 0));
       expect(pool.plan.map((t) => t.id), contains(overdue.id));

@@ -13,9 +13,9 @@ import '../widgets/task_tile.dart';
 
 /// 今日清单页（ui-interaction.md §6.1；页序见 `ui/panel_pages.dart`）。
 /// 分组连续编号：⓿ 挂起进行（无编号、最顶，决议 47）→ ① 逾期（无编号）→
-/// ② 固定时点 → ③ 可推（插队件栈式压顶 + 调度序）→ ④ 例行（未落地恒空）→
+/// ② 开始型 → ③ 截止型（插队件栈式压顶 + 调度序）→ ④ 例行（未落地恒空）→
 /// ⑤ 被挑散件（无编号、弱化）→ ⑥ 散件段（v1.27，仅无排序档、页底）。
-/// 编号跨 ②③④ 连续；插队拖拽仅对可推组生效，挂起组拖拽仅组内调序（决议 47）。
+/// 编号跨 ②③④ 连续；插队拖拽仅对截止型组生效，挂起组拖拽仅组内调序（决议 47）。
 ///
 /// 多选（§10#23）：[selection] 由面板持有（跨页保留），这里只把它落到条目上——
 /// 选择模式下点条目 = 勾选、拖把手不渲染、下拉进编排也不接。
@@ -126,9 +126,9 @@ class TodayPanel extends StatelessWidget {
               onLongPress: _longPress(context, t, TaskMenuKind.overdue),
             ),
         ],
-        // ② 固定时点组：时间升序、组内不可拖（时间就是序）
+        // ② 开始型组：时间升序、组内不可拖（时间就是序）
         if (view.fixed.isNotEmpty) ...[
-          const _GroupHeader('固定时点', color: AppColors.timeBadge),
+          const _GroupHeader('开始型', color: AppColors.timeBadge),
           for (final t in view.fixed)
             TaskTile(
               controller: controller,
@@ -140,9 +140,9 @@ class TodayPanel extends StatelessWidget {
               onLongPress: _longPress(context, t, TaskMenuKind.fixed),
             ),
         ],
-        // ③ 可推组：插队件（栈式压顶）+ 调度序；拖把手插队
+        // ③ 截止型组：插队件（栈式压顶）+ 调度序；拖把手插队
         if (combined.isNotEmpty)
-          _GroupHeader('可推', color: AppColors.accent),
+          _GroupHeader('截止型', color: AppColors.accent),
         ReorderableListView(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),

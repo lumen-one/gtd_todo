@@ -30,7 +30,7 @@ Future<void> showTaskMenu(
     title: task.title,
     tag: switch (kind) {
       TaskMenuKind.picked => '被挑散件',
-      TaskMenuKind.fixed => '固定时点',
+      TaskMenuKind.fixed => '开始型',
       TaskMenuKind.overdue => '逾期',
       TaskMenuKind.inProgress => '挂起中',
       TaskMenuKind.completed => '已完成',
@@ -67,8 +67,8 @@ List<TaskMenuEntry> _todayEntries(BuildContext context,
   return [
     ('完成', Icons.check_circle, () => controller.complete(task.id)),
     // ② 的『推迟』= snooze 本次提醒，事件时刻不变（决议 23）；
-    // 被挑散件无『推迟』（决议 25）；挂起组也无——长期任务没有截止，无可推
-    // （决议 47）；固定时点照常给档位。
+    // 被挑散件无『推迟』（决议 25）；挂起组也无——长期任务没有截止，没有截止型迟的余地
+    // （决议 47）；开始型照常给档位。
     if (kind != TaskMenuKind.picked && kind != TaskMenuKind.inProgress)
       (
         '推迟…',
@@ -393,7 +393,7 @@ Future<void> showPoolMenu(
     tag: task.type == TaskType.flex && task.deadline == null
         ? '三无'
         : task.type == TaskType.fixed
-            ? '固定时点'
+            ? '开始型'
             : null,
     entries: taskMenuEntries(context, controller, task, TaskMenuKind.pool),
     onSelectMode: onSelectMode,

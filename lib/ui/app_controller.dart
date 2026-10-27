@@ -168,7 +168,7 @@ class AppController extends ChangeNotifier {
     return out;
   }
 
-  /// 手动同步一轮（主机 = 无从机可推时是无操作；从机 = 拉 + 推）。
+  /// 手动同步一轮（主机 = 无从机截止型时是无操作；从机 = 拉 + 推）。
   Future<SyncOutcome> syncNow() async {
     final out = await _sync?.syncNow() ?? const SyncOutcome();
     notifyListeners();
@@ -1143,7 +1143,7 @@ class AppController extends ChangeNotifier {
   Future<void> setPoolOrders(List<String> orderedIds) =>
       service.setPoolOrders(orderedIds);
 
-  /// 今日可推组拖拽落位（标准/完整档，决议 9）：整段重写插队时刻，一次落盘。
+  /// 今日截止型组拖拽落位（标准/完整档，决议 9）：整段重写插队时刻，一次落盘。
   Future<void> setPinnedStack(List<String> orderedIds) =>
       service.setPinnedStack(orderedIds);
 

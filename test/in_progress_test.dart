@@ -64,10 +64,10 @@ void main() {
       expect(view.isEmpty, isFalse);
     });
 
-    test('挂起中的任务不进其余任何组（含逾期 / 可推 / 被挑散件）', () {
+    test('挂起中的任务不进其余任何组（含逾期 / 截止型 / 被挑散件）', () {
       final view = buildTodayView(
         tasks: [
-          // 挂着又今天到期的可推件：只进挂起组，不再进可推组。
+          // 挂着又今天到期的截止型件：只进挂起组，不再进截止型组。
           Task(
             id: 'flex-hung',
             title: 'flex-hung',

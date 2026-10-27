@@ -71,7 +71,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('标题'), findsOneWidget);
-    expect(find.textContaining('截止'), findsOneWidget);
+    // 只认日期行本身（「截止型」也是含"截止"的文本）
+    expect(find.textContaining(RegExp(r'^截止 \d')), findsOneWidget);
     expect(find.textContaining('18:00'), findsWidgets);
 
     await tester.enterText(find.byType(TextField).first, '写周报');
@@ -85,6 +86,7 @@ void main() {
     expect(task.deadline!.day, DateTime.now().day);
     expect(task.isLongTerm, isFalse, reason: '有截止 → 按时长，缺省 30 分钟');
     expect(task.estimatedWork, 30);
+    expect(task.remindEnabled, isTrue, reason: '新建的『提醒我』默认打开（§7.0）');
   });
 
   testWidgets('『不排期』建成长期任务：无截止、不估工时', (tester) async {

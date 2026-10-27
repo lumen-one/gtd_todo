@@ -4,7 +4,7 @@ import '../domain/reminder.dart';
 /// 适配器无自主权——只执行"取消旧的、挂新的"，不得自行重排或补挂。
 
 /// 通知渠道：normal = 普通通知；alarm = 闹钟渠道（全屏 + 持续响铃，媒体静音压不住）。
-/// 只对时点性提醒生效（不可推到点 + 设了响的周期任务）；可推的 Slack 软提醒永远 normal。
+/// 只对时点性提醒生效（开始型到点 + 设了响的周期任务）；截止型的 Slack 软提醒永远 normal。
 enum ReminderChannel { normal, alarm }
 
 /// 平台权限（安卓为主）。被拒时调用方按 UI 文档 §11 降级。

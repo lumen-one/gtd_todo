@@ -279,7 +279,7 @@ class TaskSidecarCodec {
   }
 
   /// 剩余工作量（分数）。`remaining_work`（分钟）换算回归一化值：
-  /// 工作强度为 0（不可推任务豁免工时）或 **'长期'（无工时，D18）**时保持 0，
+  /// 工作强度为 0（开始型任务豁免工时）或 **'长期'（无工时，D18）**时保持 0，
   /// 避免除零与空值。
   static String fmtLoad(Task t) {
     final est = t.estimatedWork;

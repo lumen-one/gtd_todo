@@ -15,8 +15,8 @@ import 'task_service.dart';
 /// 适配器无自主权：只执行"取消旧的、挂新的"。
 ///
 /// 两个提醒源（v1.5）：
-/// - **Slack 软提醒**（可推任务）：经 [windows] 送达策略（段外顺延到下一段开头）；
-/// - **时点性提醒**（不可推到点 + 设了响的周期实例，决议 3/18）：原样响，
+/// - **Slack 软提醒**（截止型任务）：经 [windows] 送达策略（段外顺延到下一段开头）；
+/// - **时点性提醒**（开始型到点 + 设了响的周期实例，决议 3/18）：原样响，
 ///   不受静默段限制；[alarmMode] 打开时升级为闹钟渠道（全屏 + 持续响铃）。
 class ReminderDispatcher {
   final TaskService service;
@@ -26,7 +26,7 @@ class ReminderDispatcher {
   /// 通知时间段（设置页编辑后经装配点同步，§4.3）。
   NotificationWindowRule windows;
 
-  /// 闹钟模式（决议 18：只对时点性提醒生效；可推的 Slack 软提醒永远普通通知）。
+  /// 闹钟模式（决议 18：只对时点性提醒生效；截止型的 Slack 软提醒永远普通通知）。
   bool alarmMode;
 
   static const List<NotificationAction> defaultActions = [
@@ -158,7 +158,7 @@ class ReminderDispatcher {
           : '截止 ${_fmt(d)} · 剩余约 $remaining 分钟';
     }
     if (d != null) {
-      return task.type == TaskType.fixed ? '固定时点 ${_fmt(d)}' : '到点 ${_fmt(d)}';
+      return task.type == TaskType.fixed ? '开始 ${_fmt(d)}' : '到点 ${_fmt(d)}';
     }
     return null;
   }

@@ -7,8 +7,8 @@
 enum TaskStatus { pending, active, snoozed, completed, overdue }
 
 /// 任务类型三分（ui-interaction.md §4.1、决议 5/12）：
-/// - [fixed] 不可推（固定时点）：会议、约定、车票——有确切日期时间，不需估工时；
-/// - [flex]  可推（软任务）：写论文、回邮件——靠投入时间完成；无截止 = 三无散件；
+/// - [fixed] 开始型（开始型）：会议、约定、车票——有确切日期时间，不需估工时；
+/// - [flex]  截止型（软任务）：写论文、回邮件——靠投入时间完成；无截止 = 三无散件；
 /// - [routine] 周期任务的当天实例：不占工时、不进调度、默认不响
 ///   （响不响由规则决定，见 metadata `routine_remind`）；完成/跳过按 status 判定。
 ///
@@ -49,7 +49,7 @@ class Task {
   final DateTime? deadline;
 
   /// 预计需要的工作时间（工作分钟）。**null = '长期'**（v1.17，D18 / ui 决议 46）：
-  /// 三无任务（可推 + 无截止 + 不提醒）的创建缺省——'长期'是标记而非分钟数，
+  /// 三无任务（截止型 + 无截止 + 不提醒）的创建缺省——'长期'是标记而非分钟数，
   /// 标长期 = 不估工时、不设优先级、没有时间裕度与剩余工作量，内核属性文档
   /// 只剩 id 一行（'长期'不单独落一行：没有 work_intensity 行就是长期）。
   /// fixed 豁免 A2，允许 0；有截止的 flex 必须 ≥ 1（缺省 30 分钟）。
@@ -118,7 +118,7 @@ class Task {
   /// 该实例在 [mark]（yyyy-MM-dd）这一天被跳过（不完成，今日不再显示）。
   bool isRoutineSkippedOn(String mark) => routineSkippedDate == mark;
 
-  /// 时点性提醒的到点时刻（不可推到点 / 设了响的周期实例）：
+  /// 时点性提醒的到点时刻（开始型到点 / 设了响的周期实例）：
   /// 事件时刻 = deadline，被 snooze 时取"推迟到"的时刻（决议 23/26）。
   DateTime? get pointReminderAt {
     if (type == TaskType.flex) return null;

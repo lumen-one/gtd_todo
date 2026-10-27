@@ -87,11 +87,11 @@ void main() {
     expect(find.byType(SettingsPanel), findsOneWidget);
   });
 
-  testWidgets('标准模式在设置页如实说"默认不响"', (tester) async {
+  testWidgets('标准模式在设置页如实说"只响开了提醒的"', (tester) async {
     await pumpApp(tester, mode: ScheduleMode.standard);
-    await revealInSettings(tester, '标准：排先后，默认不响');
+    await revealInSettings(tester, '标准：排先后，只响开了提醒的');
 
-    expect(find.text('标准：排先后，默认不响'), findsOneWidget);
+    expect(find.text('标准：排先后，只响开了提醒的'), findsOneWidget);
   });
 
   testWidgets('完整模式在设置页说"该响的都响"', (tester) async {
