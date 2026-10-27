@@ -85,7 +85,11 @@ class AppSettings {
   final List<List<int>> notificationWindows;
 
   /// **调度模式**（决议 43，v1.12）：**完整 / 标准 / 无排序**三档选一个，
-  /// 逐级弱化算法替人做主的程度（无排序 = 标准的再弱化版）。默认标准。
+  /// 逐级弱化算法替人做主的程度（无排序 = 标准的再弱化版）。**新装默认无排序**。
+  ///
+  /// "新装"只指任务目录里还没有 settings.json——那时设置端口直接返回
+  /// [AppSettings.defaults]。文件在、只是缺这个键的走 [ScheduleMode.byName]
+  /// 的兜底（标准）：升级不把别人已经排好的清单悄悄改成手动序。
   ///
   /// 落 settings.json 的 `schedule_mode`；旧字段 `reminder_mode` 仍可读
   /// （standard / full 两个值一个不落，见 [fromJson]）。
@@ -182,7 +186,7 @@ class AppSettings {
 
   const AppSettings({
     this.notificationWindows = const [[9 * 60, 21 * 60]],
-    this.scheduleMode = ScheduleMode.standard,
+    this.scheduleMode = ScheduleMode.manual,
     this.alarmMode = false,
     this.pickEnabled = false,
     this.pickIntervalDays = 1,
@@ -291,6 +295,7 @@ class AppSettings {
           windows == null || windows.isEmpty ? const [[9 * 60, 21 * 60]] : windows,
       // 兼容 v1.11 及更早的 reminder_mode：只有 standard / full 两个值，
       // 正好是三档里的前两档；没有 manual 这个旧值，不会撞车。
+      // 缺键（老文件）走 byName 的兜底 = 标准，不吃下面那个新装默认。
       scheduleMode: ScheduleMode.byName((json['schedule_mode'] ??
               json['reminder_mode']) as String?),
       alarmMode: json['alarm_mode'] == true,

@@ -326,9 +326,9 @@ void main() {
       expect(back.notesPath, s.notesPath);
     });
 
-    test('调度模式：默认标准，完整模式往返不丢（v1.12 由 reminderMode 改名）', () {
-      expect(AppSettings.defaults.scheduleMode, ScheduleMode.standard,
-          reason: '默认标准模式：只排列不提醒');
+    test('调度模式：新装默认无排序，完整模式往返不丢（v1.12 由 reminderMode 改名）', () {
+      expect(AppSettings.defaults.scheduleMode, ScheduleMode.manual,
+          reason: '新装默认无排序：算法不排先后、也不出声');
       const full = AppSettings(scheduleMode: ScheduleMode.full);
       final back = decodeSettings(encodeSettings(full));
       expect(back.scheduleMode, ScheduleMode.full);

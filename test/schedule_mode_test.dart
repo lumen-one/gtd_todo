@@ -362,10 +362,14 @@ void main() {
           before.map((t) => t.metadata).toList());
     });
 
-    test('默认标准档：不传参就是原来那套行为', () {
+    test('TaskService 不传参 = 标准档（装配点随后按设置覆盖）', () {
       expect(svc.scheduleMode, ScheduleMode.standard);
-      expect(AppSettings.defaults.scheduleMode, ScheduleMode.standard);
       expect(svc.isManualSort, isFalse);
+    });
+
+    test('新装默认档 = 无排序（设定文件都不存在时走 defaults）', () {
+      expect(AppSettings.defaults.scheduleMode, ScheduleMode.manual);
+      expect(AppSettings.defaults.scheduleMode.isManual, isTrue);
     });
   });
 
@@ -375,6 +379,7 @@ void main() {
         final back = AppSettings.fromJson(AppSettings(scheduleMode: mode).toJson());
         expect(back.scheduleMode, mode);
       }
+      // 文件在、只是缺键 = 老装机：兜底标准，升级不改人家已经排好的清单
       expect(AppSettings.fromJson({}).scheduleMode, ScheduleMode.standard);
       expect(AppSettings.fromJson({'schedule_mode': 'nonsense'}).scheduleMode,
           ScheduleMode.standard);

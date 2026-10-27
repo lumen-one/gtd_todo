@@ -545,7 +545,7 @@ class AppController extends ChangeNotifier {
       _settings = AppSettings.defaults;
     }
     _settingsLoaded = true;
-    // 调度模式来自设置：装载完就同步给 TaskService（默认标准 = 只排列不提醒）。
+    // 调度模式来自设置：装载完就同步给 TaskService（新装默认无排序 = 不排也不响）。
     onScheduleModeChanged?.call(_settings.scheduleMode);
     // 工时日历同理：装配时用的是默认规则，这里换成用户设置的那份。
     onWorkRuleChanged?.call(_settings.workRule);
@@ -571,7 +571,7 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  /// 调度模式（决议 43）：完整 / 标准（默认）/ 无排序。
+  /// 调度模式（决议 43）：完整 / 标准 / 无排序（新装默认）。
   ScheduleMode get scheduleMode => _settings.scheduleMode;
 
   /// 派生：给内核的提醒门槛（编辑表单的提示文案、清单头的状态句用它）。
