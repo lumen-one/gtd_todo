@@ -92,7 +92,8 @@ class _NotesPanelState extends State<NotesPanel> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(18, 10, 18, 4),
+          // 功能栏只占一行（§6.2）：面板窄，页头多留一圈白就少看一段正文。
+          padding: const EdgeInsets.fromLTRB(18, 2, 10, 2),
           child: Row(
             children: [
               Icon(Icons.menu_book_outlined,
@@ -102,31 +103,31 @@ class _NotesPanelState extends State<NotesPanel> {
               if (_editing) Text('编辑中', style: theme.textTheme.labelMedium),
               const Spacer(),
               if (_editing) ...[
-                IconButton(
+                _barButton(
                   tooltip: '取消',
-                  icon: const Icon(Icons.close, size: 18),
+                  icon: const Icon(Icons.close),
                   onPressed: _saving ? null : _cancelEdit,
                 ),
-                IconButton(
+                _barButton(
                   tooltip: '保存',
                   icon: _saving
                       ? const SizedBox(
                           width: 16,
                           height: 16,
                           child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.check, size: 18),
+                      : const Icon(Icons.check),
                   onPressed: _saving ? null : _save,
                 ),
               ] else ...[
                 if (result.canEdit)
-                  IconButton(
+                  _barButton(
                     tooltip: '编辑',
-                    icon: const Icon(Icons.edit_outlined, size: 18),
+                    icon: const Icon(Icons.edit_outlined),
                     onPressed: () => _startEdit(result),
                   ),
-                IconButton(
+                _barButton(
                   tooltip: '重新读取',
-                  icon: const Icon(Icons.refresh, size: 18),
+                  icon: const Icon(Icons.refresh),
                   onPressed: _load,
                 ),
               ],
@@ -138,6 +139,25 @@ class _NotesPanelState extends State<NotesPanel> {
       ],
     );
   }
+
+  /// 功能栏那颗图标钮：收到 34dp。M3 默认 48dp 见方，一行图标就吃掉 62dp 高，
+  /// 一半是留白——窄面板上这些留白是正文的代价。
+  Widget _barButton({
+    required String tooltip,
+    required Widget icon,
+    required VoidCallback? onPressed,
+  }) =>
+      IconButton(
+        tooltip: tooltip,
+        iconSize: 18,
+        style: IconButton.styleFrom(
+          minimumSize: const Size(34, 34),
+          padding: EdgeInsets.zero,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        icon: icon,
+        onPressed: onPressed,
+      );
 
   Widget _editor(ThemeData theme) => Padding(
         padding: const EdgeInsets.fromLTRB(18, 10, 18, 12),
