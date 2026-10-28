@@ -93,12 +93,25 @@ List<TaskMenuEntry> _todayEntries(BuildContext context,
               Icons.pause_circle_outline,
               () => controller.setInProgress(task.id, enabled: false)
             ),
+    // ③ 的"往前提"分两种口径（§7.0）：自动档给的是插队标记（算法排序的补丁）；
+    // 无排序档顺序本来就由人定，插队不生效，这里换成真的把它挪到组首。
     if (kind == TaskMenuKind.flex)
-      (
-        '插队到最前',
-        Icons.keyboard_double_arrow_up,
-        () => controller.pinToTop(task.id)
-      ),
+      controller.isManualSort
+          ? (
+              '移到最前',
+              Icons.vertical_align_top,
+              () {
+                final ids =
+                    controller.todayView.flex.map((t) => t.id).toList()
+                      ..remove(task.id);
+                return controller.setManualOrder([task.id, ...ids]);
+              }
+            )
+          : (
+              '插队到最前',
+              Icons.keyboard_double_arrow_up,
+              () => controller.pinToTop(task.id)
+            ),
     if (kind == TaskMenuKind.picked)
       ('放回池子', Icons.undo, () => controller.returnToPool(task.id)),
     (

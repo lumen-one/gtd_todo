@@ -156,14 +156,20 @@ class TaskTile extends StatelessWidget {
       badges.add(_Badge(
           label: '裕度告急',
           color: AppColors.overdueFor(Theme.of(context).brightness)));
-    } else if (metric?.displayStatus == TaskDisplayStatus.snoozed) {
+    } else if (metric?.displayStatus == TaskDisplayStatus.snoozed ||
+        (controller.isManualSort && task.status == TaskStatus.snoozed)) {
+      // 无排序档没有 metric（不跑调度），snooze 只能从任务自身的状态看。
       badges.add(const _Badge(label: '已推迟', color: Colors.blueGrey));
     } else if (task.pinnedAt != null) {
       badges.add(_Badge(label: '插队', color: AppColors.accent));
     }
     // '长期'任务没有剩余工时可标（D18）：徽标不显示，详情卡里说明。
+    // 无排序档不问工时——那个剩余量是缺省 30 分钟，标出来等于把隐藏值露给用户。
     final remaining = task.remainingWork;
-    if (task.type == TaskType.flex && remaining != null && remaining > 0) {
+    if (task.type == TaskType.flex &&
+        remaining != null &&
+        remaining > 0 &&
+        !controller.isManualSort) {
       badges.add(_Badge(
         label: '$remaining分',
         color: Colors.blueGrey,
