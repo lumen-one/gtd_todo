@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../domain/schedule.dart';
 import '../../domain/task.dart';
 import '../app_controller.dart';
 import '../theme.dart';
@@ -212,6 +213,10 @@ class _CreateFlowSheetState extends State<_CreateFlowSheet> {
   }
 
   Widget _buildFormPage(ThemeData theme) {
+    // 问多少由档位决定（§5.1）：无排序档只问标题和日期，标准档多问工时，
+    // 完整档再问重要度。『提醒我』只在标准档有意义——无排序档每件都响一次，
+    // 完整档本来就全响。
+    final mode = widget.controller.scheduleMode;
     return Column(
       key: const ValueKey('form'),
       mainAxisSize: MainAxisSize.min,
@@ -228,6 +233,9 @@ class _CreateFlowSheetState extends State<_CreateFlowSheet> {
           onSubmit: _submit,
           hourFollowsType: true,
           onEditTime: _pickTime,
+          showWorkStrength: !mode.isManual,
+          showImportance: mode == ScheduleMode.full,
+          showRemind: mode == ScheduleMode.standard,
           deadlineActions: [
             TextButton(
               onPressed: () => setState(() => _pickingWhen = true),

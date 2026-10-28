@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gtd_todo/application/settings.dart';
 import 'package:gtd_todo/application/task_service.dart';
+import 'package:gtd_todo/domain/schedule.dart';
 import 'package:gtd_todo/domain/time_context.dart';
 import 'package:gtd_todo/repository/memory_task_repository.dart';
 import 'package:gtd_todo/scheduler/slack_scheduler.dart';
@@ -15,7 +16,8 @@ import 'package:gtd_todo/ui/shells/android_shell.dart';
 /// 月历，点某天即落定、没有『确定』；『不排期』仍能建成长期任务——这条显式
 /// 入口断了，桌面上就没有建三无的路（快记只在系统级悬浮把手）。
 void main() {
-  Future<AppController> pumpShell(WidgetTester tester) async {
+  Future<AppController> pumpShell(WidgetTester tester,
+      {ScheduleMode mode = ScheduleMode.manual}) async {
     final svc = TaskService(
       repo: MemoryTaskRepository(),
       scheduler: const SlackScheduler(),
@@ -26,7 +28,7 @@ void main() {
       service: svc,
       taskDir: 'ignored',
       settingsPort: _MemorySettingsPort(
-        AppSettings.defaults.copyWith(guideSeen: true),
+        AppSettings.defaults.copyWith(guideSeen: true, scheduleMode: mode),
       ),
     );
     await tester.binding.setSurfaceSize(const Size(420, 860));
@@ -121,6 +123,40 @@ void main() {
     expect(task.deadline, DateTime(today.year, today.month, today.day, 12));
   });
 
+  // 问多少由档位决定（§5.1 / §7.0）：新建表单按档位裁行，编辑表单不裁。
+  testWidgets('无排序档只问标题和日期：三行都不出现', (tester) async {
+    await pumpShell(tester); // 新装默认 = 无排序
+    await openCreateFlow(tester);
+    await tester.tap(dayCell(DateTime.now()));
+    await tester.pumpAndSettle();
+
+    expect(find.text('工作强度'), findsNothing);
+    expect(find.text('重要度'), findsNothing);
+    expect(find.text('提醒我'), findsNothing);
+  });
+
+  testWidgets('标准档多问工时；重要度仍不问', (tester) async {
+    await pumpShell(tester, mode: ScheduleMode.standard);
+    await openCreateFlow(tester);
+    await tester.tap(dayCell(DateTime.now()));
+    await tester.pumpAndSettle();
+
+    expect(find.text('工作强度'), findsOneWidget);
+    expect(find.text('重要度'), findsNothing);
+    expect(find.text('提醒我'), findsOneWidget);
+  });
+
+  testWidgets('完整档再问重要度；『提醒我』不出现（本来就全响）', (tester) async {
+    await pumpShell(tester, mode: ScheduleMode.full);
+    await openCreateFlow(tester);
+    await tester.tap(dayCell(DateTime.now()));
+    await tester.pumpAndSettle();
+
+    expect(find.text('工作强度'), findsOneWidget);
+    expect(find.text('重要度'), findsOneWidget);
+    expect(find.text('提醒我'), findsNothing);
+  });
+
   testWidgets('『改日期』退回月历，已选那天保持高亮', (tester) async {
     await pumpShell(tester);
     await openCreateFlow(tester);
@@ -143,8 +179,7 @@ void main() {
   });
 
   testWidgets('『不排期』建成长期任务：无截止、不估工时', (tester) async {
-    final controller = await pumpShell(tester);
-    await openCreateFlow(tester);
+    final controller = await pumpShell(tester);    await openCreateFlow(tester);
 
     await tester.tap(find.widgetWithText(TextButton, '不排期'));
     await tester.pumpAndSettle();

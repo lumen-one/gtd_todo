@@ -549,6 +549,8 @@ class AppController extends ChangeNotifier {
     onScheduleModeChanged?.call(_settings.scheduleMode);
     // 工时日历同理：装配时用的是默认规则，这里换成用户设置的那份。
     onWorkRuleChanged?.call(_settings.workRule);
+    // 无排序档的提醒提前量：随设置一起落到 service，下一次重锚就按它算。
+    service.manualLeadMinutes = _settings.manualLeadMinutes;
     notifyListeners();
   }
 
@@ -565,6 +567,10 @@ class AppController extends ChangeNotifier {
     onWindowsChanged?.call(notificationWindowRule);
     onAlarmModeChanged?.call(next.alarmMode);
     onScheduleModeChanged?.call(next.scheduleMode);
+    // 提前量改了要重挂闹钟（它直接决定无排序档那一次提醒的时刻）。
+    if (next.manualLeadMinutes != previous.manualLeadMinutes) {
+      await service.updateManualLead(next.manualLeadMinutes);
+    }
     // 工时只在指纹变了时推：它会清空锚点表，跟着每次保存都推等于把提醒全部重排
     if (next.workSignature != previous.workSignature) {
       onWorkRuleChanged?.call(next.workRule);
@@ -579,6 +585,9 @@ class AppController extends ChangeNotifier {
 
   /// 无排序 = 关掉算法排序（顺序全手动拖）。UI 用它决定拖拽是"定序"还是"插队"。
   bool get isManualSort => _settings.scheduleMode.isManual;
+
+  /// 无排序档的提醒提前量（分钟，§7.1）：详情卡与设置页的文案用。
+  int get manualLeadMinutes => _settings.manualLeadMinutes;
 
   /// §4.3：当前送达策略（默认 9:00–21:00 一段；空 = 不限制）。
   NotificationWindowRule get notificationWindowRule => NotificationWindowRule(

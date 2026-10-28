@@ -99,6 +99,15 @@ class TaskFormBody extends StatelessWidget {
   /// 备注框回车：新建 = 提交，编辑 = 保存。
   final VoidCallback? onSubmit;
 
+  /// **新建时按档位裁的三行**（§5.1 / §7.0）：无排序档全不显示（缺省值照常落盘），
+  /// 标准档只显示工时，完整档显示工时 + 重要度。
+  ///
+  /// **编辑态三个都传 true**：编辑表单不裁——它也是把一件从缺省值升成有估值的
+  /// 唯一入口，藏起工时行等于让人先切档。
+  final bool showWorkStrength;
+  final bool showImportance;
+  final bool showRemind;
+
   const TaskFormBody({
     super.key,
     required this.controller,
@@ -112,6 +121,9 @@ class TaskFormBody extends StatelessWidget {
     this.onEditTime,
     this.hourFollowsType = false,
     this.onSubmit,
+    this.showWorkStrength = true,
+    this.showImportance = true,
+    this.showRemind = true,
   });
 
   @override
@@ -190,7 +202,7 @@ class TaskFormBody extends StatelessWidget {
                 : next);
           },
         ),
-        if (value.type == TaskType.flex) ...[
+        if (value.type == TaskType.flex && showWorkStrength) ...[
           const SizedBox(height: 10),
           Row(
             children: [
@@ -222,27 +234,29 @@ class TaskFormBody extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                const Text('重要度'),
-                Expanded(
-                  child: Slider(
-                    value: value.importance.toDouble(),
-                    min: 1,
-                    max: 5,
-                    divisions: 4,
-                    label: '${value.importance}',
-                    onChanged: (v) =>
-                        onChanged(value.copyWith(importance: v.round())),
+            if (showImportance) ...[
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  const Text('重要度'),
+                  Expanded(
+                    child: Slider(
+                      value: value.importance.toDouble(),
+                      min: 1,
+                      max: 5,
+                      divisions: 4,
+                      label: '${value.importance}',
+                      onChanged: (v) =>
+                          onChanged(value.copyWith(importance: v.round())),
+                    ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              ),
+            ],
           ],
         ],
         // 散件永不出声（§7.0），问"要不要吵你"没有意义。
-        if (!value.isLoose)
+        if (!value.isLoose && showRemind)
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             secondary: const Icon(Icons.notifications_active_outlined),

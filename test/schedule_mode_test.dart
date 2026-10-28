@@ -8,12 +8,12 @@ import 'package:gtd_todo/domain/time_context.dart';
 import 'package:gtd_todo/repository/memory_task_repository.dart';
 import 'package:gtd_todo/scheduler/slack_priority_scheduler.dart';
 
-/// 调度模式三档（v1.12 决议 43 / D17）：完整 → 标准 → 无排序，**逐级弱化**。
+/// 调度模式三档（决定卡 mode-as-information-depth）：一条**信息深度**的谱系——
+/// 每上一档多问一样属性，多换一种能力。
 ///
-/// 无排序 = 标准的再弱化版——把"算法排先后"这一层去掉，**有截止的任务一件不多**
-/// （仍按"提醒锚点落在今天 / 今天到期"准入）；v1.27 起另把散件段铺到今日页底（⑥）。
-/// 内核完全不知道排序模式：`Scheduler.schedule` 只收 reminderMode，
-/// 手动序与散件段的去留都是业务层的查询口径。
+/// 无排序档不跑调度：③ 组只收"今天到期"的、顺序走手动序，提醒是截止前一次的
+/// 时点提醒；另把散件段铺到今日页底（⑥）。内核完全不知道排序模式：
+/// `Scheduler.schedule` 只收 reminderMode，成员/顺序/散件都是业务层的查询口径。
 void main() {
   const rule = WorkTimeRule.standard;
   const scheduler = SlackPriorityScheduler();
@@ -42,12 +42,12 @@ void main() {
 
   DateTime wed(int h, int m) => DateTime(2026, 10, 7, h, m);
 
-  group('三档是一条弱化谱系：互拆到内核门槛', () {
-    test('只有完整档放行；标准与无排序都是"只排列不提醒"', () {
+  group('三档是信息深度的阶梯：互拆到内核门槛', () {
+    test('只有完整档放行；标准与无排序都不产出软提醒', () {
       expect(ScheduleMode.full.reminderMode, ReminderMode.full);
       expect(ScheduleMode.standard.reminderMode, ReminderMode.standard);
       expect(ScheduleMode.manual.reminderMode, ReminderMode.standard,
-          reason: '无排序是标准的再弱化，不是另开一个安静维度');
+          reason: '无排序档不跑调度，提醒走时点链路（见 point_reminder_test）');
       expect(ScheduleMode.manual.isManual, isTrue);
       expect(ScheduleMode.standard.isManual, isFalse);
       expect(ScheduleMode.full.isManual, isFalse);
@@ -61,8 +61,8 @@ void main() {
     });
   });
 
-  group('今日清单：成员不变，只改顺序', () {
-    test('无排序不会把远期任务塞进今天——成员与标准完全一致', () {
+  group('今日清单：无排序档只收今天到期', () {
+    test('远期任务不会被塞进今天', () {
       final tasks = [
         task(id: 'today', deadline: wed(18, 0)),
         task(id: 'far', deadline: DateTime(2026, 10, 20, 18, 0)),
@@ -80,7 +80,32 @@ void main() {
       expect(auto.flex.map((t) => t.id).toList(), ['today'],
           reason: '锚点落在今天 / 今天到期才进');
       expect(manual.flex.map((t) => t.id).toList(), ['today'],
-          reason: '无排序只换顺序，不换成员——远期任务仍然不进今日');
+          reason: '无排序只认今天到期');
+    });
+
+    test('裕度薄、今天该动手的远期任务：标准档捞进来，无排序档留在池子', () {
+      // 周五 18:00 截止、要 900 分钟：available 1020 → slack 120，锚点落今天 17:00。
+      final tasks = [
+        task(id: 'far-tight', deadline: DateTime(2026, 10, 9, 18, 0),
+            remaining: 900, estimated: 900),
+      ];
+      final schedule = scheduler.schedule(
+          tasks: tasks, now: now, workRule: rule, reminderMode: ReminderMode.full);
+      final metric = schedule.metricOf('far-tight')!;
+      expect(metric.displayStatus, TaskDisplayStatus.normal);
+      expect(metric.nextReminderAt!.day, 7, reason: '锚点落在今天 17:00');
+
+      final auto = buildTodayView(
+          tasks: tasks, schedule: schedule, now: now,
+          scheduleMode: ScheduleMode.standard);
+      expect(auto.flex.map((t) => t.id).toList(), ['far-tight'],
+          reason: '标准档按锚点提前介入');
+
+      final manual = buildTodayView(
+          tasks: tasks, schedule: null, now: now,
+          scheduleMode: ScheduleMode.manual);
+      expect(manual.flex, isEmpty,
+          reason: '无排序档没有锚点这一层，远期件等当天到期才出现');
     });
 
     test('顺序：标准是插队 + 调度序；无排序是手动序，没有插队层', () {
@@ -158,8 +183,8 @@ void main() {
     });
   });
 
-  group('数学一行不动：ScheduleResult 不认得排序模式', () {
-    test('裕度 / 风险 / 优先级 / 锚点 / 门槛在三档下完全一致', () {
+  group('内核与档位无关：ScheduleResult 不认得排序模式', () {
+    test('同样的 reminderMode 下算出来的量完全一致', () {
       final tasks = [
         task(id: 'a', deadline: wed(18, 0)),
         task(id: 'b', deadline: DateTime(2026, 10, 9, 18, 0)),
@@ -374,6 +399,19 @@ void main() {
   });
 
   group('设置落盘：schedule_mode', () {
+    test('无排序档的提前量：默认 30 分钟，往返不丢，越界夹回', () {
+      expect(AppSettings.defaults.manualLeadMinutes, 30);
+      expect(
+          AppSettings.fromJson({'manual_lead_minutes': 90}).manualLeadMinutes, 90);
+      expect(AppSettings.fromJson({'manual_lead_minutes': 1}).manualLeadMinutes, 5);
+      expect(AppSettings.fromJson({'manual_lead_minutes': 99999})
+          .manualLeadMinutes, 1440);
+      expect(AppSettings.fromJson({'manual_lead_minutes': 'x'}).manualLeadMinutes,
+          30);
+      final back = AppSettings.fromJson(
+          const AppSettings(manualLeadMinutes: 60).toJson());
+      expect(back.manualLeadMinutes, 60);
+    });
     test('三档往返与缺省', () {
       for (final mode in ScheduleMode.values) {
         final back = AppSettings.fromJson(AppSettings(scheduleMode: mode).toJson());

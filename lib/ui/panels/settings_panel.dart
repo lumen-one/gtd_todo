@@ -36,8 +36,16 @@ String _mm(int minuteOfDay) {  final h = (minuteOfDay ~/ 60).toString().padLeft(
 String _modeHint(ScheduleMode mode) => switch (mode) {
       ScheduleMode.full => '完整：排先后，该响的都响',
       ScheduleMode.standard => '标准：排先后，只响开了提醒的',
-      ScheduleMode.manual => '无排序：顺序全靠手动拖',
+      ScheduleMode.manual => '无排序：不排，截止前提醒一次',
     };
+
+/// 无排序档提前量的四个常用落点（分钟）：15 分 / 半小时 / 1 小时 / 2 小时。
+/// 落盘存分钟数，这里只是四个快捷值——设置文件被手改成别的数也照用。
+const List<int> _leadOptions = [15, 30, 60, 120];
+
+String _leadLabel(int minutes) => minutes % 60 == 0
+    ? '${minutes ~/ 60} 小时'
+    : '$minutes 分';
 
 /// 三选一按钮（选中=实心，其余=描边）：比 SegmentedButton 放得下三个字以上的标签，
 /// 也不会在窄面板里被挤成省略号。
@@ -279,6 +287,34 @@ class _SettingsPanelState extends State<SettingsPanel> {
             ],
           ),
         ),
+        // 无排序档的提前量（§7.1）：这一档不跑裕度，提醒时刻 = 截止 − 这个值。
+        // 只在无排序档出现——另外两档按裕度节奏多次响，与它无关。
+        if (s.scheduleMode.isManual)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('截止前多久提醒',
+                    style: Theme.of(context).textTheme.bodySmall),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: [
+                    for (final m in _leadOptions)
+                      ChoiceChip(
+                        showCheckmark: false,
+                        label: Text(_leadLabel(m)),
+                        selected: s.manualLeadMinutes == m,
+                        onSelected: (_) => _c.updateSettings(
+                            s.copyWith(manualLeadMinutes: m)),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
         // 全屏闹钟是安卓的通知渠道；桌面到点只有应用内弹窗（§7.2）。
         if (_c.caps.alarmChannel)
           SwitchListTile(

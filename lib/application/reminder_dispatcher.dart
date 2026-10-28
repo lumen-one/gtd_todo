@@ -76,11 +76,12 @@ class ReminderDispatcher {
   Future<void> _reschedule() async {
     final s = service.lastSchedule;
     await alarm.cancel();
-    if (s == null) return;
-
+    // 无排序档没有软提醒（不跑裕度），也不产出派生量；`s` 为 null 时只挂时点。
+    // 那一档的截止型任务本身就走时点提醒这条链（截止前一次，见 nextPointReminder）。
+    final manual = service.isManualSort;
     final point = service.nextPointReminder();
-    final softAt = s.nextReminderAt;
-    final softId = s.nextReminderTaskId;
+    final softAt = manual ? null : s?.nextReminderAt;
+    final softId = manual ? null : s?.nextReminderTaskId;
     // 先按送达策略把软提醒的**实际送达时刻**算出来，再和时点提醒比早晚（v1.26）。
     // 拿没顺延的原始时刻去比，会把一个被顺延到次日上午的软提醒排在今晚的
     // 时点闹钟前面——那一晚的闹钟就被跳过了。
@@ -149,13 +150,19 @@ class ReminderDispatcher {
   String? _bodyOf(Task? task) {
     if (task == null) return null;
     final d = task.deadline;
-    // '长期'任务没有剩余工时（D18），也不会走到提醒链路（无截止 → 无锚点）；
-    // ?? 0 只是让展示文案对空值安全。
-    final remaining = task.remainingWork ?? 0;
-    if (task.type == TaskType.flex && remaining > 0) {
-      return d == null
-          ? '剩余约 $remaining 分钟'
-          : '截止 ${_fmt(d)} · 剩余约 $remaining 分钟';
+    if (task.type == TaskType.flex) {
+      // 无排序档不问工时，报"剩余 N 分钟"是拿缺省 30 分钟编出来的——只报截止。
+      if (service.isManualSort) {
+        return d == null ? null : '截止 ${_fmt(d)}';
+      }
+      // '长期'任务没有剩余工时（D18），也不会走到提醒链路（无截止 → 无锚点）；
+      // ?? 0 只是让展示文案对空值安全。
+      final remaining = task.remainingWork ?? 0;
+      if (remaining > 0) {
+        return d == null
+            ? '剩余约 $remaining 分钟'
+            : '截止 ${_fmt(d)} · 剩余约 $remaining 分钟';
+      }
     }
     if (d != null) {
       return task.type == TaskType.fixed ? '开始 ${_fmt(d)}' : '到点 ${_fmt(d)}';

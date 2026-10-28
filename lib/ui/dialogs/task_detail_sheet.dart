@@ -101,6 +101,7 @@ List<Widget> _facts(
     BuildContext context, AppController controller, Task task) {
   final theme = Theme.of(context);
   final metric = controller.schedule?.metricOf(task.id);
+  final manual = controller.isManualSort;
   final now = DateTime.now();
   final overdue =
       task.deadline != null && task.deadline!.isBefore(now) && !task.isCompleted;
@@ -119,16 +120,18 @@ List<Widget> _facts(
       task.type == TaskType.flex ? '截止' : '时间',
       task.deadline == null ? '无' : fmtDateTime(task.deadline!)
     ),
-    (
-      '工时',
-      task.type == TaskType.fixed
-          ? '不估工时（开始型）'
-          : (task.isLongTerm
-              ? '长期（不估工时）'
-              : '预计 ${task.estimatedWork} 分 · 剩 ${task.remainingWork} 分')
-    ),
+    // 无排序档不问工时，落盘的 30 分钟只是缺省值——显示出来是编的，整行不给。
+    if (!manual)
+      (
+        '工时',
+        task.type == TaskType.fixed
+            ? '不估工时（开始型）'
+            : (task.isLongTerm
+                ? '长期（不估工时）'
+                : '预计 ${task.estimatedWork} 分 · 剩 ${task.remainingWork} 分')
+      ),
     // '长期'任务没有优先级（A3 豁免，D18）——这一行整个不显示。
-    if (!task.isLongTerm)
+    if (!manual && !task.isLongTerm)
       ('重要度', '${'★' * task.importance!}${'☆' * (5 - task.importance!)}'),
     ('创建', fmtDateTime(task.created)),
     if (task.completedAt != null) ('完成', fmtDateTime(task.completedAt!)),
@@ -145,7 +148,18 @@ List<Widget> _facts(
 
   // 调度派生量（不落盘，§7.1）：裕度这类"算出来的压力表"照旧可展示；
   // risk / priority 是排序键，界面不显示（顺序本身就是表达）。
-  if (!task.isCompleted && metric != null) {
+  if (!task.isCompleted && manual) {
+    // 无排序档没有派生量（不跑公式）：只有那一次"截止前 X 分钟"的提醒。
+    final d = task.deadline;
+    if (d != null && task.type == TaskType.flex) {
+      final lead = Duration(minutes: controller.manualLeadMinutes);
+      rows.add((
+        '提醒',
+        '截止前 ${controller.manualLeadMinutes} 分钟'
+            '（${fmtDateTime(d.subtract(lead))}）'
+      ));
+    }
+  } else if (!task.isCompleted && metric != null) {
     rows.add(('时间裕度', _fmtMinutes(metric.slackMinutes)));
     rows.add(
       (

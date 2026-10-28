@@ -219,4 +219,58 @@ void main() {
       expect(alarm.draft!.fullScreen, isFalse);
     });
   });
+
+  // 无排序档不跑调度（决定卡 mode-as-information-depth）：截止型任务的提醒
+  // 换成"截止前一次"的时点提醒，正好复用这一条链的幂等与补响宽限。
+  group('无排序档：截止型任务走时点提醒（截止前一次）', () {
+    test('没开『提醒我』也响：时刻 = 截止 − 提前量', () async {
+      await svc.updateScheduleMode(ScheduleMode.manual);
+      final t = await svc.createTask(
+          title: '写周报', deadline: DateTime(2026, 10, 7, 18, 0));
+      final point = svc.nextPointReminder()!;
+      expect(point.taskId, t.id);
+      expect(point.at, DateTime(2026, 10, 7, 17, 30));
+      expect(t.remindEnabled, isFalse, reason: '这一档不看逐件开关');
+    });
+
+    test('提前量可改，改完时刻跟着走', () async {
+      await svc.updateScheduleMode(ScheduleMode.manual);
+      await svc.createTask(
+          title: '写周报', deadline: DateTime(2026, 10, 7, 18, 0));
+      expect(svc.nextPointReminder()!.at, DateTime(2026, 10, 7, 17, 30));
+      await svc.updateManualLead(60);
+      expect(svc.nextPointReminder()!.at, DateTime(2026, 10, 7, 17, 0));
+    });
+
+    test('只响一次：到点产出 point 事件，之后不再是候选', () async {
+      await svc.updateScheduleMode(ScheduleMode.manual);
+      final t = await svc.createTask(
+          title: '写周报', deadline: DateTime(2026, 10, 7, 18, 0));
+      now = DateTime(2026, 10, 7, 17, 30);
+      final event = await svc.pollReminder();
+      expect(event, isNotNull);
+      expect(event!.kind, ReminderKind.point);
+      expect(event.taskId, t.id);
+      expect(svc.nextPointReminder(), isNull);
+    });
+
+    test('已经逾期的不补响；开始型照旧到点响', () async {
+      await svc.updateScheduleMode(ScheduleMode.manual);
+      await svc.createTask(
+          title: '逾期了', deadline: DateTime(2026, 10, 7, 9, 0));
+      final meeting = await svc.createTask(
+          title: '开会',
+          type: TaskType.fixed,
+          deadline: DateTime(2026, 10, 7, 11, 0));
+      expect(svc.nextPointReminder()!.taskId, meeting.id);
+    });
+
+    test('不产出软提醒：lastSchedule 是空结果', () async {
+      await svc.updateScheduleMode(ScheduleMode.manual);
+      await svc.createTask(
+          title: '写周报', deadline: DateTime(2026, 10, 7, 18, 0));
+      expect(svc.lastSchedule!.items, isEmpty);
+      expect(svc.lastSchedule!.nextReminderAt, isNull);
+    });
+  });
 }

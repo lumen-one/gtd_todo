@@ -147,14 +147,16 @@ int compareLooseOrder(Task a, Task b) {
   return a.created.compareTo(b.created);
 }
 
-/// 聚合今日清单。[schedule] 为当前调度结果（截止型组排序 + "提醒锚点"口径来源）。
+/// 聚合今日清单。[schedule] 为当前调度结果（截止型组排序 + "提醒锚点"口径来源）；
+/// 无排序档不用它——那一档既不排序也没有锚点（`TaskService.lastSchedule` 是空结果）。
 ///
-/// [scheduleMode] 只改**两件**事（v1.12 决议 43 / D17 + v1.27）：
-/// ① 截止型组的**顺序**——标准/完整是"插队件压顶 + 调度序"，无排序是手动序
-/// （`manual_order`）；② 页底 ⑥ 散件段只在无排序档出现（任务池那边同步隐藏）。
-/// 其余成员不变（仍按"锚点落在今天 / 今天到期"准入），
-/// 挂起组置顶、逾期置顶、开始型按时刻、例行按发生时刻、被挑散件在倒数第二——
-/// 三档全部一致（挂起组是持久意图，决议 47）。
+/// [scheduleMode] 改**三件**事（决议 43 / D17 / 决定卡 mode-as-information-depth）：
+/// ① ③ 组的**成员**——标准/完整按"锚点落在今天 / 今天到期"准入；无排序只认
+/// "今天到期"（没有锚点这层），所以"裕度薄、今天该动手"的远期件这一档不进来；
+/// ② ③ 组的**顺序**——标准/完整是"插队件压顶 + 调度序"，无排序是手动序
+/// （`manual_order`）；③ 页底 ⑥ 散件段只在无排序档出现（任务池那边同步隐藏）。
+/// 其余成员不变：挂起组置顶、逾期置顶、开始型按时刻、例行按发生时刻、
+/// 被挑散件在倒数第二——三档一致（挂起组是持久意图，决议 47）。
 TodayView buildTodayView({
   required List<Task> tasks,
   required ScheduleResult? schedule,
@@ -226,12 +228,16 @@ TodayView buildTodayView({
         // 到期后下一次重锚自然回来。
         // v1.9：锚点是调度计算，**不受提醒模式影响**——标准/完整两种模式下
         // 这一页的构成与顺序完全一样，差别只在会不会真的弹通知（D15）。
+        final dueToday = _sameDay(deadline, now);
+        if (scheduleMode.isManual) {
+          // 无排序档不跑调度（§3.1）：没有锚点这一层，成员只认"今天到期"。
+          // 所以"裕度薄、今天该动手"的远期任务留在任务池，等当天到期才出现。
+          if (dueToday) flexCandidates.add(t);
+          continue;
+        }
         final metric = schedule?.metricOf(t.id);
         final reminderToday = metric?.nextReminderAt != null &&
             _sameDay(metric!.nextReminderAt!, now);
-        final dueToday = _sameDay(deadline, now);
-        // 准入**不受排序模式影响**（决议 43 修正）：无排序只是"今天这几件不排序"，
-        // 不是"把所有任务都塞进今天"——成员与自动模式完全一致，只有顺序不同。
         if (reminderToday || dueToday) flexCandidates.add(t);
     }
   }

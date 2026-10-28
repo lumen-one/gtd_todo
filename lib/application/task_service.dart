@@ -43,6 +43,10 @@ class TaskService {
   /// 是否关掉排序（今日截止型组改用手动序）。
   bool get isManualSort => scheduleMode.isManual;
 
+  /// **无排序档的提醒提前量**（分钟，§7.1）：这一档不跑公式，有截止的任务就在
+  /// `deadline − manualLeadMinutes` 响一次。只在这一档用，改它走 [updateManualLead]。
+  int manualLeadMinutes = 30;
+
   /// 可注入时钟：测试与仿真可以自由拨动时间。
   final DateTime Function() now;
 
@@ -104,6 +108,16 @@ class TaskService {
   /// 上次算出的锚点按任务存着，任务自身没变就作为入参交给算法沿用。
   Future<void> recomputeSchedule(
       {EventOrigin origin = EventOrigin.system}) async {
+    // 无排序档**不经过调度**（§3.1）：没有裕度、风险、锚点与间隔，也不判不可行
+    // ——它们都要吃工时，而这一档不问工时。留一个空结果占位：提醒链路与查询层
+    // 照旧拿得到 `lastSchedule`（非 null），只是里面没有任何派生量。
+    if (scheduleMode.isManual) {
+      lastSchedule = ScheduleResult(computedAt: now(), items: const []);
+      _anchors.clear();
+      _anchorInputs.clear();
+      _emit(DomainEventType.scheduleReanchored, '', origin);
+      return;
+    }
     lastSchedule = scheduler.schedule(
       tasks: _tasks,
       now: now(),
@@ -176,6 +190,17 @@ class TaskService {
     scheduleMode = mode;
     _emit(DomainEventType.scheduleModeChanged, '', EventOrigin.user);
     await recomputeSchedule();
+  }
+
+  /// 换无排序档的提醒提前量（设置页『提醒与排序』节）。
+  ///
+  /// 提醒时刻直接由 `deadline − 提前量` 算出，不存锚点；改完只要发一次重算事件，
+  /// 单闹钟就会按新时刻重挂。
+  Future<void> updateManualLead(int minutes,
+      {EventOrigin origin = EventOrigin.user}) async {
+    if (minutes == manualLeadMinutes) return;
+    manualLeadMinutes = minutes;
+    await recomputeSchedule(origin: origin);
   }
 
   /// 换工时日历（设置页「工作时间」，v1.26）。
@@ -616,17 +641,21 @@ class TaskService {
 
   // ---------- 提醒轮询 ----------
 
-  /// 时点性提醒候选（决议 3/18）：开始型到点 + 设了响的周期实例。
+  /// 时点性提醒候选（决议 3/18）：开始型到点 + 设了响的周期实例；
+  /// **无排序档再加一类**——有截止的截止型任务，时刻 = `deadline − manualLeadMinutes`。
   /// 已响过（point_fired 与当前时刻一致）与超过补响宽限的不再返回。
+  ///
   /// **v1.9：再过一道提醒门槛**（D15）——标准模式下只有被显式要求提醒的才出声。
+  /// 无排序档不看门槛：那一档没有逐件开关，每件有截止的都响一次（§7.0）。
   PointReminder? nextPointReminder() {
     final current = now();
+    final manual = scheduleMode.isManual;
     PointReminder? best;
     for (final t in _tasks) {
       if (t.isCompleted) continue;
       // 提醒门槛（v1.9，D15）：标准模式下只有被显式要求提醒的任务才出声。
-      if (!reminderAllowed(t, reminderMode)) continue;
-      final at = t.pointReminderAt;
+      if (!manual && !reminderAllowed(t, reminderMode)) continue;
+      final at = manual ? _manualReminderAt(t) : t.pointReminderAt;
       if (at == null) continue;
       if (t.pointFiredMark == at.toIso8601String()) continue; // 只到点响一次
       if (at.isBefore(current.subtract(pointReminderGrace))) continue; // 错过
@@ -635,6 +664,20 @@ class TaskService {
       }
     }
     return best;
+  }
+
+  /// 无排序档的提醒时刻：截止型 = `deadline − manualLeadMinutes`（墙钟算，
+  /// 不吃通知时间段，也不换成工作分钟）；开始型与设了响的周期实例照旧到点响。
+  /// 被推迟到更晚时取推迟那一刻——那是用户意图，不是软件安排。
+  DateTime? _manualReminderAt(Task t) {
+    final point = t.pointReminderAt;
+    if (point != null) return point;
+    if (t.type != TaskType.flex || t.isLongTerm) return null;
+    final d = t.deadline;
+    if (d == null) return null;
+    final lead = d.subtract(Duration(minutes: manualLeadMinutes));
+    final s = t.snoozedUntil;
+    return s != null && s.isAfter(lead) ? s : lead;
   }
 
   /// 有没有"snooze 已到期、但状态还挂着 snoozed"的任务（A4 的定时触点）。

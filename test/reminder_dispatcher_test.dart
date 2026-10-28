@@ -192,6 +192,24 @@ void main() {
     expect(notifications.shownList, isEmpty);
   });
 
+  // 无排序档不跑调度（决定卡 mode-as-information-depth）：截止型任务的提醒是
+  // 时点型的"截止前一次"，所以它不吃通知时间段，也不按裕度节奏推下一轮。
+  test('无排序档只挂截止前那一次：即使落在静默段也原样响', () async {
+    await svc.updateScheduleMode(ScheduleMode.manual);
+    const evening =
+        NotificationWindowRule([NotificationWindow(19 * 60, 21 * 60)]);
+    await startDispatcher(windows: evening);
+    final a = await svc.createTask(
+      title: 'A',
+      deadline: DateTime(2026, 10, 7, 18, 0),
+    );
+    await Future<void>.delayed(Duration.zero);
+    // 截止前 30 分钟 = 17:30，在晚间段之外——这一档不走送达策略
+    expect(alarm.scheduledAt, DateTime(2026, 10, 7, 17, 30));
+    expect(alarm.taskId, a.id);
+    expect(alarm.draft!.body, '截止 10-07 18:00', reason: '不问工时就不报剩余');
+  });
+
   test('TimerAlarmPort 冒烟：过期时刻立即触发', () async {
     final port = TimerAlarmPort();
     final fired = port.fired.first.timeout(const Duration(seconds: 2));

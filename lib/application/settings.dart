@@ -70,6 +70,19 @@ int clampHandleHotWidth(Object? raw) {
   return raw.toInt().clamp(minHandleHotWidth, maxHandleHotWidth).toInt();
 }
 
+/// **无排序档的提醒提前量**（分钟，§7.1 / §9 第 9 条）：这一档不跑裕度公式，
+/// 每件有截止的任务就在 `deadline − 这个值` 响一次。默认半小时——"截止前最后一道"
+/// 够用，又不至于早到让人以为还有一整块时间。
+const int minManualLeadMinutes = 5;
+const int defaultManualLeadMinutes = 30;
+const int maxManualLeadMinutes = 1440;
+
+/// 提前量：缺字段 / 手改坏了都回默认，其余夹进区间。
+int clampManualLeadMinutes(Object? raw) {
+  if (raw is! num) return defaultManualLeadMinutes;
+  return raw.toInt().clamp(minManualLeadMinutes, maxManualLeadMinutes).toInt();
+}
+
 /// 侧边栏宽高的**安装默认值**（逻辑像素）：窄栏那一档——页内容本来就是单列，
 /// 再宽只是把空白摊开。两个值都给成数字而不是公式，是因为用户拖到哪儿就是哪儿
 /// （口径见 ui-interaction.md §6.0 / §9 第 11 条），没有"随屏宽按比例变"这一层。
@@ -97,6 +110,14 @@ class AppSettings {
   /// 三档都只改"清单怎么排、出不出声"，与 [notificationWindows]
   /// （何时允许打扰）是**串联**关系，不是互斥。
   final ScheduleMode scheduleMode;
+
+  /// **无排序档的提醒提前量**（分钟，§7.1）：这一档不跑裕度公式，每件有截止的
+  /// 任务在 `deadline − manualLeadMinutes` 响一次（墙钟算、不吃通知时间段）。
+  /// 另外两档不用这个值。
+  ///
+  /// 落 settings.json 的 `manual_lead_minutes`，缺键 = [defaultManualLeadMinutes]；
+  /// 读取时夹在 [minManualLeadMinutes, maxManualLeadMinutes] 之间。
+  final int manualLeadMinutes;
 
   /// 可选闹钟模式（决议 3/18）：只对时点性提醒生效。
   final bool alarmMode;
@@ -187,6 +208,7 @@ class AppSettings {
   const AppSettings({
     this.notificationWindows = const [[9 * 60, 21 * 60]],
     this.scheduleMode = ScheduleMode.manual,
+    this.manualLeadMinutes = defaultManualLeadMinutes,
     this.alarmMode = false,
     this.pickEnabled = false,
     this.pickIntervalDays = 1,
@@ -211,6 +233,7 @@ class AppSettings {
   AppSettings copyWith({
     List<List<int>>? notificationWindows,
     ScheduleMode? scheduleMode,
+    int? manualLeadMinutes,
     bool? alarmMode,
     bool? pickEnabled,
     int? pickIntervalDays,
@@ -234,6 +257,7 @@ class AppSettings {
     return AppSettings(
       notificationWindows: notificationWindows ?? this.notificationWindows,
       scheduleMode: scheduleMode ?? this.scheduleMode,
+      manualLeadMinutes: manualLeadMinutes ?? this.manualLeadMinutes,
       alarmMode: alarmMode ?? this.alarmMode,
       pickEnabled: pickEnabled ?? this.pickEnabled,
       pickIntervalDays: pickIntervalDays ?? this.pickIntervalDays,
@@ -266,6 +290,7 @@ class AppSettings {
   Map<String, Object?> toJson() => {
         'notification_windows': notificationWindows,
         'schedule_mode': scheduleMode.name,
+        'manual_lead_minutes': manualLeadMinutes,
         'alarm_mode': alarmMode,
         'pick_enabled': pickEnabled,
         'pick_interval_days': pickIntervalDays,
@@ -298,6 +323,7 @@ class AppSettings {
       // 缺键（老文件）走 byName 的兜底 = 标准，不吃下面那个新装默认。
       scheduleMode: ScheduleMode.byName((json['schedule_mode'] ??
               json['reminder_mode']) as String?),
+      manualLeadMinutes: clampManualLeadMinutes(json['manual_lead_minutes']),
       alarmMode: json['alarm_mode'] == true,
       pickEnabled: json['pick_enabled'] == true,
       pickIntervalDays: (json['pick_interval_days'] as num?)?.toInt() ?? 1,
