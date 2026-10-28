@@ -59,6 +59,7 @@
 | [2026-10-24-calendar-add-and-done-dot.md](2026-10-24-calendar-add-and-done-dot.md) | 日历：长按某天加任务，干完的活留蓝点 |
 | [2026-10-24-create-date-first.md](2026-10-24-create-date-first.md) | 新建先问日期再填表单：日期不当默认值 |
 | [2026-10-25-mainline-month-note.md](2026-10-25-mainline-month-note.md) | 月记单独一段：不把整月折成一条圈 |
+| [2026-10-28-calendar-three-dots.md](2026-10-28-calendar-three-dots.md) | 日历的点分三色：按类型配、按明度分三层 |
 
 待补（都是"会被重新质疑"的取舍，按需要慢慢写）：
 
