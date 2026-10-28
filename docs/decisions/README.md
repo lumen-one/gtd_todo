@@ -62,6 +62,7 @@
 | [2026-10-28-calendar-three-dots.md](2026-10-28-calendar-three-dots.md) | 日历的点分三色：按类型配、按明度分三层 |
 | [2026-10-28-create-month-calendar.md](2026-10-28-create-month-calendar.md) | 新建第 1 页是月历：点某天即落定，时刻按类型取默认 |
 | [2026-10-28-mode-as-information-depth.md](2026-10-28-mode-as-information-depth.md) | 三档调度模式 = 信息深度的三个停靠点，界面按档裁剪、数据不留空白 |
+| [2026-10-28-tile-time-and-detail-slim.md](2026-10-28-tile-time-and-detail-slim.md) | 清单行右端只报时间，详情卡只留看 |
 
 待补（都是"会被重新质疑"的取舍，按需要慢慢写）：
 
