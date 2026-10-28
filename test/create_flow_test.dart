@@ -6,13 +6,14 @@ import 'package:gtd_todo/domain/time_context.dart';
 import 'package:gtd_todo/repository/memory_task_repository.dart';
 import 'package:gtd_todo/scheduler/slack_scheduler.dart';
 import 'package:gtd_todo/ui/app_controller.dart';
+import 'package:gtd_todo/ui/dialogs/create_task_sheet.dart';
 import 'package:gtd_todo/ui/shells/android_shell.dart';
 
 /// 新建流程（ui-interaction.md §5.1）：**先问什么时候，再填内容**。
 ///
-/// 锁两条边界：『+』不再跳过日期直接落三无（那是它以前 的默认态）；
-/// 『不排期』仍能建成长期任务——这条显式入口断了，桌面上就没有
-/// 建三无的路（快记只在系统级悬浮把手）。
+/// 锁三条边界：『+』不再跳过日期直接落三无（那是它以前的默认态）；第 1 页是
+/// 月历，点某天即落定、没有『确定』；『不排期』仍能建成长期任务——这条显式
+/// 入口断了，桌面上就没有建三无的路（快记只在系统级悬浮把手）。
 void main() {
   Future<AppController> pumpShell(WidgetTester tester) async {
     final svc = TaskService(
@@ -53,21 +54,25 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('点「+」先问什么时候，标题框还没出现', (tester) async {
+  /// 月历上某天那一格（组件给每天的格子挂了 `day-y-m-d` 的 key）。
+  Finder dayCell(DateTime d) =>
+      find.byKey(ValueKey('day-${d.year}-${d.month}-${d.day}'));
+
+  testWidgets('点「+」先问什么时候：月历在，标题框还没出现', (tester) async {
     await pumpShell(tester);
     await openCreateFlow(tester);
 
     expect(find.text('什么时候？'), findsOneWidget);
     expect(find.text('标题'), findsNothing, reason: '日期没定之前不问内容');
-    expect(find.widgetWithText(ListTile, '今天'), findsOneWidget);
-    expect(find.widgetWithText(ListTile, '不排期'), findsOneWidget);
+    expect(dayCell(DateTime.now()), findsOneWidget, reason: '第 1 页是月历');
+    expect(find.widgetWithText(TextButton, '不排期'), findsOneWidget);
   });
 
-  testWidgets('选『今天』：日期落 18:00，填完标题即建', (tester) async {
+  testWidgets('点今天那格：日期落 18:00，填完标题即建', (tester) async {
     final controller = await pumpShell(tester);
     await openCreateFlow(tester);
 
-    await tester.tap(find.widgetWithText(ListTile, '今天'));
+    await tester.tap(dayCell(DateTime.now()));
     await tester.pumpAndSettle();
 
     expect(find.text('标题'), findsOneWidget);
@@ -89,11 +94,59 @@ void main() {
     expect(task.remindEnabled, isTrue, reason: '新建的『提醒我』默认打开（§7.0）');
   });
 
+  testWidgets('切『开始型』：时刻跟着换成 12:00，日期不动', (tester) async {
+    final controller = await pumpShell(tester);
+    await openCreateFlow(tester);
+
+    final today = DateTime.now();
+    await tester.tap(dayCell(today));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('18:00'), findsWidgets);
+
+    await tester.tap(find.text('开始型'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining(RegExp(r'^开始 \d')), findsOneWidget,
+        reason: '日期行的文案跟着类型走');
+    expect(find.text('12:00'), findsOneWidget);
+    expect(find.textContaining('18:00'), findsNothing);
+
+    await tester.enterText(find.byType(TextField).first, '开会');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('✱ 创建'));
+    await tester.pumpAndSettle();
+
+    final task = controller.tasks.single;
+    expect(task.type.name, 'fixed');
+    expect(task.deadline, DateTime(today.year, today.month, today.day, 12));
+  });
+
+  testWidgets('『改日期』退回月历，已选那天保持高亮', (tester) async {
+    await pumpShell(tester);
+    await openCreateFlow(tester);
+
+    final today = DateTime.now();
+    await tester.tap(dayCell(today));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, '写周报');
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('改日期'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('什么时候？'), findsOneWidget);
+    // 格子里的数字被强调圈选中时是白色（选中态），未选中取默认色。
+    final cell = tester.widget<Text>(
+      find.descendant(of: dayCell(today), matching: find.text('${today.day}')),
+    );
+    expect(cell.style?.color, Colors.white, reason: '回月历时那天仍是选中的');
+  });
+
   testWidgets('『不排期』建成长期任务：无截止、不估工时', (tester) async {
     final controller = await pumpShell(tester);
     await openCreateFlow(tester);
 
-    await tester.tap(find.widgetWithText(ListTile, '不排期'));
+    await tester.tap(find.widgetWithText(TextButton, '不排期'));
     await tester.pumpAndSettle();
 
     expect(find.text('不排期（散件）'), findsOneWidget);
@@ -107,6 +160,35 @@ void main() {
     expect(task.deadline, isNull);
     expect(task.estimatedWork, isNull);
     expect(task.isLongTerm, isTrue);
+  });
+  testWidgets('面板最矮的 240×320：第 1 页不溢出', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(240, 320));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final controller = AppController(
+      service: TaskService(
+        repo: MemoryTaskRepository(),
+        scheduler: const SlackScheduler(),
+        workRule: WorkTimeRule.standard,
+      ),
+      taskDir: 'ignored',
+    );
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: Builder(
+          builder: (context) => Center(
+            child: TextButton(
+              onPressed: () => showCreateFlow(context, controller),
+              child: const Text('加'),
+            ),
+          ),
+        ),
+      ),
+    ));
+    await tester.tap(find.text('加'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('什么时候？'), findsOneWidget);
+    expect(tester.takeException(), isNull, reason: '可用高度不够时压格子，不溢出');
   });
 }
 

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../../domain/task.dart';
+
 /// 日期 + 时间的级联弹窗，任一步取消即返回 null。
 ///
-/// 新建的『自选…』、编辑表单的『选时间』、日历里改期三处问的是同一件事，
-/// 所以形状只有这一种——别在各自的文件里再写一遍。
+/// 编辑表单的『选时间』、日历里改期两处问的是同一件事，所以形状只有这一种——
+/// 别在各自的文件里再写一遍。
 Future<DateTime?> pickDateTime(
   BuildContext context, {
   DateTime? initial,
@@ -27,6 +29,12 @@ Future<DateTime?> pickDateTime(
   return DateTime(date.year, date.month, date.day, time.hour, time.minute);
 }
 
-/// 该日 18:00：当日工作窗末尾的常用截止点（『今天』『明天』两档的落点）。
-DateTime dayAt18(DateTime base) =>
-    DateTime(base.year, base.month, base.day, 18);
+/// 该日的默认时刻，按任务类型分。
+///
+/// 截止型取 **18:00**——当日工作窗末尾，"今天做完"的安全上界；落在更早的钟点
+/// 会把半天当成一天，下午建的任务一出生就逾期。
+///
+/// 开始型取 **12:00**——午前收尾、午后动手的常用起点。开始型不进调度，没有
+/// 工期问题，这个时刻只是"到点响一次"的落点。
+DateTime atDefaultHour(DateTime day, TaskType type) => DateTime(
+    day.year, day.month, day.day, type == TaskType.fixed ? 12 : 18);

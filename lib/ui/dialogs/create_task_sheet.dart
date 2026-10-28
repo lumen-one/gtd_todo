@@ -1,10 +1,12 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../domain/task.dart';
 import '../app_controller.dart';
 import '../theme.dart';
-import '../widgets/task_tile.dart' show fmtDateTime;
-import 'date_pick.dart';
+import '../widgets/month_calendar.dart';
+import 'date_pick.dart' show atDefaultHour;
 import 'task_form.dart';
 
 /// 新建流程：**先问什么时候，再填内容**。
@@ -13,7 +15,9 @@ import 'task_form.dart';
 /// 剩下的类型/工时/重要度才落进表单。两页住同一个 sheet 里——
 /// 选完日期原地切页，不另弹一层。
 ///
-/// 『不排期』仍然在，只是从"默认值"变成"要显式点一下的那一档"。
+/// 第 1 页是月历（与日历弹窗共用 [MonthCalendar]，这里不打点）：点某天即
+/// 落定，没有『确定』这一步——日期在第 2 页仍然看得见、改得动。
+/// 『不排期』从"第四档"挪到标题行右侧，仍然是要显式点一下的那一档。
 Future<void> showCreateFlow(
   BuildContext context,
   AppController controller,
@@ -48,6 +52,9 @@ class _CreateFlowSheetState extends State<_CreateFlowSheet> {
   TaskFormValue _value = const TaskFormValue();
   bool _saving = false;
 
+  /// 月历上高亮的那天（回第 1 页时保持选中，选的是哪天一目了然）。
+  DateTime? _picked;
+
   @override
   void dispose() {
     _titleCtrl.dispose();
@@ -57,17 +64,38 @@ class _CreateFlowSheetState extends State<_CreateFlowSheet> {
   }
 
   /// 落定日期并翻到表单页。[when] 为 null = 不排期。
+  ///
+  /// 时刻手改过的，换日期时连着时刻一起带过去；没改过的取该类型的默认整点
+  /// （截止 18:00 / 开始 12:00）。
   void _enterForm(DateTime? when) {
+    var at = when;
+    if (when != null && _value.timePinned && _value.deadline != null) {
+      final prev = _value.deadline!;
+      at = DateTime(when.year, when.month, when.day, prev.hour, prev.minute);
+    }
     setState(() {
-      _value = _value.copyWith(deadline: when, longTerm: when == null);
+      _value = _value.copyWith(deadline: at, longTerm: at == null);
+      _picked = at;
       _pickingWhen = false;
     });
   }
 
-  Future<void> _pickCustom() async {
-    final picked = await pickDateTime(context);
+  /// 改时刻：弹时间选择器，落定即钉住——之后再切类型不跟着换。
+  Future<void> _pickTime() async {
+    final deadline = _value.deadline;
+    if (deadline == null) return;
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: deadline.hour, minute: deadline.minute),
+    );
     if (picked == null || !mounted) return;
-    _enterForm(picked);
+    setState(() {
+      _value = _value.copyWith(
+        deadline: DateTime(deadline.year, deadline.month, deadline.day,
+            picked.hour, picked.minute),
+        timePinned: true,
+      );
+    });
   }
 
   Future<void> _submit() async {
@@ -127,40 +155,59 @@ class _CreateFlowSheetState extends State<_CreateFlowSheet> {
   }
 
   Widget _buildWhenPage(ThemeData theme) {
-    final now = DateTime.now();
-    final today = dayAt18(now);
-    final tomorrow = dayAt18(now.add(const Duration(days: 1)));
-    return Column(
+    return LayoutBuilder(
       key: const ValueKey('when'),
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text('什么时候？', style: theme.textTheme.titleMedium),
-        const SizedBox(height: 6),
-        _WhenTile(
-          icon: Icons.today,
-          label: '今天',
-          detail: fmtDateTime(today),
-          onTap: () => _enterForm(today),
-        ),
-        _WhenTile(
-          icon: Icons.event_note,
-          label: '明天',
-          detail: fmtDateTime(tomorrow),
-          onTap: () => _enterForm(tomorrow),
-        ),
-        _WhenTile(
-          icon: Icons.edit_calendar,
-          label: '自选日期时间…',
-          onTap: _pickCustom,
-        ),
-        _WhenTile(
-          icon: Icons.waves,
-          label: '不排期',
-          detail: '进任务池',
-          onTap: () => _enterForm(null),
-        ),
-      ],
+      builder: (context, constraints) {
+        // 月历之外还要摆下的：标题行、组件自己的页头与星期行、底部那行提示、
+        // 上下内边距。可用高度不够时压格子，而不是让整页溢出——面板高度
+        // 下限是 320。
+        const chrome = 190.0;
+        final gridMax = constraints.maxHeight.isFinite
+            ? math.max(96.0, constraints.maxHeight - chrome)
+            : null;
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text('什么时候？', style: theme.textTheme.titleMedium),
+                ),
+                // 三无是少数派，但必须留一条路：桌面壳建三无只有这里
+                // （快记只在系统级悬浮把手上）。
+                TextButton(
+                  onPressed: () => _enterForm(null),
+                  child: const Text('不排期'),
+                ),
+              ],
+            ),
+            // 桌面壳的 sheet 是全窗口宽——不限宽的话七列每格能到 100dp 以上，
+            // 月历会撑成一屏半。与日历弹窗同一个上限，居中等宽。
+            Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: MonthCalendar(
+                  selected: _picked,
+                  gridMaxHeight: gridMax,
+                  onPick: (day) =>
+                      _enterForm(atDefaultHour(day, _value.type)),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Text(
+                '点某天，接着填内容',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -179,6 +226,8 @@ class _CreateFlowSheetState extends State<_CreateFlowSheet> {
           workCtrl: _workCtrl,
           autofocusTitle: true,
           onSubmit: _submit,
+          hourFollowsType: true,
+          onEditTime: _pickTime,
           deadlineActions: [
             TextButton(
               onPressed: () => setState(() => _pickingWhen = true),
@@ -206,41 +255,6 @@ class _CreateFlowSheetState extends State<_CreateFlowSheet> {
           ),
         ),
       ],
-    );
-  }
-}
-
-/// 日期档位一行：图标 + 档名 + 右侧日期。
-class _WhenTile extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String? detail;
-  final VoidCallback onTap;
-
-  const _WhenTile({
-    required this.icon,
-    required this.label,
-    this.detail,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      visualDensity: VisualDensity.compact,
-      leading: Icon(icon, color: AppColors.accent),
-      title: Text(label),
-      trailing: detail == null
-          ? null
-          : Text(
-              detail!,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-      onTap: onTap,
     );
   }
 }

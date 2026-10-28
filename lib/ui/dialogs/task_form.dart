@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import '../../domain/schedule.dart';
 import '../../domain/task.dart';
 import '../app_controller.dart';
-import '../widgets/task_tile.dart' show fmtDateTime;
+import '../theme.dart';
+import '../widgets/task_tile.dart' show fmtTime;
+import 'date_pick.dart' show atDefaultHour;
 
 /// 一张表单快照：新建的第 2 页与『编辑』共用同一组字段。
 ///
@@ -22,6 +24,9 @@ class TaskFormValue {
   final int importance;
   final bool remind;
 
+  /// 时刻被用户手动改过：此后切类型不再把它换回默认整点。
+  final bool timePinned;
+
   const TaskFormValue({
     this.title = '',
     this.description = '',
@@ -32,6 +37,7 @@ class TaskFormValue {
     // 新建默认打开：用户"设了时间"就是想要一条提醒，不该再让他去翻一个开关。
     // 标准/无排序两档的提醒门槛靠它放行（§7.0），关掉才安静。
     this.remind = true,
+    this.timePinned = false,
   });
 
   /// 「不排期」= 没有截止：只能是截止型散件，也不出声。
@@ -45,6 +51,7 @@ class TaskFormValue {
     bool? longTerm,
     int? importance,
     bool? remind,
+    bool? timePinned,
   }) =>
       TaskFormValue(
         title: title ?? this.title,
@@ -55,6 +62,7 @@ class TaskFormValue {
         longTerm: longTerm ?? this.longTerm,
         importance: importance ?? this.importance,
         remind: remind ?? this.remind,
+        timePinned: timePinned ?? this.timePinned,
       );
 }
 
@@ -80,6 +88,14 @@ class TaskFormBody extends StatelessWidget {
   /// 截止行右侧的动作（新建是『改日期』，编辑是『选时间』『清除』）。
   final List<Widget> deadlineActions;
 
+  /// 时刻本身可点开改（新建走这条）；null = 不接，时刻只是文字。
+  final VoidCallback? onEditTime;
+
+  /// 切类型时把**没手动改过**的时刻换成该类型的默认整点（新建）。
+  ///
+  /// 编辑不接：已经落定的时刻不该因为改了个类型被挪走。
+  final bool hourFollowsType;
+
   /// 备注框回车：新建 = 提交，编辑 = 保存。
   final VoidCallback? onSubmit;
 
@@ -93,6 +109,8 @@ class TaskFormBody extends StatelessWidget {
     required this.workCtrl,
     this.autofocusTitle = false,
     this.deadlineActions = const [],
+    this.onEditTime,
+    this.hourFollowsType = false,
     this.onSubmit,
   });
 
@@ -132,15 +150,11 @@ class TaskFormBody extends StatelessWidget {
             ),
             const SizedBox(width: 6),
             Expanded(
-              child: Text(
-                value.isLoose
-                    ? '不排期（散件）'
-                    // 「截止」与「开始」是同一字段的两种语义（§4.1）：截止型数着
-                    // 剩余工时催，开始型到点响一次。文案跟着类型走。
-                    : '${value.type == TaskType.fixed ? '开始' : '截止'} '
-                        '${fmtDateTime(value.deadline!)}',
-                style: theme.textTheme.bodyMedium,
-              ),
+              // 「截止」与「开始」是同一字段的两种语义（§4.1）：截止型数着剩余
+              // 工时催，开始型到点响一次。文案跟着类型走。
+              child: value.isLoose
+                  ? Text('不排期（散件）', style: theme.textTheme.bodyMedium)
+                  : _DeadlineLabel(value: value, onEditTime: onEditTime),
             ),
             ...deadlineActions,
           ],
@@ -162,16 +176,18 @@ class TaskFormBody extends StatelessWidget {
           selected: {value.type},
           onSelectionChanged: (s) {
             final type = s.first;
+            var next = value.copyWith(type: type);
+            // 时刻按类型取默认（截止 18:00、开始 12:00）；用户手动改过的时刻不动。
+            if (hourFollowsType && !value.timePinned && value.deadline != null) {
+              next = next.copyWith(
+                  deadline: atDefaultHour(value.deadline!, type));
+            }
             // 开始型必须有确切时刻：没日期就地补一个（一小时后），
             // 不拦着用户先去点『选时间』。
-            onChanged(
-              type == TaskType.fixed && value.isLoose
-                  ? value.copyWith(
-                      type: type,
-                      deadline: DateTime.now().add(const Duration(hours: 1)),
-                    )
-                  : value.copyWith(type: type),
-            );
+            onChanged(value.isLoose
+                ? next.copyWith(
+                    deadline: DateTime.now().add(const Duration(hours: 1)))
+                : next);
           },
         ),
         if (value.type == TaskType.flex) ...[
@@ -239,6 +255,55 @@ class TaskFormBody extends StatelessWidget {
             ),
             value: value.remind,
             onChanged: (v) => onChanged(value.copyWith(remind: v)),
+          ),
+      ],
+    );
+  }
+}
+
+/// 截止行中间那段：`截止 10-28` 加时刻。
+///
+/// 时刻可点时用强调色加下划线——这一屏里只有它能改时间，得看得出来点得动。
+class _DeadlineLabel extends StatelessWidget {
+  final TaskFormValue value;
+  final VoidCallback? onEditTime;
+
+  const _DeadlineLabel({required this.value, this.onEditTime});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final d = value.deadline!;
+    final label = Text(
+      '${value.type == TaskType.fixed ? '开始' : '截止'} ${d.month}-'
+      '${d.day.toString().padLeft(2, '0')} ',
+      style: theme.textTheme.bodyMedium,
+      overflow: TextOverflow.ellipsis,
+    );
+    final time = Text(
+      fmtTime(d),
+      style: onEditTime == null
+          ? theme.textTheme.bodyMedium
+          : theme.textTheme.bodyMedium?.copyWith(
+              color: AppColors.accent,
+              decoration: TextDecoration.underline,
+              decorationColor: AppColors.accent.withValues(alpha: 0.5),
+            ),
+    );
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Flexible(child: label),
+        if (onEditTime == null)
+          time
+        else
+          InkWell(
+            onTap: onEditTime,
+            borderRadius: BorderRadius.circular(6),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+              child: time,
+            ),
           ),
       ],
     );
