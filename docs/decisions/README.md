@@ -61,10 +61,10 @@
 | [2026-10-25-mainline-month-note.md](2026-10-25-mainline-month-note.md) | 月记单独一段：不把整月折成一条圈 |
 | [2026-10-28-calendar-three-dots.md](2026-10-28-calendar-three-dots.md) | 日历的点分三色：按类型配、按明度分三层 |
 | [2026-10-28-create-month-calendar.md](2026-10-28-create-month-calendar.md) | 新建第 1 页是月历：点某天即落定，时刻按类型取默认 |
+| [2026-10-28-mode-as-information-depth.md](2026-10-28-mode-as-information-depth.md) | 三档调度模式 = 信息深度的三个停靠点，界面按档裁剪、数据不留空白 |
 
 待补（都是"会被重新质疑"的取舍，按需要慢慢写）：
 
 - 锚点跨重锚沿用（为什么命令不能重算锚点，否则会把别人的提醒往后推）
 - 提醒间隔两段式（为什么裕度大了要转对数，而不是硬顶）
-- 无排序档的语义（为什么是"组内不排序"而不是"把所有有截止的搬进今天"）
 - snooze 到期的定时触点（为什么要在 `pollReminder` 开头 refresh）
