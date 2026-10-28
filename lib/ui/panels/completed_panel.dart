@@ -12,7 +12,7 @@ import '../widgets/task_tile.dart';
 ///
 /// 按完成日期分三组（今天 / 昨天 / 更早），组内完成时刻降序。条目弱化呈现、
 /// 无编号、不可拖（历史没有顺序意图）；点条目 = 与今日清单/任务池同一张只读
-/// 详情卡，动作只有两个：恢复未完成 / 删除。空态："还没有完成的事"。
+/// 详情卡，动作（恢复未完成 / 删除）在长按菜单。空态："还没有完成的事"。
 ///
 /// 分组查询在 application 层（`buildCompletedView`），这里只消费结果——UI 不含
 /// 逻辑，与今日页/任务池同规则。与调度模式三档无关：存档不参与排序。
@@ -81,8 +81,7 @@ class CompletedPanel extends StatelessWidget {
         // 选择模式下点条目 = 勾选（批量动作只给删除，见 §10#23）。
         onTap: selection.selecting
             ? () => selection.toggle(task.id)
-            : () => showTaskDetailSheet(context, controller, task,
-                kind: TaskMenuKind.completed),
+            : () => showTaskDetailSheet(context, task),
         onLongPress: selection.selecting
             ? null
             : () => showTaskMenu(context, controller, task,

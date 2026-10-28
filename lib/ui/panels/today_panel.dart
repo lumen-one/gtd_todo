@@ -101,11 +101,12 @@ class TodayPanel extends StatelessWidget {
                   key: ValueKey('inprogress-${view.inProgress[i].id}'),
                   controller: controller,
                   task: view.inProgress[i],
+                  trail: TileTrail.time,
                   highlight: view.inProgress[i].id == controller.focusedTaskId,
                   selecting: selection.selecting,
                   selected: selection.contains(view.inProgress[i].id),
                   onTap:
-                      _tap(context, view.inProgress[i], TaskMenuKind.inProgress),
+                      _tap(context, view.inProgress[i]),
                   onLongPress: _longPress(
                       context, view.inProgress[i], TaskMenuKind.inProgress),
                   trailing: _grip(i, theme),
@@ -120,9 +121,10 @@ class TodayPanel extends StatelessWidget {
             TaskTile(
               controller: controller,
               task: t,
+              trail: TileTrail.time,
               selecting: selection.selecting,
               selected: selection.contains(t.id),
-              onTap: _tap(context, t, TaskMenuKind.overdue),
+              onTap: _tap(context, t),
               onLongPress: _longPress(context, t, TaskMenuKind.overdue),
             ),
         ],
@@ -133,10 +135,11 @@ class TodayPanel extends StatelessWidget {
             TaskTile(
               controller: controller,
               task: t,
+              trail: TileTrail.time,
               number: ++number,
               selecting: selection.selecting,
               selected: selection.contains(t.id),
-              onTap: _tap(context, t, TaskMenuKind.fixed),
+              onTap: _tap(context, t),
               onLongPress: _longPress(context, t, TaskMenuKind.fixed),
             ),
         ],
@@ -155,11 +158,12 @@ class TodayPanel extends StatelessWidget {
                 key: ValueKey('today-${combined[i].id}'),
                 controller: controller,
                 task: combined[i],
+                trail: TileTrail.time,
                 number: ++number,
                 highlight: combined[i].id == controller.focusedTaskId,
                 selecting: selection.selecting,
                 selected: selection.contains(combined[i].id),
-                onTap: _tap(context, combined[i], TaskMenuKind.flex),
+                onTap: _tap(context, combined[i]),
                 onLongPress:
                     _longPress(context, combined[i], TaskMenuKind.flex),
                 trailing: _grip(i, theme),
@@ -174,11 +178,12 @@ class TodayPanel extends StatelessWidget {
             TaskTile(
               controller: controller,
               task: t,
+              trail: TileTrail.time,
               number: ++number,
               highlight: t.id == controller.focusedTaskId,
               selecting: selection.selecting,
               selected: selection.contains(t.id),
-              onTap: _tap(context, t, TaskMenuKind.routine),
+              onTap: _tap(context, t),
               onLongPress: _longPress(context, t, TaskMenuKind.routine),
             ),
         ],
@@ -188,11 +193,12 @@ class TodayPanel extends StatelessWidget {
           TaskTile(
             controller: controller,
             task: view.picked!,
+            trail: TileTrail.time,
             dimmed: true,
             highlight: view.picked!.id == controller.focusedTaskId,
             selecting: selection.selecting,
             selected: selection.contains(view.picked!.id),
-            onTap: _tap(context, view.picked!, TaskMenuKind.picked),
+            onTap: _tap(context, view.picked!),
             onLongPress: _longPress(context, view.picked!, TaskMenuKind.picked),
           ),
         ],
@@ -212,11 +218,12 @@ class TodayPanel extends StatelessWidget {
                   key: ValueKey('today-loose-${view.loose[i].id}'),
                   controller: controller,
                   task: view.loose[i],
+                  trail: TileTrail.time,
                   dimmed: true,
                   highlight: view.loose[i].id == controller.focusedTaskId,
                   selecting: selection.selecting,
                   selected: selection.contains(view.loose[i].id),
-                  onTap: _tap(context, view.loose[i], TaskMenuKind.loose),
+                  onTap: _tap(context, view.loose[i]),
                   onLongPress:
                       _longPress(context, view.loose[i], TaskMenuKind.loose),
                   trailing: _grip(i, theme),
@@ -260,10 +267,9 @@ class TodayPanel extends StatelessWidget {
   }
 
   /// 点条目：选择模式下是勾选，平时是详情卡（"点击看、长按做"）。
-  VoidCallback _tap(BuildContext context, Task t, TaskMenuKind kind) =>
-      selection.selecting
-          ? () => selection.toggle(t.id)
-          : () => showTaskDetailSheet(context, controller, t, kind: kind);
+  VoidCallback _tap(BuildContext context, Task t) => selection.selecting
+      ? () => selection.toggle(t.id)
+      : () => showTaskDetailSheet(context, t);
 
   /// 长按：选择模式下不给菜单（`null` → InkWell 不响应长按）；平时弹菜单，
   /// 菜单最后一行『多选』把这条一并选上（§10#23）。

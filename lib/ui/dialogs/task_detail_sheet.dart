@@ -1,30 +1,18 @@
 import 'package:flutter/material.dart';
 
 import '../../domain/task.dart';
-import '../app_controller.dart';
 import '../theme.dart';
-import '../widgets/task_actions.dart';
-import '../widgets/task_tile.dart' show fmtDateTime;
-import 'routine_edit_dialog.dart' show routineSubtitle;
+import '../widgets/task_tile.dart' show fmtWhen, trailColor;
 
 /// 任务详情卡（ui-interaction.md §6.1 / §6.3，决议 44）：**点条目 = 只读详情**。
 ///
-/// 与长按菜单的分工是"**点击看、长按做**"：详情卡给列表行塞不下的东西——备注
-/// 全文、全部属性、调度派生量（裕度 / 下一次该看它 / 出不出声）；动作还是那几个，
-/// 底部按钮直接复用 [taskMenuEntries]，与长按菜单同源，不另写一套。
+/// 卡里只有三样：标题、一行时间、备注全文。**没有动作按钮**——"点击看、长按做"，
+/// 改数据一律走长按菜单（`taskMenuEntries` 只服务那一处）。属性表与调度派生量
+/// 一并移出，代价登记在 docs/architecture.md §11。
 ///
 /// 用 bottom sheet 而不是新页面：侧边栏（含系统级悬浮面板）没有路由，
 /// 与『编辑』『推迟』两处同款呈现。
-Future<void> showTaskDetailSheet(
-  BuildContext context,
-  AppController controller,
-  Task task, {
-  required TaskMenuKind kind,
-}) {
-  // 条目动作在这里就用**外层 context** 建好：点按钮时先收起本卡再执行，
-  // 卡自己的 context 那时已经失效（见 [_actions]）。
-  final entries = taskMenuEntries(context, controller, task, kind);
-
+Future<void> showTaskDetailSheet(BuildContext context, Task task) {
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -36,18 +24,19 @@ Future<void> showTaskDetailSheet(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _head(ctx, task, kind),
-            const SizedBox(height: 8),
-            ..._facts(ctx, controller, task),
+            Text(
+              task.title,
+              style: Theme.of(ctx)
+                  .textTheme
+                  .titleLarge
+                  ?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 10),
+            ..._when(ctx, task),
             if (task.description.trim().isNotEmpty) ...[
-              const SizedBox(height: 12),
-              _section(ctx, '备注'),
-              const SizedBox(height: 4),
-              Text(task.description,
-                  style: Theme.of(ctx).textTheme.bodyMedium),
+              const SizedBox(height: 14),
+              Text(task.description, style: Theme.of(ctx).textTheme.bodyMedium),
             ],
-            const Divider(height: 26),
-            _actions(context, ctx, entries),
           ],
         ),
       ),
@@ -55,228 +44,61 @@ Future<void> showTaskDetailSheet(
   );
 }
 
-/// 标题 + 组徽标（与列表行的徽标同一套口径）。
-Widget _head(BuildContext context, Task task, TaskMenuKind kind) {
+/// 时间这一块：一行"开始 / 截止 / 发生 <什么时候>"，已完成件再补一行完成时刻。
+///
+/// 色点与文字取 [trailColor]（日历点色板，逾期转橙红）——卡上的颜色要和列表行、
+/// 日历格子对得上，同一个"截止"在三个地方必须是同一颗色。
+List<Widget> _when(BuildContext context, Task task) {
   final theme = Theme.of(context);
-  final tag = switch (kind) {
-    TaskMenuKind.overdue => '逾期',
-    TaskMenuKind.fixed => '开始型',
-    TaskMenuKind.picked => '被挑散件',
-    TaskMenuKind.inProgress => '挂起中',
-    TaskMenuKind.completed => '已完成',
-    TaskMenuKind.routine => '例行',
-    TaskMenuKind.branch => '支线',
-    TaskMenuKind.pool => task.type == TaskType.fixed
-        ? '开始型'
-        : (task.deadline == null ? '三无散件' : null),
-    _ => null,
-  };
+  final deadline = task.deadline;
+  final rows = <Widget>[];
+
+  if (deadline == null) {
+    rows.add(_row(
+      theme,
+      theme.colorScheme.outlineVariant,
+      '不排期',
+      color: theme.colorScheme.onSurfaceVariant,
+    ));
+  } else {
+    final color = trailColor(context, task);
+    final label = switch (task.type) {
+      TaskType.flex => '截止',
+      TaskType.routine => '发生',
+      TaskType.fixed => '开始',
+    };
+    rows.add(_row(theme, color, '$label ${fmtWhen(deadline)}', color: color));
+  }
+
+  final doneAt = task.completedAt;
+  if (doneAt != null) {
+    if (rows.isNotEmpty) rows.add(const SizedBox(height: 6));
+    rows.add(_row(
+      theme,
+      AppColors.preset.dotsFor(theme.brightness).done,
+      '完成 ${fmtWhen(doneAt)}',
+      color: theme.colorScheme.onSurfaceVariant,
+    ));
+  }
+  return rows;
+}
+
+Widget _row(ThemeData theme, Color dot, String text, {Color? color}) {
   return Row(
-    crossAxisAlignment: CrossAxisAlignment.start,
     children: [
+      Container(
+        width: 7,
+        height: 7,
+        decoration: BoxDecoration(color: dot, shape: BoxShape.circle),
+      ),
+      const SizedBox(width: 8),
       Expanded(
         child: Text(
-          task.title,
-          style: theme.textTheme.titleLarge
-              ?.copyWith(fontWeight: FontWeight.w700),
+          text,
+          style: theme.textTheme.bodyMedium
+              ?.copyWith(color: color, fontWeight: FontWeight.w600),
         ),
       ),
-      if (tag != null) ...[
-        const SizedBox(width: 8),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-          decoration: BoxDecoration(
-            color: AppColors.accent.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(999),
-          ),
-          child: Text(tag,
-              style: TextStyle(color: AppColors.accent, fontSize: 11.5)),
-        ),
-      ],
     ],
   );
-}
-
-List<Widget> _facts(
-    BuildContext context, AppController controller, Task task) {
-  final theme = Theme.of(context);
-  final metric = controller.schedule?.metricOf(task.id);
-  final manual = controller.isManualSort;
-  final now = DateTime.now();
-  final overdue =
-      task.deadline != null && task.deadline!.isBefore(now) && !task.isCompleted;
-
-  final rows = <(String, String)>[
-    ('类型', _typeLabel(task)),
-    (
-      '状态',
-      task.isCompleted
-          ? '已完成'
-          : (task.snoozedUntil != null
-              ? '已推迟到 ${fmtDateTime(task.snoozedUntil!)}'
-              : (overdue ? '已逾期' : '待办'))
-    ),
-    (
-      task.type == TaskType.flex ? '截止' : '时间',
-      task.deadline == null ? '无' : fmtDateTime(task.deadline!)
-    ),
-    // 无排序档不问工时，落盘的 30 分钟只是缺省值——显示出来是编的，整行不给。
-    if (!manual)
-      (
-        '工时',
-        task.type == TaskType.fixed
-            ? '不估工时（开始型）'
-            : (task.isLongTerm
-                ? '长期（不估工时）'
-                : '预计 ${task.estimatedWork} 分 · 剩 ${task.remainingWork} 分')
-      ),
-    // '长期'任务没有优先级（A3 豁免，D18）——这一行整个不显示。
-    if (!manual && !task.isLongTerm)
-      ('重要度', '${'★' * task.importance!}${'☆' * (5 - task.importance!)}'),
-    ('创建', fmtDateTime(task.created)),
-    if (task.completedAt != null) ('完成', fmtDateTime(task.completedAt!)),
-    if (task.tags.isNotEmpty) ('标签', task.tags.map((t) => '#$t').join(' ')),
-  ];
-
-  // 例行实例（决议 23）：实例本身是临时的，详情里给的是它背后的规则。
-  final routineId = task.routineId;
-  if (routineId != null) {
-    final r = controller.routineById(routineId);
-    rows.add(('规则', r == null ? '（规则已删除）' : routineSubtitle(r)));
-    if (task.routineDate != null) rows.add(('发生日', task.routineDate!));
-  }
-
-  // 调度派生量（不落盘，§7.1）：裕度这类"算出来的压力表"照旧可展示；
-  // risk / priority 是排序键，界面不显示（顺序本身就是表达）。
-  if (!task.isCompleted && manual) {
-    // 无排序档没有派生量（不跑公式）：只有那一次"截止前 X 分钟"的提醒。
-    final d = task.deadline;
-    if (d != null && task.type == TaskType.flex) {
-      final lead = Duration(minutes: controller.manualLeadMinutes);
-      rows.add((
-        '提醒',
-        '截止前 ${controller.manualLeadMinutes} 分钟'
-            '（${fmtDateTime(d.subtract(lead))}）'
-      ));
-    }
-  } else if (!task.isCompleted && metric != null) {
-    rows.add(('时间裕度', _fmtMinutes(metric.slackMinutes)));
-    rows.add(
-      (
-        '下次该看',
-        metric.nextReminderAt == null
-            ? '暂无'
-            : fmtDateTime(metric.nextReminderAt!)
-      ),
-    );
-    rows.add(
-      (
-        '会不会响',
-        metric.reminds ? '会' : '不出声'
-      ),
-    );
-    if (metric.intervalMinutes != null) {
-      rows.add(('提醒间隔', '${metric.intervalMinutes} 分'));
-    }
-  }
-
-  // 人的持久意图与标记（都是存在任务上的事实，算不出来的那一类）。
-  if (task.pinnedAt != null) rows.add(('插队', '已插队，压在最前'));
-  if (task.inProgressAt != null) rows.add(('挂起', '挂起中'));
-  // 无排序档不跑定期挑：标记可能还留在任务上（切档不迁移），但不代表什么。
-  if (task.pickedForDate != null && !controller.isManualSort) {
-    rows.add(('今日', '被挑到今天'));
-  }
-  if (controller.isManualSort && task.looseHomeIsPool) {
-    rows.add(('散件', '住在任务池'));
-  }
-  if (controller.isManualSort && task.manualOrder != null) {
-    rows.add(('手动序', '第 ${task.manualOrder! + 1} 位'));
-  }
-
-  return [
-    for (final (label, value) in rows)
-      Padding(
-        padding: const EdgeInsets.symmetric(vertical: 3),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: 66,
-              child: Text(
-                label,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(value, style: theme.textTheme.bodyMedium),
-            ),
-          ],
-        ),
-      ),
-  ];
-}
-
-Widget _section(BuildContext context, String label) => Text(
-      label,
-      style: Theme.of(context).textTheme.labelMedium?.copyWith(
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
-          fontWeight: FontWeight.w700),
-    );
-
-/// 底部动作：与长按菜单同源（[taskMenuEntries]）。
-///
-/// 先收起本卡再执行——动作完成后这条任务往往已经从清单里消失（完成 / 删除 /
-/// 放回池子），留着一张指向旧数据的卡没有意义。所以失败提示只能用外层
-/// context 弹（卡自己的 context 弹出时已失效）。
-Widget _actions(BuildContext context, BuildContext sheetContext,
-    List<TaskMenuEntry> entries) {
-  return Wrap(
-    spacing: 8,
-    runSpacing: 8,
-    children: [
-      for (final (label, icon, action) in entries)
-        OutlinedButton.icon(
-          icon: Icon(icon, size: 18),
-          label: Text(label),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: label.startsWith('删除')
-                ? AppColors.overdueFor(Theme.of(context).brightness)
-                : null,
-          ),
-          onPressed: () async {
-            Navigator.of(sheetContext).pop();
-            try {
-              await action();
-            } catch (e) {
-              if (context.mounted) {
-                ScaffoldMessenger.of(context)
-                    .showSnackBar(SnackBar(content: Text('操作失败：$e')));
-              }
-            }
-          },
-        ),
-    ],
-  );
-}
-
-String _typeLabel(Task task) => switch (task.type) {
-      TaskType.fixed => '开始型（某时发生）',
-      TaskType.routine => '例行（当天实例）',
-      TaskType.flex => task.deadline == null
-          ? '截止型 · 无截止（三无散件）'
-          : '截止型（某时前完成）',
-    };
-
-String _fmtMinutes(int m) {
-  final abs = m.abs();
-  final h = abs ~/ 60;
-  final mm = abs % 60;
-  final text = h == 0
-      ? '$mm 分'
-      : (mm == 0 ? '$h 小时' : '$h 小时 $mm 分');
-  return m < 0 ? '透支 $text' : '还剩 $text';
 }

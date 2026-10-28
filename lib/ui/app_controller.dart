@@ -586,7 +586,7 @@ class AppController extends ChangeNotifier {
   /// 无排序 = 关掉算法排序（顺序全手动拖）。UI 用它决定拖拽是"定序"还是"插队"。
   bool get isManualSort => _settings.scheduleMode.isManual;
 
-  /// 无排序档的提醒提前量（分钟，§7.1）：详情卡与设置页的文案用。
+  /// 无排序档的提醒提前量（分钟，§7.1）：设置页的文案用（详情卡已不显示提醒细节）。
   int get manualLeadMinutes => _settings.manualLeadMinutes;
 
   /// §4.3：当前送达策略（默认 9:00–21:00 一段；空 = 不限制）。
@@ -1117,7 +1117,7 @@ class AppController extends ChangeNotifier {
 
   Future<void> complete(String id) => service.completeTask(id);
 
-  /// 恢复未完成（撤销一次完成；已完成页与详情卡的兜底动作，ui 文档 §6.7）。
+  /// 恢复未完成（撤销一次完成；已完成页的兜底动作，ui 文档 §6.7）。
   Future<void> reopenTask(String id) => service.reopenTask(id);
 
   Future<void> snooze(String id, {required int minutes}) =>

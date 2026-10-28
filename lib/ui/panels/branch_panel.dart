@@ -11,7 +11,7 @@ import '../widgets/task_tile.dart' show fmtTime;
 /// 支线视图（panels/branch.md §6.12）：编排覆盖页的另一面。
 ///
 /// 一条支线一张文件夹卡片，里面是**真实任务**：勾一下就是完成那个任务，点行开
-/// 详情卡。与编排同页不同源——这里加一条，时间轴上不出现。
+/// 详情卡、长按出条目菜单。与编排同页不同源——这里加一条，时间轴上不出现。
 ///
 /// 已完成的行沉到卡片末尾（弱化），取消勾选自动回到原来的位置：文件里只存一个
 /// 全序，渲染时分两段，所以"回去"不需要记下标。
@@ -247,7 +247,9 @@ class _BranchBoardState extends State<BranchBoard> {
         !task.isCompleted;
     final due = branchDueLabel(task, DateTime.now());
     final rowWidget = InkWell(
-      onTap: () => showTaskDetailSheet(
+      // 点行 = 只读详情卡；改期、推迟、删除在长按菜单里（详情卡已不带动作）。
+      onTap: () => showTaskDetailSheet(context, task),
+      onLongPress: () => showTaskMenu(
         context,
         widget.controller,
         task,

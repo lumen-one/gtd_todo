@@ -9,8 +9,7 @@ import '../theme.dart';
 /// 长按菜单（决议 23/25：按组上下文相关）+ 软删除撤销 toast（决议 15）。
 ///
 /// [onSelectMode] 不为空时，菜单最后多一行『多选』（§10#23）：它是**模式切换**
-/// 不是命令，所以不进 [taskMenuEntries] 那份共享条目表——那张表长按菜单与详情卡
-/// 共用，而详情卡是"看单件"的场景，不该出现批量的入口。
+/// 不是命令，所以不进 [taskMenuEntries] 那份条目表——那张表装的全是命令。
 Future<void> showTaskMenu(
   BuildContext context,
   AppController controller,
@@ -43,9 +42,10 @@ Future<void> showTaskMenu(
   );
 }
 
-/// 条目动作表（正典）：**长按菜单与详情卡底部按钮共用这一份**（决议 44）。
+/// 条目动作表（正典，决议 44）：**长按菜单是它唯一的消费者**——详情卡去掉动作
+/// 之后只剩"看"，改数据必须先长按（见 docs/decisions/2026-10-28-tile-time-and-detail-slim.md）。
 ///
-/// 两处各写一套，动作迟早漂移（今天加个『转正』，只有一处记得加）。
+/// 每个页面各写一套，动作迟早漂移（今天加个『转正』，只有一处记得加）。
 /// 按组上下文相关（决议 23/25）；例行实例与池子条目各有一套。
 List<TaskMenuEntry> taskMenuEntries(
   BuildContext context,
@@ -267,7 +267,7 @@ class _SelectModeTile extends StatelessWidget {
       );
 }
 
-/// 条目所在的位置：决定长按菜单与详情卡给哪些动作（决议 23/25/44）。
+/// 条目所在的位置：决定长按菜单给哪些动作（决议 23/25/44）。
 /// [pool] = 任务池（计划段与散件段同款，决议 13）。
 /// [loose] = 今日页 ⑥ 散件段（仅无排序档，ui 文档 §6.1）。
 /// [inProgress] = 今日页最顶的挂起组（决议 47：长期任务"正在做"）。

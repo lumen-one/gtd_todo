@@ -89,6 +89,7 @@ class PoolPanel extends StatelessWidget {
                   key: ValueKey('loose-${view.loose[i].id}'),
                   controller: controller,
                   task: view.loose[i],
+                  trail: TileTrail.date,
                   highlight: view.loose[i].id == controller.focusedTaskId,
                   selecting: selection.selecting,
                   selected: selection.contains(view.loose[i].id),
@@ -135,6 +136,7 @@ class PoolPanel extends StatelessWidget {
       key: ValueKey('plan-${task.id}'),
       controller: controller,
       task: task,
+      trail: TileTrail.date,
       highlight: task.id == controller.focusedTaskId,
       selecting: selection.selecting,
       selected: selection.contains(task.id),
@@ -147,8 +149,7 @@ class PoolPanel extends StatelessWidget {
   /// 点条目：选择模式下是勾选，平时是详情卡（与今日页同款）。
   VoidCallback _tap(BuildContext context, Task task) => selection.selecting
       ? () => selection.toggle(task.id)
-      : () => showTaskDetailSheet(context, controller, task,
-          kind: TaskMenuKind.pool);
+      : () => showTaskDetailSheet(context, task);
 
   VoidCallback? _longPress(BuildContext context, Task task) =>
       selection.selecting

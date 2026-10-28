@@ -272,6 +272,8 @@ class _DayList extends StatelessWidget {
                 TaskTile(
                   controller: controller,
                   task: t,
+                  // 当天列表里时间才是新信息（日期整页都在说）——同款时间签。
+                  trail: TileTrail.time,
                   onTap: () async {
                     final dt = await pickDateTime(context,
                         initial: t.deadline, title: '改期到哪天？');

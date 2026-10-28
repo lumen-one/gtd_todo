@@ -117,7 +117,8 @@ class AppColors {
   static Color overdueFor(Brightness brightness) =>
       brightness == Brightness.dark ? overdueOnDark : overdue;
 
-  /// 开始型的时间徽标橙——状态语义，不随预设变化。
+  /// 开始型的标记橙（列表组头、编排时间轴用它）——状态语义，不随预设变化。
+  /// 列表行右端那一签不走这颗色，它取日历点色板（§8：那颗要跟着预设换）。
   static const Color timeBadge = Color(0xFFF57C00);
 
   /// 纸白底。
