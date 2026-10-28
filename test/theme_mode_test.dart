@@ -87,22 +87,37 @@ void main() {
     });
   });
 
-  group('语义色（§8：不随预设变，逾期橙红与已完成蓝随明暗提亮）', () {
+  group('语义色（§8：不随预设变，逾期橙红随明暗提亮）', () {
     test('逾期橙红：浅色原值、暗色提亮变体', () {
       expect(AppColors.overdueFor(Brightness.light), AppColors.overdue);
       expect(AppColors.overdueFor(Brightness.dark), AppColors.overdueOnDark);
       expect(AppColors.overdueOnDark, isNot(AppColors.overdue));
     });
 
-    test('已完成蓝：浅色原值、暗色提亮变体，且不取强调色', () {
-      expect(AppColors.doneFor(Brightness.light), AppColors.done);
-      expect(AppColors.doneFor(Brightness.dark), AppColors.doneOnDark);
-      expect(AppColors.doneOnDark, isNot(AppColors.done));
-      // 它要跟橙点同屏并存，取强调色就分不出来了（§8）。
-      for (final p in AppThemePreset.values) {
-        expect(AppColors.done, isNot(p.seed));
-        expect(AppColors.doneOnDark, isNot(p.seed));
+    test('日历点色板：三色互不相同、随预设换、完成色全主题共用', () {
+      for (final preset in AppThemePreset.values) {
+        for (final brightness in Brightness.values) {
+          final dots = preset.dotsFor(brightness);
+          final tag = '${preset.id}/${brightness.name}';
+          expect(dots.start, isNot(dots.deadline), reason: '$tag 开始与截止撞色');
+          expect(dots.start, isNot(dots.done), reason: '$tag 开始与完成撞色');
+          expect(dots.deadline, isNot(dots.done), reason: '$tag 截止与完成撞色');
+          // 点色是独立色板：种子受"按钮托白字"的对比约束，拿来当点会丢掉明度梯度。
+          expect(dots.start, isNot(preset.seed), reason: '$tag 开始色取了种子');
+          expect(dots.deadline, isNot(preset.seed), reason: '$tag 截止色取了种子');
+        }
       }
+      expect(AppThemePreset.orange.dotsFor(Brightness.light).done,
+          CalendarDotColors.doneLight);
+      expect(AppThemePreset.plum.dotsFor(Brightness.dark).done,
+          CalendarDotColors.doneDark);
+    });
+
+    test('切预设时日历点色板跟着换', () {
+      addTearDown(() => AppColors.applyPreset(AppThemePreset.orange));
+      AppColors.applyPreset(AppThemePreset.moss);
+      expect(AppColors.accent, AppThemePreset.moss.seed);
+      expect(AppColors.preset, AppThemePreset.moss);
     });
 
     test('时间徽标橙不随明暗变（暗底对比度已达标）', () {

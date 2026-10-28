@@ -54,7 +54,8 @@ List<Task> _tasksOn(
 }
 
 /// 日历弹窗（ui-interaction.md §6.4）：
-/// - 月历，有安排的日子打点：橙 = 还有没干完的，蓝 = 已经干完的；
+/// - 月历，有安排的日子打点：开始型 / 截止型 / 已经干完的三种点，色值随主题预设走
+///   （§8 的日历点色板），一天最多三点；
 /// - 点某天 → 当天列表从弹窗底部下滑展开（同一弹窗内联动，不叠层）；
 /// - **长按某天** → 顶部升起一行输入，回车即在那天落一件（截止型 + 有截止）；
 /// - 当天列表里可改任务日期，改完调度自动重锚（决议 24：例行实例只读、
@@ -121,11 +122,16 @@ class _CalendarDialogState extends State<_CalendarDialog> {
   List<RoutineOccurrence> _routinesOf(DateTime day) =>
       widget.controller.occurrencesOn(day);
 
-  /// 橙点：这天还欠活（任务或例行实例）。
-  bool _hasOpen(DateTime day) =>
-      _openOf(day).isNotEmpty || _routinesOf(day).isNotEmpty;
+  /// 开始点：这天有开始型的活欠着。例行实例的发生也算——它同样是个"时刻开始"。
+  bool _hasStart(DateTime day) =>
+      _routinesOf(day).isNotEmpty ||
+      _openOf(day).any((t) => t.type != TaskType.flex);
 
-  /// 蓝点：这天有已经干完的。
+  /// 截止点：这天有截止型的活欠着，得在这天收尾。
+  bool _hasDeadline(DateTime day) =>
+      _openOf(day).any((t) => t.type == TaskType.flex);
+
+  /// 完成点：这天有已经干完的，不分类型。
   bool _hasDone(DateTime day) => _doneOf(day).isNotEmpty;
 
   /// 箭头与横滑是同一个动作的两种走法（§6.4）：箭头走相邻一格。
@@ -211,7 +217,8 @@ class _CalendarDialogState extends State<_CalendarDialog> {
       day: dayNumber,
       isToday: isThisMonth && dayNumber == today.day,
       selected: selected == dayNumber,
-      marked: _hasOpen(day),
+      startMarked: _hasStart(day),
+      deadlineMarked: _hasDeadline(day),
       doneMarked: _hasDone(day),
       onTap: () => setState(() {
         _selectedDay = dayNumber;
@@ -343,10 +350,13 @@ class _DayCell extends StatelessWidget {
   final bool isToday;
   final bool selected;
 
-  /// 这天还欠活（橙点）。
-  final bool marked;
+  /// 这天有开始型的活欠着（开始点）。
+  final bool startMarked;
 
-  /// 这天有已经干完的（蓝点）。两色可同时出现，橙在前。
+  /// 这天有截止型的活欠着（截止点）。
+  final bool deadlineMarked;
+
+  /// 这天有已经干完的（完成点，不分类型）。三个可以同时出现。
   final bool doneMarked;
 
   final VoidCallback onTap;
@@ -356,7 +366,8 @@ class _DayCell extends StatelessWidget {
     required this.day,
     required this.isToday,
     required this.selected,
-    required this.marked,
+    required this.startMarked,
+    required this.deadlineMarked,
     required this.doneMarked,
     required this.onTap,
     required this.onLongPress,
@@ -365,6 +376,14 @@ class _DayCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final dots = AppColors.preset.dotsFor(theme.brightness);
+    // 选中日整颗圈是强调色填充，开始点跟它同族、贴上去连成一片——那一格不画开始点
+    // （下面展开的列表本来就在说这天有什么）；截止点与完成点照画。
+    final pips = <Color>[
+      if (startMarked && !selected) dots.start,
+      if (deadlineMarked) dots.deadline,
+      if (doneMarked) dots.done,
+    ];
     return InkWell(
       borderRadius: BorderRadius.circular(12),
       onTap: onTap,
@@ -404,12 +423,9 @@ class _DayCell extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // 选中日整颗圈是强调色填充，橙点贴上去会连成一片——那一格
-                    // 不画橙点（下面展开的列表本来就在说这天有什么），蓝点照画。
-                    if (marked && !selected) _Pip(color: AppColors.accent),
-                    if (doneMarked) ...[
-                      if (marked && !selected) const SizedBox(width: 3),
-                      _Pip(color: AppColors.doneFor(theme.brightness)),
+                    for (var i = 0; i < pips.length; i++) ...[
+                      if (i > 0) const SizedBox(width: 3),
+                      _Pip(color: pips[i]),
                     ],
                   ],
                 ),
@@ -422,7 +438,7 @@ class _DayCell extends StatelessWidget {
   }
 }
 
-/// 日期下面那颗小点（4dp，§6.4 的两色口径）。
+/// 日期下面那颗小点（4dp，§8 的三色口径：开始 / 截止 / 完成，按对比度分三层深浅）。
 class _Pip extends StatelessWidget {
   final Color color;
   const _Pip({required this.color});
@@ -456,7 +472,7 @@ class _DayList extends StatelessWidget {
   Widget build(BuildContext context) {
     final tasks = _tasksOn(controller.tasks, day,
         completed: false, noRoutine: true);
-    // 已完成件排末尾、不可点（与月历蓝点同一条口径，不按今天划线）。
+    // 已完成件排末尾、不可点（与月历完成点同一条口径，不按今天划线）。
     final done = _tasksOn(controller.tasks, day,
         completed: true, noRoutine: true);
 
@@ -616,14 +632,16 @@ class _DoneRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final color = AppColors.doneFor(theme.brightness);
+    // 勾用日历上那颗完成色（3.6:1，图形元素够用）；"已完成"三个字仍取正文灰——
+    // 11.5px 的文字要 4.5:1，完成色那档偏淡。
+    final done = AppColors.preset.dotsFor(theme.brightness).done;
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(10, 8, 12, 8),
         child: Row(
           children: [
-            Icon(Icons.check_circle, size: 16, color: color),
+            Icon(Icons.check_circle, size: 16, color: done),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
@@ -640,7 +658,9 @@ class _DoneRow extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 6),
-            Text('已完成', style: TextStyle(fontSize: 11.5, color: color)),
+            Text('已完成',
+                style: TextStyle(
+                    fontSize: 11.5, color: theme.colorScheme.onSurfaceVariant)),
           ],
         ),
       ),

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gtd_todo/application/task_service.dart';
+import 'package:gtd_todo/domain/task.dart';
 import 'package:gtd_todo/domain/time_context.dart';
 import 'package:gtd_todo/repository/memory_task_repository.dart';
 import 'package:gtd_todo/scheduler/slack_scheduler.dart';
@@ -12,7 +13,7 @@ import 'package:gtd_todo/ui/theme.dart';
 
 /// 日历弹窗（ui-interaction.md §6.4）：左右横滑与两侧箭头是同一个动作的两种
 /// 走法；**切月清空当天选中**（展开的当天列表收回去）；长按某天直接加一件；
-/// 已经干完的件打蓝点、排在当天列表末尾且不可改期。
+/// 已经干完的件打完成点、排在当天列表末尾且不可改期；三种点按类型各归其位。
 void main() {
   Future<AppController> build(WidgetTester tester) async {
     final tmp = Directory.systemTemp.createTempSync('gtd_calendar');
@@ -60,6 +61,12 @@ void main() {
         of: find.byType(PageView),
         matching: find.text('$day'),
       );
+
+  /// 月历格子里那颗 4dp 的点（`_Pip` 是私有类，按颜色反查）。
+  Finder dotOf(Color color) => find.byWidgetPredicate((w) =>
+      w is Container &&
+      w.decoration is BoxDecoration &&
+      (w.decoration! as BoxDecoration).color == color);
 
   testWidgets('横滑切月，切月清空当天选中', (tester) async {
     final controller = await build(tester);
@@ -127,7 +134,42 @@ void main() {
     expect(find.text('买牛奶'), findsOneWidget, reason: '当天列表立刻看得见');
   });
 
-  testWidgets('提前干完的件：蓝点 + 进当天列表 + 不可改期', (tester) async {
+  testWidgets('三种点各归其位：开始型 / 截止型 / 已干完', (tester) async {
+    final controller = await build(tester); // 建好了一件今天的截止型
+    final now = DateTime.now();
+    await tester.runAsync(() async {
+      await controller.createTask(
+        title: '九点开始',
+        type: TaskType.fixed,
+        deadline: DateTime(now.year, now.month, now.day, 9, 0),
+        estimatedWorkMinutes: 60,
+      );
+      final done = await controller.createTask(
+        title: '收尾了',
+        deadline: DateTime(now.year, now.month, now.day, 21, 0),
+        estimatedWorkMinutes: 30,
+      );
+      await controller.complete(done.id);
+    });
+    await open(tester, controller);
+
+    expect(dotOf(AppThemePreset.orange.startLight), findsWidgets,
+        reason: '开始型打开始点');
+    expect(dotOf(AppThemePreset.orange.deadlineLight), findsWidgets,
+        reason: '截止型打截止点');
+    expect(dotOf(CalendarDotColors.doneLight), findsWidgets,
+        reason: '干完的打完成点');
+
+    // 选中那格不画开始点（整颗圈是强调色填充，开始点会连成一片）；
+    // 截止点与完成点照画。
+    await tester.tap(dayCell(now.day));
+    await tester.pumpAndSettle();
+    expect(dotOf(AppThemePreset.orange.startLight), findsNothing);
+    expect(dotOf(AppThemePreset.orange.deadlineLight), findsWidgets);
+    expect(dotOf(CalendarDotColors.doneLight), findsWidgets);
+  });
+
+  testWidgets('提前干完的件：完成点 + 进当天列表 + 不可改期', (tester) async {
     final controller = await build(tester);
     final now = DateTime.now();
     await tester.runAsync(() async {
@@ -140,16 +182,8 @@ void main() {
     });
     await open(tester, controller);
 
-    // 蓝点：已完成色的小圆点（与橙点并列，橙在前）
-    expect(
-      find.byWidgetPredicate((w) =>
-          w is Container &&
-          w.decoration is BoxDecoration &&
-          (w.decoration! as BoxDecoration).color ==
-              AppColors.doneFor(Brightness.light)),
-      findsWidgets,
-      reason: '月历上打蓝点',
-    );
+    // 完成点：全主题共用的那颗暖灰（与开始点、截止点并列，排在最右）
+    expect(dotOf(CalendarDotColors.doneLight), findsWidgets, reason: '月历上打完成点');
 
     await tester.tap(dayCell(now.day));
     await tester.pumpAndSettle();
@@ -162,7 +196,7 @@ void main() {
     expect(find.byType(DatePickerDialog), findsNothing);
   });
 
-  testWidgets('过去的已完成件也留在那天（蓝点不抹掉）', (tester) async {
+  testWidgets('过去的已完成件也留在那天（完成点不抹掉）', (tester) async {
     final controller = await build(tester);
     final now = DateTime.now();
     final yesterday = now.subtract(const Duration(days: 1));

@@ -8,16 +8,58 @@ import 'package:flutter/material.dart';
 /// 组件大量使用 `AppColors.accent`（进程内当前强调色，由装配点按设置
 /// 在启动与切换时调用 [AppColors.applyPreset]），切换后整体重建即可生效。
 enum AppThemePreset {
-  orange('orange', '橙', Color(0xFFEF6C00)),
-  ink('ink', '墨蓝', Color(0xFF1E5AA8)),
-  moss('moss', '苔绿', Color(0xFF2E7D50)),
-  plum('plum', '梅紫', Color(0xFF8E3B7A));
+  orange('orange', '橙', Color(0xFFEF6C00),
+      startLight: Color(0xFFBE5A08),
+      startDark: Color(0xFFE46C09),
+      deadlineLight: Color(0xFF4C52CB),
+      deadlineDark: Color(0xFF9599F2)),
+  ink('ink', '墨蓝', Color(0xFF1E5AA8),
+      startLight: Color(0xFF2975D9),
+      startDark: Color(0xFF5290E0),
+      deadlineLight: Color(0xFFAE325B),
+      deadlineDark: Color(0xFFEF7CA3)),
+  moss('moss', '苔绿', Color(0xFF2E7D50),
+      startLight: Color(0xFF2D8654),
+      startDark: Color(0xFF35A164),
+      deadlineLight: Color(0xFF9D30A4),
+      deadlineDark: Color(0xFFE674EE)),
+  plum('plum', '梅紫', Color(0xFF8E3B7A),
+      startLight: Color(0xFFBB4CA0),
+      startDark: Color(0xFFC970B2),
+      deadlineLight: Color(0xFF1F6C59),
+      deadlineDark: Color(0xFF16B68E));
 
-  const AppThemePreset(this.id, this.label, this.seed);
+  const AppThemePreset(
+    this.id,
+    this.label,
+    this.seed, {
+    required this.startLight,
+    required this.startDark,
+    required this.deadlineLight,
+    required this.deadlineDark,
+  });
 
   final String id;
   final String label;
   final Color seed;
+
+  /// 日历格子里的开始色（浅色底 / 深色底）。见 [CalendarDotColors]。
+  final Color startLight;
+  final Color startDark;
+
+  /// 日历格子里的截止色（浅色底 / 深色底）。
+  final Color deadlineLight;
+  final Color deadlineDark;
+
+  /// 当前明暗下的那三颗点（日历弹窗消费）。
+  CalendarDotColors dotsFor(Brightness brightness) {
+    final dark = brightness == Brightness.dark;
+    return CalendarDotColors(
+      start: dark ? startDark : startLight,
+      deadline: dark ? deadlineDark : deadlineLight,
+      done: dark ? CalendarDotColors.doneDark : CalendarDotColors.doneLight,
+    );
+  }
 
   static AppThemePreset fromId(String? id) => AppThemePreset.values.firstWhere(
         (p) => p.id == id,
@@ -57,6 +99,9 @@ class AppColors {
   /// 当前强调色（主题预设的种子）；默认橙。
   static Color accent = AppThemePreset.orange.seed;
 
+  /// 当前预设：日历的点色板要从它取（[AppThemePreset.dotsFor]）。
+  static AppThemePreset preset = AppThemePreset.orange;
+
   /// 主橙（默认强调色的别名，历史代码与语义色参照用）。
   static const Color orange = Color(0xFFEF6C00);
 
@@ -75,17 +120,6 @@ class AppColors {
   /// 开始型的时间徽标橙——状态语义，不随预设变化。
   static const Color timeBadge = Color(0xFFF57C00);
 
-  /// 已完成蓝（§8）：日历上"这天有已经干完的"那颗点。它要跟橙点同屏并存，
-  /// 所以不能取强调色，也不能取灰（灰在日历上跟"这天没事"太接近）。
-  static const Color done = Color(0xFF3F7FA6);
-
-  /// 已完成蓝的暗色提亮变体：与 [overdueOnDark] 同一个理由（保可读性）。
-  static const Color doneOnDark = Color(0xFF7FB3D5);
-
-  /// 当前明暗下的已完成色：日历的点与当天列表走这里。
-  static Color doneFor(Brightness brightness) =>
-      brightness == Brightness.dark ? doneOnDark : done;
-
   /// 纸白底。
   static const Color paper = Color(0xFFFAF7F2);
 
@@ -95,7 +129,41 @@ class AppColors {
   static const Color darkCard = Color(0xFF2A2622);
 
   /// 应用主题预设（装配点在启动与设置变更时调用）。
-  static void applyPreset(AppThemePreset preset) => accent = preset.seed;
+  static void applyPreset(AppThemePreset preset) {
+    AppColors.preset = preset;
+    accent = preset.seed;
+  }
+}
+
+/// 日历格子下面那三颗点（§8）：开始型 / 截止型 / 已干完。
+///
+/// 三色是**三层深浅**，不是三个平级的色相——截止最重、开始居中、完成最淡。浅色底上是
+/// 6.2 / 4.5 / 3.6 对白卡的对比，深色底反过来（变亮才是变重，4.6 / 5.8 / 3.6）。这层明度差
+/// 是给灰度截图和色弱视角留的：只靠两个色相分类型时（比如橙与蓝），这两点在灰度里只差
+/// 1.5:1，等于同一个亮度。
+///
+/// 色值写死在 [AppThemePreset] 上而不是从种子算：种子是给按钮托白字用的，明度受文本对比
+/// 约束；点要的是 4dp 下三档可辨。两者需求不同，硬绑在一起就有一头要妥协。
+class CalendarDotColors {
+  /// 开始型（含例行实例）：这天有事开始。
+  final Color start;
+
+  /// 截止型：这天的活要收尾。
+  final Color deadline;
+
+  /// 已经干完的，不分类型——干完这件事盖过类型本身。
+  final Color done;
+
+  const CalendarDotColors({
+    required this.start,
+    required this.deadline,
+    required this.done,
+  });
+
+  /// 完成色全主题共用的一颗暖灰：它跟纸白 / 暖深褐底同族，干完的活退回纸面里，
+  /// 不参与彩色点的竞争。
+  static const Color doneLight = Color(0xFF938476);
+  static const Color doneDark = Color(0xFF8B7A68);
 }
 
 ThemeData buildAppTheme(Brightness brightness,
