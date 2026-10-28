@@ -20,7 +20,7 @@ class _FakeAlarm implements AlarmPort {
   DateTime? scheduledAt;
   String? taskId;
   ReminderDraft? draft;
-  final _fired = StreamController<String>.broadcast();
+  final _fired = StreamController<FiredAlarm>.broadcast();
 
   @override
   Future<void> scheduleNext(DateTime at, String id,
@@ -34,7 +34,7 @@ class _FakeAlarm implements AlarmPort {
   Future<void> cancel() async {}
 
   @override
-  Stream<String> get fired => _fired.stream;
+  Stream<FiredAlarm> get fired => _fired.stream;
 }
 
 class _FakeNotifications implements NotificationPort {

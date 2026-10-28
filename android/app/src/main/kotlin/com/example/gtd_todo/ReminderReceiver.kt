@@ -40,7 +40,17 @@ class ReminderReceiver : BroadcastReceiver() {
         try {
             val posted = Notifier.post(app, reminder)
             Log.i("gtd", "alarm fired taskId=${reminder.taskId} posted=$posted")
-            NativeEventQueue.publish(app, mapOf("type" to "alarmFired", "taskId" to reminder.taskId))
+            // `delivered` 告诉 Dart 侧"这条已经弹过了"：Dart 只记账与排下一站，
+            // 不再 show 一次（同 id 替换会重新响铃、把通知时刻刷成"现在"）。
+            // 应用被杀时事件先进队列，等下次启动才被取走——那时更不能重弹。
+            NativeEventQueue.publish(
+                app,
+                mapOf(
+                    "type" to "alarmFired",
+                    "taskId" to reminder.taskId,
+                    "delivered" to posted,
+                ),
+            )
         } catch (t: Throwable) {
             Log.w("gtd", "alarm handling failed: ${t.message}", t)
         } finally {

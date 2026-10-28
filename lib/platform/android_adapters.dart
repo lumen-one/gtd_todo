@@ -182,11 +182,16 @@ class AndroidAlarmPort implements AlarmPort {
     await bridge.cancelAlarm();
   }
 
+  /// 原生接收器到点会**先自己投递**通知（应用被杀也照弹），再回传事件；
+  /// `delivered` 就是从这次投递的返回值来的。
   @override
-  Stream<String> get fired => bridge.events
+  Stream<FiredAlarm> get fired => bridge.events
       .where((e) => e['type'] == 'alarmFired')
-      .map((e) => e['taskId'] as String? ?? '')
-      .where((id) => id.isNotEmpty);
+      .map((e) => FiredAlarm(
+            e['taskId'] as String? ?? '',
+            delivered: e['delivered'] as bool? ?? false,
+          ))
+      .where((f) => f.taskId.isNotEmpty);
 }
 
 /// 系统通知（动作按钮 / 全屏闹钟 / 点通知定位）。
@@ -223,19 +228,16 @@ class AndroidNotificationPort implements NotificationPort {
   @override
   Stream<ShownNotification> get shown => const Stream.empty();
 
+  /// 兜底文案：只在调用方**没带** [ReminderDraft.body] 时才会用到（正常路径
+  /// 总带）。文案的唯一来源是 `ReminderDispatcher._bodyOf`——它认识调度模式
+  /// （无排序档不报"剩余 N 分钟"，那是拿缺省 30 分钟编的）。这里只留中性时刻，
+  /// 不要在这里重造一套口径。
   static String? _bodyOf(Task? task) {
     if (task == null) return null;
     final d = task.deadline;
-    // '长期'任务没有剩余工时（D18），也不会走到提醒链路；?? 0 只是空值安全。
-    final remaining = task.remainingWork ?? 0;
-    if (task.type == TaskType.flex && remaining > 0) {
-      return '剩余约 $remaining 分钟';
-    }
-    if (d != null) {
-      return '到点 ${d.hour.toString().padLeft(2, '0')}:'
-          '${d.minute.toString().padLeft(2, '0')}';
-    }
-    return null;
+    if (d == null) return null;
+    return '到点 ${d.hour.toString().padLeft(2, '0')}:'
+        '${d.minute.toString().padLeft(2, '0')}';
   }
 }
 

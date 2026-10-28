@@ -11,9 +11,12 @@ import '../domain/reminder.dart';
 
 /// 前台 Timer 闹钟：预约全局唯一闹钟，到点往 [fired] 发 taskId。
 /// 应用未运行时提醒不触发——桌面用"开机自启 + 常驻"弥补（规划），移动端无此问题。
+///
+/// 桌面没有"原生先自己弹一遍"这一层，投递只能由分发器做，所以事件一律
+/// `delivered: false`。
 class TimerAlarmPort implements AlarmPort {
   Timer? _timer;
-  final _fired = StreamController<String>.broadcast();
+  final _fired = StreamController<FiredAlarm>.broadcast();
 
   @override
   Future<void> scheduleNext(DateTime at, String taskId,
@@ -22,7 +25,7 @@ class TimerAlarmPort implements AlarmPort {
     final delay = at.difference(DateTime.now());
     _timer = Timer(
       delay.isNegative ? Duration.zero : delay,
-      () => _fired.add(taskId),
+      () => _fired.add(FiredAlarm(taskId)),
     );
   }
 
@@ -33,7 +36,7 @@ class TimerAlarmPort implements AlarmPort {
   }
 
   @override
-  Stream<String> get fired => _fired.stream;
+  Stream<FiredAlarm> get fired => _fired.stream;
 }
 
 /// 应用内通知回流：show 的内容进 [shown]，UI 监听并渲染弹窗。

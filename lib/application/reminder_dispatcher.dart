@@ -35,7 +35,7 @@ class ReminderDispatcher {
   ];
 
   StreamSubscription<DomainEvent>? _events;
-  StreamSubscription<String>? _fires;
+  StreamSubscription<FiredAlarm>? _fires;
 
   ReminderDispatcher({
     required this.service,
@@ -63,7 +63,7 @@ class ReminderDispatcher {
         _reschedule();
       }
     });
-    _fires ??= alarm.fired.listen((_) => _onFired());
+    _fires ??= alarm.fired.listen(_onFired);
     await _reschedule();
   }
 
@@ -119,10 +119,19 @@ class ReminderDispatcher {
     );
   }
 
-  Future<void> _onFired() async {
+  /// 闹钟到点。**投递只做一次**：安卓的原生接收器在回调之前就已经照着挂
+  /// 闹钟时的草案弹了通知（应用被杀也照弹），所以 `delivered` 为真时这里
+  /// 只记账（`pollReminder` 顺手写下 `point_fired`）并排下一站；再 show 一次
+  /// 就是同 id 替换 + 重新响铃，通知时刻被刷成"现在"——用户看到的就是
+  /// "这条提醒晚了十几分钟"。桌面没有那一层，`delivered` 恒假，照旧自己弹。
+  Future<void> _onFired(FiredAlarm firing) async {
     final event = await service.pollReminder();
     if (event == null) {
       // 到点但已无到期任务（竞态）：重排一次即可
+      await _reschedule();
+      return;
+    }
+    if (firing.delivered) {
       await _reschedule();
       return;
     }

@@ -79,6 +79,19 @@ abstract class NotificationPort {
   Stream<ShownNotification> get shown;
 }
 
+/// 一次闹钟到点回调。
+///
+/// [delivered] = **系统侧已经把这条提醒弹给用户了**：安卓的原生接收器照着挂
+/// 闹钟时留下的 [ReminderDraft] 自己投递（应用被杀也照弹），桌面没有这一层，
+/// 永远是 false。分发器据此决定还要不要自己 show——不判断就是同一条提醒弹
+/// 两遍：同 id 替换、重新响铃，通知的时刻被刷成"现在"，看起来像提醒迟到。
+class FiredAlarm {
+  final String taskId;
+  final bool delivered;
+
+  const FiredAlarm(this.taskId, {this.delivered = false});
+}
+
 /// 系统闹钟插座。全局任一时刻只挂一个下一站闹钟（§4.3）。
 abstract class AlarmPort {
   /// 挂下一站闹钟。[draft] 供"应用被杀时也能自己弹通知"的实现使用（安卓）。
@@ -86,8 +99,8 @@ abstract class AlarmPort {
 
   Future<void> cancel();
 
-  /// 到点事件（taskId）。安卓 = 系统闹钟回调转发；桌面 = Timer。
-  Stream<String> get fired;
+  /// 到点事件。安卓 = 系统闹钟回调转发（带"已投递"标记）；桌面 = Timer（未投递）。
+  Stream<FiredAlarm> get fired;
 }
 
 /// 目录/文件选择（安卓 SAF / 桌面系统选择器）。

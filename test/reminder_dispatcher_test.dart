@@ -19,7 +19,7 @@ class _FakeAlarm implements AlarmPort {
   String? taskId;
   ReminderDraft? draft;
   int cancels = 0;
-  final _fired = StreamController<String>.broadcast();
+  final _fired = StreamController<FiredAlarm>.broadcast();
 
   @override
   Future<void> scheduleNext(DateTime at, String id,
@@ -35,10 +35,11 @@ class _FakeAlarm implements AlarmPort {
   }
 
   @override
-  Stream<String> get fired => _fired.stream;
+  Stream<FiredAlarm> get fired => _fired.stream;
 
-  void fire() {
-    _fired.add(taskId ?? '');
+  /// 触发一次到点。[delivered] = 系统侧已经弹过通知（安卓原生接收器）。
+  void fire({bool delivered = false}) {
+    _fired.add(FiredAlarm(taskId ?? '', delivered: delivered));
   }
 }
 
@@ -210,11 +211,48 @@ void main() {
     expect(alarm.draft!.body, '截止 10-07 18:00', reason: '不问工时就不报剩余');
   });
 
+  // 投递只做一次（§4.3）：安卓原生接收器在回调之前就弹过通知了。
+  test('原生已投递时不 show：只记账 + 重排', () async {
+    await svc.updateScheduleMode(ScheduleMode.manual);
+    await startDispatcher();
+    final a = await svc.createTask(
+      title: 'A',
+      deadline: DateTime(2026, 10, 7, 18, 0),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(alarm.scheduledAt, DateTime(2026, 10, 7, 17, 30));
+
+    // 应用被杀时原生弹过这一条，事件等下次启动 drainEvents 才补到 Dart
+    now = DateTime(2026, 10, 7, 17, 55);
+    alarm.fire(delivered: true);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    expect(notifications.shownList, isEmpty,
+        reason: '同 id 再投一次不是"无害替换"：会重新响铃、把通知时刻刷成现在');
+    expect(svc.byId(a.id)!.pointFiredMark,
+        DateTime(2026, 10, 7, 17, 30).toIso8601String(),
+        reason: '幂等标记照样要落下，否则下次还会再响');
+  });
+
+  test('系统没弹成（权限被拒 / 桌面 Timer）时由 Dart 补投', () async {
+    await svc.updateScheduleMode(ScheduleMode.manual);
+    await startDispatcher();
+    await svc.createTask(
+      title: 'A',
+      deadline: DateTime(2026, 10, 7, 18, 0),
+    );
+    await Future<void>.delayed(Duration.zero);
+    now = DateTime(2026, 10, 7, 17, 30);
+    alarm.fire();
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    expect(notifications.shownList, hasLength(1));
+  });
+
   test('无排序档：提前量越界 → 退到截止时刻（不退就彻底静默）', () async {
     await svc.updateScheduleMode(ScheduleMode.manual);
     await svc.updateManualLead(60);
     await startDispatcher();
-    // 现在 16:00，截止 16:40：lead = 15:40 已经早于任务出生 → 取截止 16:40
+    // 现在 16:00，截止 16:40：lead = 15:40 已经是过去 → 取截止 16:40
     final a = await svc.createTask(
       title: 'A',
       deadline: DateTime(2026, 10, 7, 16, 40),
@@ -228,7 +266,7 @@ void main() {
     final port = TimerAlarmPort();
     final fired = port.fired.first.timeout(const Duration(seconds: 2));
     await port.scheduleNext(DateTime.now().subtract(const Duration(minutes: 1)), 't1');
-    expect(await fired, 't1');
+    expect((await fired).taskId, 't1');
     await port.cancel();
   });
 }
