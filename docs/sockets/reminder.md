@@ -15,8 +15,8 @@
 
 **ReminderDispatcher（单闹钟协调者）**：订阅 `scheduleReanchored` →
 `alarm.cancel()` → 计算送达时刻（两个提醒源，见下）→ `alarm.scheduleNext()`（带草案）；
-订阅 `alarm.fired` → `TaskService.pollReminder()` → `NotificationPort.show(...)`
-（带 actions：完成 / 推迟1小时）→ 再排下一站（链路自续）。
+订阅 `alarm.fired` → `TaskService.pollReminder()` →（**系统还没投递过时**）
+`NotificationPort.show(...)`（带 actions：完成 / 推迟1小时）→ 再排下一站（链路自续）。
 
 **门槛在算法/服务那一层，协调者不必知道模式。** 标准模式下
 `ScheduleResult.nextReminderAt` 为 null（除非有任务手动开了提醒），于是 `_reschedule()`
@@ -42,5 +42,8 @@
 - **只到点响一次**：响过写 metadata `point_fired`（持久），改期/推迟会清掉它；
   错过超过 30 分钟（`pointReminderGrace`）不再补响（已知局限见 [architecture.md](../architecture.md) §11）；
 - 安卓的"应用被杀"路径：挂闹钟时留下 `ReminderDraft`，到点由原生接收器
-  `ReminderReceiver` 自己弹通知（同一 taskId 的通知 id 相同 → Dart 侧再 show 时是替换，
-  不会重复）；按钮点击走 `ActionReceiver` → 事件回传（应用不在则入队，启动后 `drainEvents` 补做）。
+  `ReminderReceiver` 自己弹通知，`posted` 的返回值随 `alarmFired` 作为 `delivered` 回传。
+  **投递只做一次**：`delivered` 为真时 Dart 只记账（`pollReminder` 顺手写 `point_fired`）与
+  排下一站，不再 `show`。同一 taskId 重复投递不是"无害的替换"——它会重新响铃，并把通知
+  上的时刻刷成当下，看上去就是"这条提醒迟到了"。应用不在时事件先进队列，启动后
+  `drainEvents` 补做，走的是同一条规则；按钮点击走 `ActionReceiver` → 事件回传。

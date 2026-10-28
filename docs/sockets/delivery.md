@@ -41,7 +41,9 @@ abstract class AlarmPort {
   /// 全局唯一闹钟。[draft] 供"应用被杀时也能自己弹通知"的实现使用。
   Future<void> scheduleNext(DateTime at, String taskId, {ReminderDraft? draft});
   Future<void> cancel();
-  Stream<String> get fired;    // 到点（安卓=系统闹钟回调；桌面=Timer）
+  /// 到点（安卓=系统闹钟回调；桌面=Timer）。delivered = 系统侧已经弹过通知
+  /// （安卓原生接收器照着草案自己投递），分发器只记账、不再 show。
+  Stream<FiredAlarm> get fired;
 }
 
 abstract class FolderPickerPort {
