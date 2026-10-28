@@ -210,6 +210,20 @@ void main() {
     expect(alarm.draft!.body, '截止 10-07 18:00', reason: '不问工时就不报剩余');
   });
 
+  test('无排序档：提前量越界 → 退到截止时刻（不退就彻底静默）', () async {
+    await svc.updateScheduleMode(ScheduleMode.manual);
+    await svc.updateManualLead(60);
+    await startDispatcher();
+    // 现在 16:00，截止 16:40：lead = 15:40 已经早于任务出生 → 取截止 16:40
+    final a = await svc.createTask(
+      title: 'A',
+      deadline: DateTime(2026, 10, 7, 16, 40),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(alarm.scheduledAt, DateTime(2026, 10, 7, 16, 40));
+    expect(alarm.taskId, a.id);
+  });
+
   test('TimerAlarmPort 冒烟：过期时刻立即触发', () async {
     final port = TimerAlarmPort();
     final fired = port.fired.first.timeout(const Duration(seconds: 2));

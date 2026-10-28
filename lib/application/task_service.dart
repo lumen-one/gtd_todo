@@ -677,7 +677,15 @@ class TaskService {
     if (d == null) return null;
     final lead = d.subtract(Duration(minutes: manualLeadMinutes));
     final s = t.snoozedUntil;
-    return s != null && s.isAfter(lead) ? s : lead;
+    if (s != null && s.isAfter(lead)) return s;
+    // **越界退到截止**（§3.1）：`截止 − 提前量` 早于这件任务出生（进提前量窗口
+    // 里才建的单、或提前量刚被调大），就退到截止那一刻。不退这一下，这件要么
+    // 被当成"错过太久"整个丢掉、到截止也不响，要么落进补响宽限里当场炸一条。
+    //
+    // 判据必须是 `created` 而不是"现在"：用 now 会让同一个时刻随"什么时候重算"
+    // 一路漂（17:30 响完，18:00 的一次重算漂到 18:00），`point_fired` 对不上就
+    // 再响一次——这比不响更难查。
+    return lead.isAfter(t.created) ? lead : d;
   }
 
   /// 有没有"snooze 已到期、但状态还挂着 snoozed"的任务（A4 的定时触点）。
