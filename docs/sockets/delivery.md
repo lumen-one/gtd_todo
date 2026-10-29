@@ -6,7 +6,7 @@
 ## 接口
 
 ```dart
-enum ReminderChannel { normal, alarm }   // alarm = 闹钟渠道：全屏 + 持续响铃
+enum ReminderChannel { ring, silent, alarm }   // ring = 有声+震动；silent = 只横幅；alarm = 全屏 + 持续响铃
 enum PermissionKind {
   notifications, exactAlarm, batteryExemption,
   overlayWindow,        // 悬浮侧边栏（SYSTEM_ALERT_WINDOW）
@@ -28,7 +28,7 @@ class ReminderDraft {
 abstract class NotificationPort {
   Future<void> show(ReminderEvent event, {
     List<NotificationAction> actions = const [],
-    ReminderChannel channel = ReminderChannel.normal,
+    ReminderChannel channel = ReminderChannel.ring,
     bool fullScreen = false,        // full-screen intent（闹钟模式）
     ReminderDraft? draft,           // 系统通知实现用它渲染文案
   });
@@ -65,7 +65,8 @@ abstract class PermissionPort {
 
 安卓适配器（`lib/platform/android_adapters.dart` + `android/…/gtd/` 原生侧）：
 `AndroidAlarmPort` / `AndroidNotificationPort`（系统精确闹钟 AlarmManager + 通知渠道
-`gtd_normal`/`gtd_alarm`/`gtd_overlay` + 通知按钮 + full-screen intent）、
+`gtd_ring`/`gtd_silent`/`gtd_alarm`/`gtd_overlay` + 通知按钮 + full-screen intent；前两个都是
+IMPORTANCE_HIGH——横幅必现，区别只在有没有声音与震动）、
 `AndroidPermissionPort`（permission_handler + 原生全屏 intent/悬浮窗查询）、
 `AndroidFolderPickerPort`（所有文件访问 + 系统目录选择器；挑文件走自建 SAF
 `pickMarkdownFile`，把 documentId 换成真实路径，**不经 file_picker**——它挑文件只回缓存

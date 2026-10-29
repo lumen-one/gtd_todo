@@ -18,19 +18,17 @@
 订阅 `alarm.fired` → `TaskService.pollReminder()` →（**系统还没投递过时**）
 `NotificationPort.show(...)`（带 actions：完成 / 推迟1小时）→ 再排下一站（链路自续）。
 
-**门槛在算法/服务那一层，协调者不必知道模式。** 标准模式下
-`ScheduleResult.nextReminderAt` 为 null（除非有任务手动开了提醒），于是 `_reschedule()`
-自然算不出软提醒那一站；时点提醒同理——`TaskService.nextPointReminder()` 按同一门槛过滤
-（标准模式下只返回手动开了提醒的 fixed 与设了响的周期实例）。
-"默认不打扰"因此不需要在通知实现里各写一遍 if，也不会出现"调度算出下一站、通知层再吞掉"
-这种两处口径。
+**没有门槛，协调者也不必知道调度模式。** 下一站时刻全由 `ScheduleResult.nextReminderAt`
+与 `TaskService.nextPointReminder()` 给出，`_reschedule()` 直接比早晚。
+发不发与响不响是两件事：发不发由"有没有时间"决定，响不响由任务的 metadata `remind`
+决定——协调者拿它挑 `ring` / `silent` 渠道，不做别的判断。
 
 **两个提醒源**：
 
 | 源               | 谁                            | 送达时刻                                          | 渠道                                  |
 | ---------------- | ----------------------------- | ------------------------------------------------- | ------------------------------------- |
-| **Slack 软提醒** | 截止型任务（flex + 截止）       | 经 NotificationWindowRule（段外顺延到下一段开头） | 永远普通通知                          |
-| **时点性提醒**   | 开始型到点 + 设了响的周期实例 | 原样响（不受静默段限制）                 | 闹钟模式开 → alarm 渠道 + full-screen |
+| **Slack 软提醒** | 截止型任务（flex + 截止）       | 经 NotificationWindowRule（段外顺延到下一段开头） | 通知栏 + 横幅（按『响铃』分有声/静音） |
+| **时点性提醒**   | 开始型到点 + 设了响的周期实例 + 无排序档的两站 | 原样响（不受静默段限制） | 闹钟模式开且是开始型 → alarm 渠道 + full-screen（覆盖通知栏那条）|
 
 - 单闹钟取两者中更早的一个（`ScheduleResult.nextReminderAt` vs
   `TaskService.nextPointReminder()`）。**比的是"送达时刻"**：软提醒先按
@@ -39,7 +37,7 @@
 - **`pollReminder` 不可重入**：20 秒 tick 与闹钟回调会同时打进来，而软提醒没有
   `point_fired` 那样的幂等标记——上一次还在跑时这一次直接返回 null
   （少发一条，好过同一件事弹两次）；
-- **只到点响一次**：响过写 metadata `point_fired`（持久），改期/推迟会清掉它；
+- **每一站只响一次**：响过写 metadata `point_fired`（持久，值 = 已响的那一站），改期会清掉它；无排序档的两站靠先后推进区分；
   错过超过 30 分钟（`pointReminderGrace`）不再补响（已知局限见 [architecture.md](../architecture.md) §11）；
 - 安卓的"应用被杀"路径：挂闹钟时留下 `ReminderDraft`，到点由原生接收器
   `ReminderReceiver` 自己弹通知，`posted` 的返回值随 `alarmFired` 作为 `delivered` 回传。

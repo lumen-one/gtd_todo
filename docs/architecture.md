@@ -7,7 +7,7 @@
 > 这个 app 的架构主体就是那套调度算法——它没有别的家。
 >
 > 分工：**客户端层的需求见 [ui-interaction.md](ui-interaction.md)**——本文件为它提供
-> 结构与插座，对接点 = §3.5 命令清单 + §4.3 送达策略 + §4.1 Scheduler 的 `reminderMode`
+> 结构与插座，对接点 = §3.5 命令清单 + §4.3 送达策略 + §4.1 Scheduler 的 `anchors`
 > + `buildTodayView` 的 `scheduleMode`（业务层排序口径）；结构冲突以本文件为准，
 > 产品行为以 UI 文档为准。**未来方向（还没做、等条件的）见 [roadmap.md](roadmap.md)。**
 >
@@ -19,24 +19,23 @@
 >   **长期任务例外**：工作强度 = '长期'（三无任务的创建缺省）时，上面那些字段
 >   全部缺行——这份文档只剩一个任务 id。
 >
-> **提醒模式（见 §3.1）**：默认**标准模式**——算法照常排出先后
-> （时间裕度优先：`risk = f(slack)` **非线性**，`priority = risk × importance`），
-> 但**不产出提醒**；个别任务可手动开提醒（metadata `remind`）。**完整模式** = 原方案，
-> 算法判定该响的都响。模式是"**门槛**"不是"送达策略"：它决定任务**出不出声**
-> （`TaskMetric.reminds` 与结果级的 `nextReminderAt`），与"什么时候允许打扰"
-> （§4.3 的通知时间段）各管一段，两者串联而不是互相覆盖。
+> **提醒（见 §3.1）**：**有时间的任务一律提醒**，三档都走同一条链路——没有"这一档不出声"
+> 这种东西。**出声与否是任务自己的属性**：metadata `remind`（界面上的『响铃』开关）只决定
+> 这条提醒**响不响**，不决定发不发；送达形态固定是**通知栏 + 横幅**（高优先级渠道）。
+> 唯一的例外是设置页的**闹钟模式**：它把开始型的到点提醒升级成全屏闹钟，覆盖掉那一条的
+> 通知栏投递。"什么时候允许打扰"（通知时间段，§4.3）仍各管一段。
 >
 > **调度模式三档（见 §3.1）**：**无排序 → 标准 → 完整**，一条**信息深度**的谱系——
 > 每上一档多问一样属性，一次只能选一个：
 >
 > - **无排序（新装默认）**：只问标题与日期。不跑调度算法，今日截止型组只收"今天到期"的、
->   顺序靠 `manual_order`；提醒是截止前一次的**时点提醒**（`manual_lead_minutes`），与裕度
->   无关；三无散件铺在今日页最底（⑥ 散件段），任务池只留单件搬回去的那些
+>   顺序靠 `manual_order`；提醒是**两站时点提醒**（`T − manual_lead_minutes` 与 `T`，截止型
+>   与开始型同一套），与裕度无关；三无散件铺在今日页最底（⑥ 散件段），任务池只留单件搬回去的那些
 >   （`loose_home`，[今日清单页](panels/today.md)）；
-> - **标准**：问工时。算法照常排先后，但不产出提醒（个别任务可手动开 `remind`）；
-> - **完整**：再问重要度，并把门槛也放开——算法判定该响的都响。
+> - **标准**：问工时。算法照常排先后，提醒按裕度节奏响；
+> - **完整**：再问重要度，重要度作为乘数把事整体前移。
 >
-> 门槛仍下沉到内核（`ReminderMode`），排序仍是**业务层的查询口径**（`buildTodayView`）。
+> 排序仍是**业务层的查询口径**（`buildTodayView`）。
 > 无排序档**不经过** `Scheduler`：没有裕度、风险、锚点与间隔，也不判不可行——它的提醒
 > 走时点提醒那条链，与时点闹钟同一套幂等（`point_fired`）。
 
@@ -137,7 +136,7 @@
 
 | 类型 | 职责 |
 | --- | --- |
-| `Task` | 任务事实：id、title、**created（= 人类文档的「创建」，由人类文档持有）**、**deadline（可空：fixed=时点 / flex=截止 / null=散件）**、**estimatedWork（可表达'长期'：三无缺省，标记而非分钟数；长期任务同时没有 remainingWork 与 importance）**、remainingWork、importance、status、snoozedUntil、description、**tags**、**completedAt**、**remindEnabled（metadata `remind`，标准模式下的逐任务提醒开关）**、metadata；**不可变 + copyWith（由编译器强制写路径唯一）**；类型 TaskType 走 metadata 缓冲带 |
+| `Task` | 任务事实：id、title、**created（= 人类文档的「创建」，由人类文档持有）**、**deadline（可空：fixed=时点 / flex=截止 / null=散件）**、**estimatedWork（可表达'长期'：三无缺省，标记而非分钟数；长期任务同时没有 remainingWork 与 importance）**、remainingWork、importance、status、snoozedUntil、description、**tags**、**completedAt**、**ringEnabled（metadata `remind`，这条提醒响不响铃）**、metadata；**不可变 + copyWith（由编译器强制写路径唯一）**；类型 TaskType 走 metadata 缓冲带 |
 | `TaskType` | flex（截止型）/ fixed（开始型）/ **routine（周期实例）**——三者的调度与完成语义不同 |
 | `Routine` | 周期规则：频率（每天/每周 X）、时点、响不响、启用开关；**不是任务**（住在 `routines.md`），每天生成一个当天实例（TaskType.routine） |
 | `Mainline` | 主线：当前在推进的一件大事（同时只有一条在跑）。行为链（`MainlineStep`）是它自己的步骤、**不是任务**；记录（`MainlineLog`）是一段连续日期 + 文字；月记（`MainlineMonthNote`）是一个月一条文字。住在 `tasks/主线.md`（[主线文件](formats/mainline.md)） |
@@ -149,10 +148,9 @@
 | `TaskStatus` | pending / active / snoozed / completed / **overdue（派生，不写入存储）**；只增不改 |
 | `WorkTimeRule` / `WorkWindow` | 工时日历：每周工作窗、节假日；`workMinutesBetween`、`addWorkMinutes`、`nextWindowStart`（「到下个工作窗」档位，§3.5）。**由设置驱动**（`work_days` / `work_windows`，设置页「工作时间」），装配时注入、改完经 `updateWorkRule` 换掉；`holidays` 字段留位未接线 |
 | `Clock` | 当前时间 `DateTime now()`，构造注入（形态为 `DateTime Function()`） |
-| `TaskMetric` | 单任务派生指标：available、slack、**risk（裕度的非线性函数）**、**priority（= risk × importance，排序键）**、urgency、displayStatus、interval、nextReminderAt（**提醒锚点，跨重锚沿用**，§3.1）、**reminds（当前模式下会不会出声）**；计算结果，不持久化 |
-| `ScheduleResult` | 一次调度的输出：items（**已排序**：永远按调度优先级排，不知道有"无排序"这一回事——那一档根本不调用它）、nextTaskId、nextReminderAt（**下一站"会响"的提醒**，已过模式门槛）、infeasible/overdue 名单；所有算法的统一方言 |
-| `ReminderMode` | 提醒**门槛**（内核方言）：**standard**（标准：只排列不提醒，逐任务可手动开）/ **full**（完整：算法判定该响的都响）。进 `Scheduler.schedule` 的入参 |
-| `ScheduleMode` | **调度模式**（用户可见的三档，domain）：**full** / **standard** / **manual**（新装默认），逐级弱化算法替人做主的程度；由它派生**内核门槛**（`ScheduleMode.reminderMode`，给 `Scheduler.schedule`）与**业务层排序口径**（`isManual`：今日截止型组是否改用手动序）。**定义在 domain（`domain/schedule.dart`），但只被 application 与 UI 消费，`Scheduler` 不认得它** |
+| `TaskMetric` | 单任务派生指标：available、slack、**risk（裕度的非线性函数）**、**priority（= risk × importance，排序键）**、urgency、displayStatus、interval、nextReminderAt（**提醒锚点，跨重锚沿用**，§3.1）；计算结果，不持久化 |
+| `ScheduleResult` | 一次调度的输出：items（**已排序**：永远按调度优先级排，不知道有"无排序"这一回事——那一档根本不调用它）、nextTaskId、nextReminderAt（**下一站提醒**）、infeasible/overdue 名单；所有算法的统一方言 |
+| `ScheduleMode` | **调度模式**（用户可见的三档，domain）：**full** / **standard** / **manual**（新装默认），逐级弱化算法替人做主的程度；由它派生**业务层排序口径**（`isManual`：今日截止型组是否改用手动序）。**定义在 domain（`domain/schedule.dart`），但只被 application 与 UI 消费，`Scheduler` 不认得它** |
 | `ReminderEvent` | 到点提醒事件：firedAt + **taskId + kind（soft 软提醒 / point 时点提醒）** + 当时的调度快照 |
 | `PointReminder` | 时点性提醒候选（开始型到点 + 设了响的周期实例）：到点时刻 + 目标任务；到点后 30 分钟内仍可补响（`pointReminderGrace`） |
 | `DomainEvent` | 领域事件：type、taskId、at、**origin(user/ai/migration/system)** |
@@ -217,8 +215,9 @@ nextReminderAt = min(沿用旧锚点（仍有效时）否则 addWorkMinutes(now,
 - **成员比另两档少是刻意的**：标准 / 完整按"锚点落在今天"准入，会在裕度变薄那天把远期
   任务捞进今天；无排序只认"今天到期"，那些件留在任务池里（[今日清单页](panels/today.md)）；
 - **逾期**：这一档仍置顶，判定就是 `deadline < now`，不需要算法；
-- **提醒**：截止前 `manual_lead_minutes`（默认 30）那一刻响一次，按墙钟、**不受通知时间段
-  约束**、越界退到截止时刻，走 `point_fired` 幂等——形态与时点提醒相同，不是调度锚点；
+- **提醒**：**两站**——`T − manual_lead_minutes`（默认 30）与 `T` 各响一次，`T` 就是任务
+  自己的时刻（截止型取截止、开始型取开始），按墙钟、**不受通知时间段约束**，提前那一站
+  早于任务创建就整站不排，走 `point_fired` 幂等——形态与时点提醒相同，不是调度锚点；
 - **散件**：三无散件从任务池搬来铺在页底 ⑥（`buildPoolView` 这一档只返回
   `loose_home: pool` 的那些，`buildTodayView` 反过来只收没标 `pool` 的：同一件在无排序档
   只有一个家）。**这一档不跑定期挑**，⑤ 随之一并不出现；
@@ -226,18 +225,15 @@ nextReminderAt = min(沿用旧锚点（仍有效时）否则 addWorkMinutes(now,
   周期条目按发生日期混排照旧；搬走的只有散件段；
 - **编辑表单不裁**：它永远是全字段，也是把一件从"缺省 30 分钟"升成有估值的唯一入口。
 
-**提醒门槛（标准 / 完整两档）**：`reminderAllowed(task, mode)` 不成立时这一件**不出声**
-——`TaskMetric.reminds = false`、`reminderAt = null`，于是 `ScheduleResult.nextReminderAt`
-（下一站**会响**的提醒）取不到它，**标准模式下通常为 null**（= 没有下一站）：
-单闹钟、通知链路、前台轮询全都自然安静，谁都不必各自判断模式。
-而**锚点与间隔照算**：`TaskMetric.nextReminderAt` / `intervalMinutes` 不受门槛影响——
-"今天该看哪几件"（今日清单准入）是调度问题，不是打扰问题。
-**无排序档不在这张表里**：它不产出 `TaskMetric`，每件有截止的都响一次——门槛问的是
-"要不要出声"，那一档没有"不要"这个选项。
+**没有提醒门槛**：三档都产出提醒，`ScheduleResult.nextReminderAt` 取的全是"下一站"，
+与"这件要不要响铃"无关——响不响是任务自己的 `remind`，到送达那一刻才用（挑 `ring` 还是
+`silent` 渠道，§4.3）。"今天该看哪几件"（今日清单准入）与"会不会有声音"因此彻底分成两件
+事：前者看锚点，后者看渠道。
+**无排序档不产出 `TaskMetric`**：它的两站提醒直接由 `TaskService.nextPointReminder()` 给出。
 
 **旧算法 `slack.v1` 保留在注册表里作对照**；与默认算法的差异只有**排序键**一处：
 按 `urgency` 降序（importance 降序裁决）。`slackRisk` / `reminderInterval` /
-锚点沿用 / 提醒门槛 / 四档排序全部共用同一份实现。
+锚点沿用 / 四档排序全部共用同一份实现。
 
 ### 3.2 核心规则（三类分开：不变量 / 派生规则 / 架构规则）
 
@@ -267,11 +263,11 @@ nextReminderAt = min(沿用旧锚点（仍有效时）否则 addWorkMinutes(now,
 - B3. `risk = f(slack)`（非线性，§3.1 公式）与 `priority = risk × importance` 都是
   **派生值**：算出来的排序键，**不写入任何文档**。内核属性文档里的
   `priority` 键始终指**人定的优先级**（= `Task.importance`），与调度优先级同名不同物。
-- B4. **提醒门槛**：`reminderAllowed(task, mode) = mode == full || task.reminderRequested`
-  （= metadata `remind`，或周期实例的规则设了响）。不满足时这一件 `reminds = false`、
-  `reminderAt` 为 null（**锚点与间隔照算**，只是 `ScheduleResult.nextReminderAt` 取不到它），
-  也不进 `nextPointReminder()`——"不出声"在调度结果里就是**事实**（null），
-  下游不需要各自判断模式。
+- B4. **提醒一律发出，响不响另说**：有时间的任务都进提醒链路——截止型走软提醒，开始型
+  走到点；无排序档两者都走两站时点提醒。metadata `remind` = 『响铃』，读在送达那一刻
+  （`ReminderChannel` 的 `ring` / `silent`），**不影响**锚点、间隔、`nextReminderAt`，也不
+  影响这一件进不进 `nextPointReminder()`。缺键 = 静音：旧版本只在人主动开提醒时才写
+  `true`，那个意图就照静音延续。
 - B5. **手动序是用户意图**：`manual_order`（metadata，非负整数序号）
   = 人拖出来的顺序，**持久化在任务上**；与 `pinned`（插队）、`pool_order`（池子整理）
   同属"人的意图"一类，和 B3 的调度优先级正好相反——后者不落盘、换算法即变。手动序
@@ -342,7 +338,7 @@ TaskService 每个命令完成后广播 `DomainEvent`（含 origin）。通知�
 | `completeTask` / `snoozeTask` / `snoozeUntil` / `snoozeToNextWindow` / `logWork` | 完成 / 推迟（两档）/ 绝对档位推迟（明早 9 点、自选）/ 记工时。**完成命令顺手清掉挂起标记 `in_progress`**（挂起保持到完成或主动取消）                                                                             |
 | `updateTask`                                                                     | 更新（含类型转换 fixed↔flex、清截止；fixed 必须有截止的合并后校验）。**清截止不自动改写工作强度**：'长期' ↔ 数字工时都在编辑里显式设，不悄悄改语义（§3.4 防线三）                                                          |
 | `pinToTop(taskId)`                                                               | 插队 = 持久意图记在任务（metadata `pinned`），保持到完成、栈式压顶；仅对截止型组生效，**且无排序档下不生效**（那一档顺序整体由 `manual_order` 定，见 B5）                                                                            |
-| `setTaskReminder(taskId, enabled)`                                               | **逐任务提醒开关**：写 metadata `remind`；标准模式下这是让单个任务出声的**唯一**手段，完整模式下无意义（本来就全响）                                                                                                        |
+| `setTaskReminder(taskId, enabled)`                                               | **逐任务响铃开关**（表单上的『响铃』）：写 metadata `remind`。提醒照发，它只决定这条提醒走 `ring` 还是 `silent` 渠道                                                                                                    |
 | `pickForToday` / `returnToPool`                                                  | 挑散件到今日尾部（`picked_for_today` 标记，当日手动挑优先、尾部最多一件）/ 放回池子                                                                                                                                                      |
 | `setLooseHome(taskId, home)`                                                     | 散件的家（metadata `loose_home`）：`pool` = 住池子散件段、`today` = 住今日页 ⑥（删键）。**只在无排序档参与分区**，切档不迁移；互逆的两个菜单动作共用这一条 |
 | `setPoolOrder(taskId, order)`                                                    | 池子显示序（`pool_order`，仅整理无调度含义，重启保留）；**单条改序**——一次手势要改整段时走下一条                                                                                                                                         |
@@ -424,7 +420,6 @@ abstract class Scheduler {
     required List<Task> tasks,
     required DateTime now,
     required WorkTimeRule workRule,
-    ReminderMode reminderMode = ReminderMode.standard,   // 提醒门槛
     Map<String, DateTime> anchors = const {},            // 锚点表（§3.1 的"跨重锚沿用"）
     // 没有 sortMode 是**故意的**：内核那份排序还服务于 nextTask /
     // 提醒锚点等计算，排序是业务层的查询口径，下沉到这里会让它出现在所有算法的实现里。
@@ -733,10 +728,10 @@ UI 仅经 AppController 访问，守卫规则 2 拦截回归。
 | **系统手势排除区只给了把手**            | 面板是全屏 overlay 窗口，**没有**声明 `setSystemGestureExclusionRects`：从边缘起手的横向手势仍可能被系统判成返回（结果 = 收起面板，语义恰好一致，见 ui-interaction.md）。不给面板加排除区的理由：每边排除区有系统竖向上限（约 200dp），整条边保护不住；加满会丢掉"边缘 = 返回"这个自然退出口。把手只有一小块、在配额内，独占它就够了                                                                                                                                                       | 用户抱怨"贴着边缘滚清单误触返回"（→ 改为整条边声明，接受系统上限）；或某个 ROM 不认把手那份排除区导致横拖打开失效（→ 退化到点按兜底）             |
 | 周期实例按天物化成任务文件               | 每天一份：人类文档里一行（`- [ ] 晨跑 创建 …`，Obsidian 可见）+ 内核属性文档 `.gtd/<规则id>-<yyyy-MM-dd>.md`（完成/跳过都有地方落）；规则多时目录文件数会增长，需靠回收站/手工清理历史                                                                                                                                                                                                                                                                                                             | 目录膨胀到影响浏览时（改为归档子目录或按需生成）                                                                                                                |
 | 主题只换强调色与明暗                     | 明暗三选一可用（跟随系统/浅色/深黑，默认跟随系统；深色底为暖深褐黑，逾期橙红暗色下提亮）；仍**不是完整主题包**——字体、密度、圆角体系不随主题变                                                                                                                                                                                                                                                                                                                                                                                                                                   | 需要完整主题包（换密度/字号/圆角等系统性视觉）时                                                                                                                    |
-| **老任务不会自动开提醒** | 新建任务默认开着『提醒我』，但**旧版本带过来的任务身上没有这个标记**：标准档下它们仍然不出声，只有清单顺序在推着你，错过截止不会有声音。切完整档、或逐条补开提醒即可（`remind` 是逐任务的意图，迁移不去改人的数据）。**无排序档不受影响**——那一档每件都响一次 | "忘了"成为主诉时（考虑按截止逼近度自动升级为提醒，或首次创建时问一句要不要响） |
+| **老任务默认静音** | 新建任务默认打开『响铃』（写 metadata `remind`），但**旧版本带过来的任务身上没有这个标记**：升级后它们照样提醒，只是走静音渠道——只有横幅与通知栏，没有声音。想让它响就逐条打开『响铃』（迁移不去改人的数据）| "提醒来了没听见"成为主诉时（考虑首次创建时问一句要不要响，或按截止逼近度自动升级为响铃）|
 | **风险的尺度 τ 是全局的**                | 同一个 τ（默认 1 个工作日）套在所有任务上："三天后交"和"三小时后交"用同一个尺度；个人对"紧"的感受只能靠调 τ/γ 或改 importance 表达                                                                                                                                                                                                                                                                                                                                                                 | 出现"同一批任务需要不同压力尺度"的真实需求时（按标签/分类配尺度）                                                                                               |
 | **旧算法只在注册表里留着**               | `slack.v1` 保留是为了对照；设置页**没有**"换算法"入口（要改得动组装点）。这符合 §8"换/加算法 = 注册一个新 Scheduler"，但用户当下无法自选                                                                                                                                                                                                                                                                                                                                                 | 需要"用户自选算法"时（设置里补一个选择器；注册表与 `params` 都已就绪）                                                                                          |
-| **标准/完整两档的差别只在两处** | 顺序、分组、编号、今日清单准入在这两档下**完全一样**（`TaskMetric.nextReminderAt` 是锚点，不受门槛影响），所以标准模式不会"少看到事"，只会"少听到响"；另加一处：完整档问重要度、标准档不问（乘数恒 3）。第三档"无排序"连算法都不跑，见后两条 | 若将来要求标准模式也改动清单构成（例如"没开提醒的都不进今日"），先改 [今日清单页](panels/today.md) 与 `buildTodayView` |
+| **标准/完整两档的差别只在问项** | 顺序、分组、编号、今日清单准入、提醒节奏在这两档下**完全一样**；差别只有完整档问重要度并把它当乘数、标准档不问（乘数恒 3）。第三档"无排序"连算法都不跑，见后两条 | 若将来要求标准模式也改动清单构成（例如"没开响铃的都不进今日"），先改 [今日清单页](panels/today.md) 与 `buildTodayView` |
 | **手动序只覆盖被拖过的那一段**          | 拖动一次就对当前今天的 flex 组整段重编号；没排过序的任务没有 `manual_order` → 按 id 升序沉在末尾，新任务同样从末尾开始                                                                                                                                                                                                                                                                                                                                                                             | 出现"新任务要能插到中间"的需求时（创建后给它一个"插到某件之前"的入口，本质仍是写一个序号）                                                                      |
 | **无排序档不跑算法** | 今日截止型组只收"今天到期"的（逾期仍在 ① 组），比另两档少一类成员——"裕度薄、今天该动手"的远期任务留在池子里。这一档不展示裕度 / 风险 / 不可行预警，也不做工时对账（完成靠勾选）：它没有可信的工时，缺省 30 分钟只是为了切档后能参与排序。逾期组仍置顶、开始型组仍按时刻升序（时刻就是序）、例行组仍按当天发生时刻；页底 ⑥ 只认 `pool_order`（拖动即整理序），`manual_order` 对它无效；任务池只剩计划段按整理序、周期条目按发生日期混排——散件按 `loose_home` 分家，两页不重复显示（同一件事只有一个显示位置）。这一档不跑定期挑，⑤ 不出现 | 要求开始型组或周期条目也能随手拖时（先改 UI 文档再改 §3.1）；散件在无排序档需要独立于整理序的另一套顺序时（先想清楚两套序号谁先谁后） |
 | **无排序档的工时是缺省值** | 表单不问工时，落盘一律 30 分钟。切到标准 / 完整档后，实际要几小时的活会按 30 分钟算裕度：可能排在后面，也可能漏掉"不可行"预警。切档时值得提示一次 | 切档流程里加一步"给这批任务补工时"，或改为缺省值只对切档后新建的任务生效 |
