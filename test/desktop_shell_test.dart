@@ -148,6 +148,37 @@ void main() {
     expect(find.text('该做这件事了'), findsOneWidget);
     expect(find.text('写周报'), findsWidgets, reason: '弹窗里带着任务名');
   });
+
+  // 编排条目的 id 不是任务，`taskById` 查不到——以前这里直接 return，桌面上那条
+  // 提醒凭空消失。现在照草案（title/body）弹一句，没有可以按的动作。
+  testWidgets('编排条目的提醒也弹得出来：一句话，没有完成/推迟', (tester) async {
+    final surface = StreamController<ShownNotification>.broadcast();
+    addTearDown(surface.close);
+    await pumpShell(tester, surface: surface);
+
+    const planId = 'plan|2026-10-07|870';
+    surface.add(ShownNotification(
+      event: ReminderEvent(
+        firedAt: DateTime(2026, 10, 7, 14, 30),
+        taskId: planId,
+        kind: ReminderKind.point,
+      ),
+      channel: ReminderChannel.silent,
+      draft: const ReminderDraft(
+        taskId: planId,
+        title: '项目评审',
+        body: '编排 10-07 14:30',
+        channel: ReminderChannel.silent,
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('到点了'), findsOneWidget);
+    expect(find.text('项目评审'), findsOneWidget);
+    expect(find.text('编排 10-07 14:30'), findsOneWidget);
+    expect(find.text('完成'), findsNothing, reason: '能推迟的是任务，编排只排不做');
+    expect(find.text('推迟 1 小时'), findsNothing);
+  });
 }
 
 /// 内存版 SettingsPort：测试里不碰磁盘（bootstrap 只读一次）。
