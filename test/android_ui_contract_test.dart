@@ -326,15 +326,22 @@ void main() {
       expect(back.notesPath, s.notesPath);
     });
 
-    test('调度模式：新装默认无排序，完整模式往返不丢（v1.12 由 reminderMode 改名）', () {
+    test('调度模式：新装默认无排序，两档与开关往返不丢（v1.12 由 reminderMode 改名）', () {
       expect(AppSettings.defaults.scheduleMode, ScheduleMode.manual,
           reason: '新装默认无排序：算法不排先后、也不出声');
-      const full = AppSettings(scheduleMode: ScheduleMode.full);
-      final back = decodeSettings(encodeSettings(full));
-      expect(back.scheduleMode, ScheduleMode.full);
-      // 老设置文件没有这个键 → 落到标准模式（不因为缺键而变成"全提醒"）
+      const standard = AppSettings(
+          scheduleMode: ScheduleMode.standard, askImportance: true);
+      final back = decodeSettings(encodeSettings(standard));
+      expect(back.scheduleMode, ScheduleMode.standard);
+      expect(back.askImportance, isTrue);
+      // 老设置文件没有这个键 → 落到标准模式（不因为缺键而变成手动序）
       final legacy = AppSettings.fromJson(const {'alarm_mode': true});
       expect(legacy.scheduleMode, ScheduleMode.standard);
+      expect(legacy.askImportance, isFalse);
+      // 更老的文件里写着 full（当时那一档）：落标准 + 打开『问重要度』
+      final old = AppSettings.fromJson(const {'schedule_mode': 'full'});
+      expect(old.scheduleMode, ScheduleMode.standard);
+      expect(old.askImportance, isTrue);
     });
 
     test('把手上锁：默认不锁，往返不丢，老文件缺键 = 不锁', () {

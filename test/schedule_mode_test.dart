@@ -8,8 +8,9 @@ import 'package:gtd_todo/domain/time_context.dart';
 import 'package:gtd_todo/repository/memory_task_repository.dart';
 import 'package:gtd_todo/scheduler/slack_priority_scheduler.dart';
 
-/// 调度模式三档（决定卡 mode-as-information-depth）：一条**信息深度**的谱系——
-/// 每上一档多问一样属性，多换一种能力。
+/// 调度模式两档（决定卡 mode-as-information-depth）：一条**信息深度**的谱系——
+/// 上一档多问工时。重要度不是档位，是标准档里的一个开关（`ask_importance`）：
+/// 关掉时排序乘数取 1、表单里也不出现。
 ///
 /// 无排序档不跑调度：③ 组只收"今天到期"的、顺序走手动序，提醒是截止前一次的
 /// 时点提醒；另把散件段铺到今日页底（⑥）。内核完全不知道排序模式：
@@ -42,16 +43,17 @@ void main() {
 
   DateTime wed(int h, int m) => DateTime(2026, 10, 7, h, m);
 
-  group('三档是信息深度的阶梯', () {
-    test('门槛已取消：三档的差别只剩问什么、谁排序', () {
+  group('两档是信息深度的阶梯', () {
+    test('差别只剩问什么、谁排序', () {
       expect(ScheduleMode.manual.isManual, isTrue);
       expect(ScheduleMode.standard.isManual, isFalse);
-      expect(ScheduleMode.full.isManual, isFalse);
     });
 
-    test('byName 认得三档，认不出的落到默认标准', () {
-      expect(ScheduleMode.byName('full'), ScheduleMode.full);
+    test('byName 只认两档；旧的 full 落到标准', () {
       expect(ScheduleMode.byName('manual'), ScheduleMode.manual);
+      expect(ScheduleMode.byName('standard'), ScheduleMode.standard);
+      expect(ScheduleMode.byName('full'), ScheduleMode.standard,
+          reason: '那一档的额外行为由 ask_importance 接着（见设置落盘那组）');
       expect(ScheduleMode.byName('nonsense'), ScheduleMode.standard);
       expect(ScheduleMode.byName(null), ScheduleMode.standard);
     });
@@ -202,17 +204,15 @@ void main() {
   });
 
   group('⑥ 散件段（v1.27）：无排序档把散件铺到今日页底', () {
-    test('标准/完整档：散件不进今日（仍归任务池散件段）', () {
-      for (final mode in [ScheduleMode.standard, ScheduleMode.full]) {
-        final view = buildTodayView(
-          tasks: [task(id: 'loose', deadline: null)],
-          schedule: null,
-          now: now,
-          scheduleMode: mode,
-        );
-        expect(view.loose, isEmpty, reason: '$mode 档一行不变');
-        expect(view.isEmpty, isTrue);
-      }
+    test('标准档：散件不进今日（仍归任务池散件段）', () {
+      final view = buildTodayView(
+        tasks: [task(id: 'loose', deadline: null)],
+        schedule: null,
+        now: now,
+        scheduleMode: ScheduleMode.standard,
+      );
+      expect(view.loose, isEmpty, reason: '标准档一行不变');
+      expect(view.isEmpty, isTrue);
     });
 
     test('无排序档：散件进 ⑥，按整理序（pool_order → 创建时间）', () {
@@ -372,7 +372,7 @@ void main() {
       await svc.createTask(title: 'a', deadline: wed(18, 0));
       final before = await repo.loadAll();
       await svc.updateScheduleMode(ScheduleMode.manual);
-      await svc.updateScheduleMode(ScheduleMode.full);
+      await svc.updateScheduleMode(ScheduleMode.standard);
       final after = await repo.loadAll();
       expect(after.map((t) => t.metadata).toList(),
           before.map((t) => t.metadata).toList());
@@ -381,6 +381,24 @@ void main() {
     test('TaskService 不传参 = 标准档（装配点随后按设置覆盖）', () {
       expect(svc.scheduleMode, ScheduleMode.standard);
       expect(svc.isManualSort, isFalse);
+    });
+
+    test('『问重要度』只改乘数：关掉取 1，打开乘 importance，任务数据不动', () async {
+      final a = await svc.createTask(
+          title: 'a', deadline: wed(18, 0), estimatedWorkMinutes: 120,
+          importance: 5);
+      final off = svc.lastSchedule!.metricOf(a.id)!.priority;
+
+      await svc.updateAskImportance(true);
+      expect(svc.askImportance, isTrue);
+      expect(svc.lastSchedule!.metricOf(a.id)!.priority,
+          closeTo(off * 5, 1e-9), reason: '乘数从 1 换成 importance');
+
+      await svc.updateAskImportance(false);
+      expect(svc.lastSchedule!.metricOf(a.id)!.priority,
+          closeTo(off, 1e-9), reason: '关回去不残留');
+      expect((await repo.getTask(a.id))!.importance, 5,
+          reason: '已经存下的值原样留着，开关不动任务数据');
     });
 
     test('新装默认档 = 无排序（设定文件都不存在时走 defaults）', () {
@@ -403,7 +421,7 @@ void main() {
           const AppSettings(manualLeadMinutes: 60).toJson());
       expect(back.manualLeadMinutes, 60);
     });
-    test('三档往返与缺省', () {
+    test('两档往返与缺省', () {
       for (final mode in ScheduleMode.values) {
         final back = AppSettings.fromJson(AppSettings(scheduleMode: mode).toJson());
         expect(back.scheduleMode, mode);
@@ -412,11 +430,22 @@ void main() {
       expect(AppSettings.fromJson({}).scheduleMode, ScheduleMode.standard);
       expect(AppSettings.fromJson({'schedule_mode': 'nonsense'}).scheduleMode,
           ScheduleMode.standard);
+      // 『问重要度』：缺省关，往返不丢
+      expect(AppSettings.defaults.askImportance, isFalse);
+      expect(
+          AppSettings.fromJson(
+                  const AppSettings(askImportance: true).toJson())
+              .askImportance,
+          isTrue);
     });
 
-    test('兼容旧字段 reminder_mode（standard / full 两个值原样认）', () {
-      expect(AppSettings.fromJson({'reminder_mode': 'full'}).scheduleMode,
-          ScheduleMode.full);
+    test('兼容旧值 full：落到标准，并把『问重要度』打开', () {
+      expect(AppSettings.fromJson({'schedule_mode': 'full'}).scheduleMode,
+          ScheduleMode.standard);
+      expect(AppSettings.fromJson({'schedule_mode': 'full'}).askImportance,
+          isTrue, reason: '那一档当初要的就是"问重要度"');
+      expect(AppSettings.fromJson({'reminder_mode': 'full'}).askImportance,
+          isTrue, reason: '更老的字段同一套');
       expect(AppSettings.fromJson({'reminder_mode': 'standard'}).scheduleMode,
           ScheduleMode.standard);
       expect(AppSettings.fromJson({'reminder_mode': 'nonsense'}).scheduleMode,
@@ -427,6 +456,12 @@ void main() {
               .scheduleMode,
           ScheduleMode.manual,
           reason: '新字段优先');
+      // 文件里显式写了这个开关就以文件为准——不替人把它打开
+      expect(
+          AppSettings.fromJson(
+                  {'schedule_mode': 'full', 'ask_importance': false})
+              .askImportance,
+          isFalse);
     });
   });
 }

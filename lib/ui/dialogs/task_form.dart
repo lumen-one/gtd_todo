@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../domain/schedule.dart';
 import '../../domain/task.dart';
 import '../theme.dart';
 import '../widgets/task_tile.dart' show fmtTime;
@@ -97,11 +96,12 @@ class TaskFormBody extends StatelessWidget {
   /// 备注框回车：新建 = 提交，编辑 = 保存。
   final VoidCallback? onSubmit;
 
-  /// **新建时按档位裁的三行**（§5.1 / §7.0）：无排序档全不显示（缺省值照常落盘），
-  /// 标准档只显示工时，完整档显示工时 + 重要度。
+  /// **新建时按档位与开关裁的行**（§5.1 / §7.0）：无排序档工时与重要度都不显示
+  /// （缺省值照常落盘），标准档显示工时，重要度看设置里的『问重要度』。
   ///
-  /// **编辑态三个都传 true**：编辑表单不裁——它也是把一件从缺省值升成有估值的
-  /// 唯一入口，藏起工时行等于让人先切档。
+  /// **编辑态 [showWorkStrength] 恒为 true**：编辑表单不按档位裁——它也是把一件从
+  /// 缺省值升成有估值的唯一入口，藏起工时行等于让人先切档。[showImportance] 两边
+  /// 同源（跟设置里的开关走）：关掉的是整个维度，不是一个控件的可见性。
   final bool showWorkStrength;
   final bool showImportance;
 

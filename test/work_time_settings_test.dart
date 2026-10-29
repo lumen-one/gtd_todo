@@ -132,7 +132,6 @@ void main() {
         repo: MemoryTaskRepository(),
         scheduler: const SlackPriorityScheduler(),
         clock: () => now,
-        scheduleMode: ScheduleMode.full,
       );
     });
 

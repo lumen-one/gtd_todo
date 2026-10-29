@@ -20,7 +20,6 @@ void main() {
       repo: MemoryTaskRepository(),
       scheduler: const SlackPriorityScheduler(),
       clock: () => now,
-      scheduleMode: ScheduleMode.full, // 断言"会响"，所以走完整档
     );
   });
 

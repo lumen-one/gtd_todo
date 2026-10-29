@@ -2,7 +2,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../../domain/schedule.dart';
 import '../../domain/task.dart';
 import '../app_controller.dart';
 import '../theme.dart';
@@ -213,8 +212,9 @@ class _CreateFlowSheetState extends State<_CreateFlowSheet> {
   }
 
   Widget _buildFormPage(ThemeData theme) {
-    // 问多少由档位决定（§5.1）：无排序档只问标题和日期，标准档多问工时，
-    // 完整档再问重要度。『响铃』不在裁剪之列——提醒一律会发，它只是声音开关。
+    // 问多少由档位与开关决定（§5.1）：无排序档只问标题和日期，标准档多问工时，
+    // 重要度看设置里的『问重要度』（关掉时整个维度不参与，表单里就没有这一行）。
+    // 『响铃』不在裁剪之列——提醒一律会发，它只是声音开关。
     final mode = widget.controller.scheduleMode;
     return Column(
       key: const ValueKey('form'),
@@ -232,7 +232,7 @@ class _CreateFlowSheetState extends State<_CreateFlowSheet> {
           hourFollowsType: true,
           onEditTime: _pickTime,
           showWorkStrength: !mode.isManual,
-          showImportance: mode == ScheduleMode.full,
+          showImportance: widget.controller.askImportance,
           deadlineActions: [
             TextButton(
               onPressed: () => setState(() => _pickingWhen = true),

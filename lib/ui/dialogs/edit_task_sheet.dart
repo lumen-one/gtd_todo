@@ -128,6 +128,9 @@ class _EditTaskSheetState extends State<_EditTaskSheet> {
             noteCtrl: _noteCtrl,
             workCtrl: _workCtrl,
             onSubmit: _save,
+            // 工时永远显示（不按档位裁）；重要度跟设置里的开关走——关掉时整个
+            // 维度不参与排序，摆一个改了不影响顺序的滑块就是骗人。
+            showImportance: widget.controller.askImportance,
             deadlineActions: [
               TextButton(
                 onPressed: _pickDeadline,

@@ -85,6 +85,7 @@ class SlackPriorityScheduler implements Scheduler {
     required DateTime now,
     required WorkTimeRule workRule,
     Map<String, DateTime> anchors = const {},
+    bool weightImportance = true,
   }) {
     final metrics = <TaskMetric>[];
     final infeasible = <String>[];
@@ -143,7 +144,9 @@ class SlackPriorityScheduler implements Scheduler {
       );
       // importance 对'长期'为 null，但长期任务已在上面跳过（D18）——走到这里的
       // 必有数字工时，?? 3 只是 A3 缺省值的兜底（不改变任何非长期任务的行为）。
-      final priority = risk * (task.importance ?? 3);
+      // 『问重要度』关掉时乘数取 1：不是"按 3 算"，是这个维度整个不参与——
+      // 老数据里留着的 5 也不该偷偷把人往前推。
+      final priority = risk * (weightImportance ? (task.importance ?? 3) : 1);
 
       DateTime? nextReminderAt;
       int? interval;

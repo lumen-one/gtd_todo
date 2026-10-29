@@ -55,10 +55,12 @@ Future<void> main() async {
     // v1.9 默认算法 = 时间裕度优先（priority = risk × importance）。
     scheduler: const SlackPriorityScheduler(),
     workRule: WorkTimeRule.standard,
-    // 仿真演示的是"动态提醒"这条链路，所以用完整模式（默认是标准模式 = 不提醒）。
-    scheduleMode: ScheduleMode.full,
+    // 仿真演示的是"动态提醒"这条链路，所以走标准档（排先后 + 按裕度响）。
+    // 重要度当乘数要另外打开——它现在是设置里的一个开关，不是一档。
+    scheduleMode: ScheduleMode.standard,
     clock: () => now,
   );
+  svc.askImportance = true;
   final events = <DomainEvent>[];
   svc.events.listen(events.add);
   print('工作日历：周一至五 09:00-12:00、13:30-18:00（周末与午休不算工时）\n');
@@ -104,8 +106,8 @@ Future<void> main() async {
         '${e.type.name.padRight(19)} $title');
   }
 
-  // 默认模式是**标准**（只排列不提醒）：同一批任务，一个"下一站"都没有，
-  // 但顺序、锚点（今日清单准入）照旧——差别只在"出不出声"（决议 38）。
-  await svc.updateScheduleMode(ScheduleMode.standard);
-  printSchedule(svc, '切回默认的标准模式（只排列不提醒）');
+  // 切到**无排序**：同一批任务不再经过调度（没有裕度、风险、锚点），清单顺序
+  // 交给人拖。与档位无关的是提醒本身——两档都发，响不响看每件任务的『响铃』。
+  await svc.updateScheduleMode(ScheduleMode.manual);
+  printSchedule(svc, '切到无排序档（不排列，顺序交给人）');
 }

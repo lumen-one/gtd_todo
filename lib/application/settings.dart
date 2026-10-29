@@ -97,19 +97,31 @@ class AppSettings {
   /// 空 = 不限制（原样送达）。
   final List<List<int>> notificationWindows;
 
-  /// **调度模式**（决议 43，v1.12）：**完整 / 标准 / 无排序**三档选一个，
-  /// 逐级弱化算法替人做主的程度（无排序 = 标准的再弱化版）。**新装默认无排序**。
+  /// **调度模式**（决议 43，v1.12）：**标准 / 无排序**两档选一个，
+  /// 逐级弱化算法替人做主的程度。**新装默认无排序**。
   ///
   /// "新装"只指任务目录里还没有 settings.json——那时设置端口直接返回
   /// [AppSettings.defaults]。文件在、只是缺这个键的走 [ScheduleMode.byName]
   /// 的兜底（标准）：升级不把别人已经排好的清单悄悄改成手动序。
   ///
-  /// 落 settings.json 的 `schedule_mode`；旧字段 `reminder_mode` 仍可读
-  /// （standard / full 两个值一个不落，见 [fromJson]）。
+  /// 落 settings.json 的 `schedule_mode`；旧字段 `reminder_mode` 仍可读，
+  /// 旧文件里的 `full` 落到标准（并见 [askImportance] 的兼容那一段）。
   ///
-  /// 三档都只改"清单怎么排、出不出声"，与 [notificationWindows]
+  /// 两档都只改"清单怎么排"，与 [notificationWindows]
   /// （何时允许打扰）是**串联**关系，不是互斥。
   final ScheduleMode scheduleMode;
+
+  /// **『问重要度』开关**（§7.0，默认关）：标准档里的一个额外问项。
+  ///
+  /// 打开时新建多问一项 1–5（`Task.importance`，缺省 3），并把它当排序乘数
+  /// （`priority = risk × importance`）；关掉时**整个维度不参与**——新建与编辑
+  /// 表单里都不出现这一行，调度乘数按 1 算。已存的值原样留在内核属性文档里，
+  /// 打开即恢复。
+  ///
+  /// 落 settings.json 的 `ask_importance`。**兼容**：旧文件里 `schedule_mode`
+  /// （或更旧的 `reminder_mode`）是 `full` 的，这个键缺省取 true——那是他当初选
+  /// 那一档要的东西，升级不该把表单悄悄改短。
+  final bool askImportance;
 
   /// **无排序档的提醒提前量**（分钟，§7.1）：这一档不跑裕度公式，每件有截止的
   /// 任务在 `deadline − manualLeadMinutes` 响一次（墙钟算、不吃通知时间段）。
@@ -208,6 +220,7 @@ class AppSettings {
   const AppSettings({
     this.notificationWindows = const [[9 * 60, 21 * 60]],
     this.scheduleMode = ScheduleMode.manual,
+    this.askImportance = false,
     this.manualLeadMinutes = defaultManualLeadMinutes,
     this.alarmMode = false,
     this.pickEnabled = false,
@@ -233,6 +246,7 @@ class AppSettings {
   AppSettings copyWith({
     List<List<int>>? notificationWindows,
     ScheduleMode? scheduleMode,
+    bool? askImportance,
     int? manualLeadMinutes,
     bool? alarmMode,
     bool? pickEnabled,
@@ -257,6 +271,7 @@ class AppSettings {
     return AppSettings(
       notificationWindows: notificationWindows ?? this.notificationWindows,
       scheduleMode: scheduleMode ?? this.scheduleMode,
+      askImportance: askImportance ?? this.askImportance,
       manualLeadMinutes: manualLeadMinutes ?? this.manualLeadMinutes,
       alarmMode: alarmMode ?? this.alarmMode,
       pickEnabled: pickEnabled ?? this.pickEnabled,
@@ -290,6 +305,7 @@ class AppSettings {
   Map<String, Object?> toJson() => {
         'notification_windows': notificationWindows,
         'schedule_mode': scheduleMode.name,
+        'ask_importance': askImportance,
         'manual_lead_minutes': manualLeadMinutes,
         'alarm_mode': alarmMode,
         'pick_enabled': pickEnabled,
@@ -315,14 +331,19 @@ class AppSettings {
         ?.map((w) => (w as List<Object?>).map((e) => (e as num).toInt()).toList())
         .where((w) => w.length == 2 && w[0] < w[1])
         .toList();
+    // 兼容 v1.12 及更早的 `reminder_mode`（standard / full 两个值），以及
+    // 之后用过一阵的 `schedule_mode: full`。那一档的行为 = 标准 + 问重要度，
+    // 所以这里既落到标准，又把『问重要度』缺省打开；文件里显式写了
+    // `ask_importance` 的以文件为准（用户自己关掉过就别替他打开）。
+    final rawMode = (json['schedule_mode'] ?? json['reminder_mode']) as String?;
+    final legacyFull = rawMode == 'full';
     return AppSettings(
       notificationWindows:
           windows == null || windows.isEmpty ? const [[9 * 60, 21 * 60]] : windows,
-      // 兼容 v1.11 及更早的 reminder_mode：只有 standard / full 两个值，
-      // 正好是三档里的前两档；没有 manual 这个旧值，不会撞车。
-      // 缺键（老文件）走 byName 的兜底 = 标准，不吃下面那个新装默认。
-      scheduleMode: ScheduleMode.byName((json['schedule_mode'] ??
-              json['reminder_mode']) as String?),
+      scheduleMode: ScheduleMode.byName(rawMode),
+      askImportance: json['ask_importance'] is bool
+          ? json['ask_importance'] == true
+          : legacyFull,
       manualLeadMinutes: clampManualLeadMinutes(json['manual_lead_minutes']),
       alarmMode: json['alarm_mode'] == true,
       pickEnabled: json['pick_enabled'] == true,

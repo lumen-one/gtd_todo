@@ -85,9 +85,6 @@ void main() {
       repo: repo,
       scheduler: const SlackScheduler(),
       workRule: WorkTimeRule.standard,
-      // 本文件测的是"响了之后的送达链路"，所以用**完整模式**；
-      // 标准模式（默认）的门槛另有 task_service_test / slack_priority_scheduler_test 覆盖。
-      scheduleMode: ScheduleMode.full,
       clock: () => now,
     );
     alarm = _FakeAlarm();

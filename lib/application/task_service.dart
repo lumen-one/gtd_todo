@@ -29,14 +29,22 @@ class TaskService {
   /// 装配点先用默认规则起来，设置加载完再换掉——它是异步的，等不了。
   WorkTimeRule workRule;
 
-  /// **调度模式**（v1.12，决议 43）：**完整 / 标准 / 无排序**三档，装配点按设置
+  /// **调度模式**（v1.12，决议 43）：**标准 / 无排序**两档，装配点按设置
   /// 传进来（新装默认无排序）。
   ///
   /// 它只决定**清单顺序与统计口径**（[ScheduleMode.isManual]）以及提醒的算法来源
-  /// （跑不跑调度）。**不再筛提醒**：有时间的任务一律提醒，响不响是任务自己的
+  /// （跑不跑调度）。**不筛提醒**：有时间的任务一律提醒，响不响是任务自己的
   /// metadata `remind`。设置页改动经装配点回调调 [updateScheduleMode]；模式只改
   /// 查询口径与调度入参，**不动任何任务数据**。
   ScheduleMode scheduleMode;
+
+  /// **『问重要度』开关**（设置里的标准档选项）：排序键要不要乘
+  /// `Task.importance`。装配点按设置传进来，缺省关（乘数取 1）。
+  ///
+  /// 它只影响**排序**（经 [Scheduler.schedule] 的 `weightImportance`）与表单问不问，
+  /// 不改任何任务数据——关掉时已存的 `importance` 原样躺在内核属性文档里，
+  /// 打开即恢复。无排序档不跑调度，这个值在那儿没有效果。
+  bool askImportance = false;
 
   /// 是否关掉排序（今日截止型组改用手动序）。
   bool get isManualSort => scheduleMode.isManual;
@@ -122,6 +130,7 @@ class TaskService {
       now: now(),
       workRule: workRule,
       anchors: _carriableAnchors(),
+      weightImportance: askImportance,
     );
     _rememberAnchors();
     _emit(DomainEventType.scheduleReanchored, lastSchedule?.nextTaskId ?? '',
@@ -180,7 +189,7 @@ class TaskService {
 
   /// 切换调度模式（设置页 → 装配点回调，D15 / D17）。
   ///
-  /// **不改任何任务数据**：门槛是计算结果（D1），顺序是查询结果，重算即生效；
+  /// **不改任何任务数据**：顺序是查询结果，重算即生效；
   /// 手动序是持久意图（B5），自动档下原样躺在 metadata 里，切回来还在。
   /// 模式没变就什么都不做（C2 的精神：只在真的有事发生时重锚）。
   Future<void> updateScheduleMode(ScheduleMode mode) async {
@@ -188,6 +197,17 @@ class TaskService {
     scheduleMode = mode;
     _emit(DomainEventType.scheduleModeChanged, '', EventOrigin.user);
     await recomputeSchedule();
+  }
+
+  /// 开关『问重要度』（设置页『提醒与排序』节）。
+  ///
+  /// 改的是**排序键**（乘数取 1 或取 `importance`），不是任务数据；也不动锚点表
+  /// （提醒时刻与重要度无关），所以一次重算就够。关掉时已存的值原样留着。
+  Future<void> updateAskImportance(bool enabled,
+      {EventOrigin origin = EventOrigin.user}) async {
+    if (enabled == askImportance) return;
+    askImportance = enabled;
+    await recomputeSchedule(origin: origin);
   }
 
   /// 换无排序档的提醒提前量（设置页『提醒与排序』节）。
@@ -590,7 +610,7 @@ class TaskService {
   /// 互逆的两个菜单动作共用这一条，只写/删 metadata `loose_home`。命令层不校验
   /// 任务类型——只有三无散件会出现在能呼出这个动作的菜单里（今日页 ⑥ 与无排序档的
   /// 池子散件段），再拦一次只是把"UI 漏了一处"变成异常。切档不迁移：标记留着，
-  /// 标准/完整档下不参与分区。
+  /// 标准档下不参与分区。
   Future<Task> setLooseHome(String id,
       {required bool pool, EventOrigin origin = EventOrigin.user}) async {
     final updated = _withMeta(_require(id), (m) {

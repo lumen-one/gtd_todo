@@ -58,7 +58,8 @@ Future<void> main() async {
 
   // 具体算法在这里选择（application 不 import 具体实现，§2）。
   // v1.9：**默认 = 时间裕度优先**（`priority = risk × importance`）；旧 `slack.v1`
-  // 一起注册，供对照与影子运行用。
+  // 一起注册，供对照与影子运行用。乘数里的 importance 由设置『问重要度』控制
+  // （关掉时 TaskService 传 weightImportance: false，乘数取 1）。
   final registry = SchedulerRegistry(
     schedulers: [const SlackPriorityScheduler(), const SlackScheduler()],
     defaultId: SlackPriorityScheduler.defaultId,

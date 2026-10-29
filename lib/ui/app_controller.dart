@@ -97,7 +97,7 @@ class AppController extends ChangeNotifier {
   /// 装配点注入的回调：闹钟模式变化时同步给 ReminderDispatcher（决议 18）。
   final void Function(bool alarmMode)? onAlarmModeChanged;
 
-  /// 装配点注入的回调：调度模式（完整/标准/无排序）变化时同步给 TaskService
+  /// 装配点注入的回调：调度模式（标准 / 无排序）变化时同步给 TaskService
   /// （v1.9 / D15 / 决议 43）。它改的是调度入参与查询口径——重锚之后
   /// "下一站会响的提醒"与清单顺序随之变，任务数据一行不动。
   final void Function(ScheduleMode scheduleMode)? onScheduleModeChanged;
@@ -552,6 +552,7 @@ class AppController extends ChangeNotifier {
     onWorkRuleChanged?.call(_settings.workRule);
     // 无排序档的提醒提前量：随设置一起落到 service，下一次重锚就按它算。
     service.manualLeadMinutes = _settings.manualLeadMinutes;
+    service.askImportance = _settings.askImportance;
     notifyListeners();
   }
 
@@ -568,6 +569,10 @@ class AppController extends ChangeNotifier {
     onWindowsChanged?.call(notificationWindowRule);
     onAlarmModeChanged?.call(next.alarmMode);
     onScheduleModeChanged?.call(next.scheduleMode);
+    // 『问重要度』改的是排序乘数：交给 service 重算一次（不动任何任务数据）。
+    if (next.askImportance != previous.askImportance) {
+      await service.updateAskImportance(next.askImportance);
+    }
     // 提前量改了要重挂闹钟（它直接决定无排序档那一次提醒的时刻）。
     if (next.manualLeadMinutes != previous.manualLeadMinutes) {
       await service.updateManualLead(next.manualLeadMinutes);
@@ -578,8 +583,12 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  /// 调度模式（决议 43）：完整 / 标准 / 无排序（新装默认）。
+  /// 调度模式（决议 43）：标准 / 无排序（新装默认）。
   ScheduleMode get scheduleMode => _settings.scheduleMode;
+
+  /// 『问重要度』开关（§7.0，默认关）：新建与编辑表单要不要出现重要度那一行、
+  /// 排序要不要乘它。**新建与编辑同源**——关掉的是整个维度，不是一个控件的可见性。
+  bool get askImportance => _settings.askImportance;
 
   /// 无排序 = 关掉算法排序（顺序全手动拖）。UI 用它决定拖拽是"定序"还是"插队"。
   bool get isManualSort => _settings.scheduleMode.isManual;
@@ -1040,7 +1049,7 @@ class AppController extends ChangeNotifier {
     final s = _settings;
     if (!s.pickEnabled) return;
     // 无排序档不跑：散件本来就整段在今日页 ⑥，再挑一件只是同一堆里换个位置。
-    // 不记 `last_pick_date`——切回标准/完整档时按间隔照常挑（不会因为"这几周
+    // 不记 `last_pick_date`——切回标准档时按间隔照常挑（不会因为"这几周
     // 没挑过"而记账错乱）。
     if (s.scheduleMode.isManual) return;
     final mark = _dayMark(DateTime.now());
@@ -1150,7 +1159,7 @@ class AppController extends ChangeNotifier {
   Future<void> setPoolOrders(List<String> orderedIds) =>
       service.setPoolOrders(orderedIds);
 
-  /// 今日截止型组拖拽落位（标准/完整档，决议 9）：整段重写插队时刻，一次落盘。
+  /// 今日截止型组拖拽落位（标准档，决议 9）：整段重写插队时刻，一次落盘。
   Future<void> setPinnedStack(List<String> orderedIds) =>
       service.setPinnedStack(orderedIds);
 

@@ -144,7 +144,7 @@ class Task {
   int? get poolOrder => int.tryParse(metadata['pool_order'] ?? '');
 
   /// 散件的家（metadata `loose_home`）：`true` = 住任务池散件段，缺省 = 住今日页
-  /// ⑥ 散件段。**只在无排序档参与分区**（标准/完整档散件照旧全在池子，标记保留
+  /// ⑥ 散件段。**只在无排序档参与分区**（标准档散件照旧全在池子，标记保留
   /// 但不生效，切档不迁移）；长期有效，不是当日标记。
   bool get looseHomeIsPool => metadata['loose_home'] == 'pool';
 

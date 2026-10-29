@@ -3,20 +3,22 @@ import 'dart:math' as math;
 import 'task.dart';
 
 /// **调度模式**（ui-interaction.md §7.0 / 决定卡 mode-as-information-depth）：
-/// 用户可见的**三档**，一次只能选一个——它们是**一条信息深度的谱系**：
-/// 每上一档多问一样属性，多换一种能力。
+/// 用户可见的**两档**，一次只能选一个——它们是**一条信息深度的谱系**：
+/// 上一档多问一样属性，多换一种能力。
 ///
 /// - [manual] **无排序（新装默认）**：只问标题与日期。不跑调度算法，今日截止型组
 ///   只收"今天到期"的、顺序由人拖（`manual_order`），提醒是两站时点提醒
 ///   （`T − manual_lead_minutes` 与 `T`）。没有裕度、风险、不可行判定，也不做工时对账；
-/// - [standard] **标准**：问工时。算法排先后，提醒按裕度节奏响；
-/// - [full] **完整**：再问重要度（乘数进排序键）。
+/// - [standard] **标准**：问工时。算法排先后，提醒按裕度节奏响。
 ///
-/// 三档都**不筛提醒**：有时间的任务一律提醒，响不响是任务自己的 metadata `remind`。
+/// **重要度不是档位**：它是标准档里的一个设置开关（`AppSettings.askImportance`），
+/// 关掉时排序乘数取 1、表单里也不出现；打开即原来的"完整档"。以前它是一档，
+/// 但两档之间那时只差这一处，等于拿一个表单开关冒充一个档位（2026-10-29 修订二）。
 ///
-/// 三档都**不改任务数据**：档位是查询口径与算法入参，切档只重算，不迁移。
+/// 两档都**不筛提醒**：有时间的任务一律提醒，响不响是任务自己的 metadata `remind`。
+///
+/// 两档都**不改任务数据**：档位是查询口径与算法入参，切档只重算，不迁移。
 enum ScheduleMode {
-  full,
   standard,
   manual;
 
@@ -25,8 +27,10 @@ enum ScheduleMode {
   /// 兜底不跟新装默认走：认不出的值只会出现在**已经存在**的设置文件里，
   /// 那种情况下把人的清单悄悄改成手动序比"保持原样"更糟。新装没有文件，
   /// 直接拿 `AppSettings.defaults`（无排序），不经过这里。
+  ///
+  /// 旧的 `full` 也落在这里（标准）——`AppSettings.fromJson` 另外把
+  /// 『问重要度』一并打开，老用户的表单行为因此不变。
   static ScheduleMode byName(String? name) => switch (name) {
-        'full' => ScheduleMode.full,
         'manual' => ScheduleMode.manual,
         _ => ScheduleMode.standard,
       };

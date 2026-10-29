@@ -67,6 +67,7 @@ class SlackScheduler implements Scheduler {
     required DateTime now,
     required WorkTimeRule workRule,
     Map<String, DateTime> anchors = const {},
+    bool weightImportance = true,
   }) {
     final metrics = <TaskMetric>[];
     final infeasible = <String>[];
@@ -141,7 +142,8 @@ class SlackScheduler implements Scheduler {
         // 只是本算法的**排序**仍按 urgency——这才是两个算法的差别所在。
         risk: slackRisk(slack),
         // '长期'任务已在上面跳过（D18），?? 3 只是 A3 缺省值的兜底。
-        priority: slackRisk(slack) * (task.importance ?? 3),
+        priority: slackRisk(slack) *
+            (weightImportance ? (task.importance ?? 3) : 1),
         urgency: urgency,
         nextReminderAt: nextReminderAt,
         intervalMinutes: interval,
@@ -153,16 +155,19 @@ class SlackScheduler implements Scheduler {
     }
 
     // 排序四档（v1.25，与默认算法同一份口径）：不可行单独一档，
-    // 同档内按 urgency 降序，importance 降序、deadline 升序做并列裁决。
+    // 同档内按 urgency 降序，importance 降序、deadline 升序做并列裁决
+    // （『问重要度』关掉时 importance 一级整个跳过）。
     sortable.sort((a, b) {
       final byStatus = _rank(a.metric.displayStatus)
           .compareTo(_rank(b.metric.displayStatus));
       if (byStatus != 0) return byStatus;
       final byUrgency = b.metric.urgency.compareTo(a.metric.urgency);
       if (byUrgency != 0) return byUrgency;
-      final byImportance =
-          (b.task.importance ?? 3).compareTo(a.task.importance ?? 3);
-      if (byImportance != 0) return byImportance;
+      if (weightImportance) {
+        final byImportance =
+            (b.task.importance ?? 3).compareTo(a.task.importance ?? 3);
+        if (byImportance != 0) return byImportance;
+      }
       return a.task.deadline!.compareTo(b.task.deadline!);
     });
 

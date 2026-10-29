@@ -234,7 +234,7 @@ class TaskTile extends StatelessWidget {
     );
   }
 
-  /// 只留两颗状态胶囊（§8）：裕度告急（标准 / 完整档算出来的）、已推迟。
+  /// 只留两颗状态胶囊（§8）：裕度告急（标准档算出来的）、已推迟。
   /// 逾期件不再叠徽标——组头、左侧红点、时间签颜色已经各说了一遍。
   List<Widget> _badges(ThemeData theme, TaskMetric? metric) {
     if (_overdue) return const [];

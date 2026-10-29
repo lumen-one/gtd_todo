@@ -137,7 +137,6 @@ void main() {
   });
 
   test('pollReminder：未到点不触发、不重锚；到点触发并重新锚定', () async {
-    await svc.updateScheduleMode(ScheduleMode.full); // 本用例断言"会响"
     await createA();
     final first = svc.lastSchedule!;
     final anchor = first.nextReminderAt!; // 16:30
@@ -201,7 +200,7 @@ void main() {
           reason: '关掉响铃只是变静音，提醒照发');
     });
 
-    test('时点提醒不看响铃：开始型到点就是候选（三档一样）', () async {
+    test('时点提醒不看响铃：开始型到点就是候选（两档一样）', () async {
       final meeting = await svc.createTask(
         title: '例会',
         type: TaskType.fixed,
@@ -210,20 +209,22 @@ void main() {
       expect(svc.nextPointReminder()!.taskId, meeting.id,
           reason: '没有门槛，标准档也响');
 
-      await svc.updateScheduleMode(ScheduleMode.full);
-      expect(svc.nextPointReminder()!.taskId, meeting.id);
+      await svc.updateScheduleMode(ScheduleMode.manual);
+      expect(svc.nextPointReminder()!.taskId, meeting.id,
+          reason: '无排序档换成两站时点提醒，到点照样是候选');
     });
 
     test('切模式：立即重算，一个字节的数据都不动', () async {
       final a = await createA();
       final before = await repo.getTask(a.id);
 
-      await svc.updateScheduleMode(ScheduleMode.full);
-      expect(svc.lastSchedule!.nextReminderAt, DateTime(2026, 10, 7, 16, 30));
+      await svc.updateScheduleMode(ScheduleMode.manual);
+      expect(svc.lastSchedule!.items, isEmpty,
+          reason: '无排序档不跑调度，只留一个空结果占位');
 
       await svc.updateScheduleMode(ScheduleMode.standard);
       expect(svc.lastSchedule!.nextReminderAt, DateTime(2026, 10, 7, 16, 30),
-          reason: '两档只有"问什么"不同，提醒节奏一样');
+          reason: '切回来照旧的裕度节奏重算');
 
       final after = await repo.getTask(a.id);
       expect(after!.metadata, before!.metadata);

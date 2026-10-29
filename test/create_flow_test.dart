@@ -17,7 +17,8 @@ import 'package:gtd_todo/ui/shells/android_shell.dart';
 /// 入口断了，桌面上就没有建三无的路（快记只在系统级悬浮把手）。
 void main() {
   Future<AppController> pumpShell(WidgetTester tester,
-      {ScheduleMode mode = ScheduleMode.manual}) async {
+      {ScheduleMode mode = ScheduleMode.manual,
+      bool askImportance = false}) async {
     final svc = TaskService(
       repo: MemoryTaskRepository(),
       scheduler: const SlackScheduler(),
@@ -28,7 +29,10 @@ void main() {
       service: svc,
       taskDir: 'ignored',
       settingsPort: _MemorySettingsPort(
-        AppSettings.defaults.copyWith(guideSeen: true, scheduleMode: mode),
+        AppSettings.defaults.copyWith(
+            guideSeen: true,
+            scheduleMode: mode,
+            askImportance: askImportance),
       ),
     );
     await tester.binding.setSurfaceSize(const Size(420, 860));
@@ -123,8 +127,8 @@ void main() {
     expect(task.deadline, DateTime(today.year, today.month, today.day, 12));
   });
 
-  // 问多少由档位决定（§5.1 / §7.0）：新建表单按档位裁行，编辑表单不裁。
-  // 『响铃』不在裁剪之列——它管声音，不管发不发，三档都摆。
+  // 问多少由档位与开关决定（§5.1 / §7.0）：新建表单按档位裁行，重要度另看
+  // 『问重要度』。『响铃』不在裁剪之列——它管声音，不管发不发，两档都摆。
   testWidgets('无排序档只问标题和日期：工时与重要度不出现，响铃照摆', (tester) async {
     await pumpShell(tester); // 新装默认 = 无排序
     await openCreateFlow(tester);
@@ -136,7 +140,7 @@ void main() {
     expect(find.text('响铃'), findsOneWidget);
   });
 
-  testWidgets('标准档多问工时；重要度仍不问', (tester) async {
+  testWidgets('标准档多问工时；『问重要度』默认关，仍不问', (tester) async {
     await pumpShell(tester, mode: ScheduleMode.standard);
     await openCreateFlow(tester);
     await tester.tap(dayCell(DateTime.now()));
@@ -147,8 +151,8 @@ void main() {
     expect(find.text('响铃'), findsOneWidget);
   });
 
-  testWidgets('完整档再问重要度；响铃照摆', (tester) async {
-    await pumpShell(tester, mode: ScheduleMode.full);
+  testWidgets('打开『问重要度』才问；响铃照摆', (tester) async {
+    await pumpShell(tester, mode: ScheduleMode.standard, askImportance: true);
     await openCreateFlow(tester);
     await tester.tap(dayCell(DateTime.now()));
     await tester.pumpAndSettle();

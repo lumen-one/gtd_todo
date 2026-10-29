@@ -28,13 +28,13 @@ String _mm(int minuteOfDay) {  final h = (minuteOfDay ~/ 60).toString().padLeft(
   return '$h:$m';
 }
 
-/// 三档调度模式的说明（决议 43）：完整 → 标准 → 无排序，**逐级弱化**算法替人做主
-/// 的程度，所以它们是一组三选一，不是两个互不相干的开关。
+/// 两档调度模式的说明（决议 43 + 决定卡 mode-as-information-depth 的 10-29 修订二）：
+/// 标准 → 无排序，**逐级弱化**算法替人做主的程度，所以它们是一组二选一，
+/// 不是两个互不相干的开关。
 ///
-/// 界面上只留半句（"谁排前后 / 出不出声"），细化解释不去挤窄屏——三档的差别
+/// 界面上只留半句（"谁排前后 / 出不出声"），细化解释不去挤窄屏——两档的差别
 /// 用户切一下就体会到了。
 String _modeHint(ScheduleMode mode) => switch (mode) {
-      ScheduleMode.full => '完整：排先后，多问重要度',
       ScheduleMode.standard => '标准：排先后，提醒按裕度节奏',
       ScheduleMode.manual => '无排序：不排，截止前与截止各提醒一次',
     };
@@ -47,11 +47,10 @@ String _leadLabel(int minutes) => minutes % 60 == 0
     ? '${minutes ~/ 60} 小时'
     : '$minutes 分';
 
-/// 三选一按钮（选中=实心，其余=描边）：比 SegmentedButton 放得下三个字以上的标签，
+/// 二选一按钮（选中=实心，其余=描边）：比 SegmentedButton 放得下三个字以上的标签，
 /// 也不会在窄面板里被挤成省略号。
 Widget _modeButton(AppController c, AppSettings s, ScheduleMode mode) {
   final label = switch (mode) {
-    ScheduleMode.full => '完整',
     ScheduleMode.standard => '标准',
     ScheduleMode.manual => '无排序',
   };
@@ -95,8 +94,8 @@ Widget _hotWidthButton(AppController c, AppSettings s, int dp) {
 /// 固定把手位置〔悬浮壳〕 / 固定侧边栏大小〔悬浮壳〕 /
 /// 把手热区宽度〔悬浮壳〕 / 重看首次引导〔悬浮壳〕）；
 /// 4. 周期任务管理（routines.md）；5. **工作时间（工作日 + 工作窗，slack 的分母）**；
-/// 6. 提醒与排序（**调度模式三档：完整/标准/无排序** + 时间段多段式 +
-/// 闹钟模式〔悬浮壳〕）；
+/// 6. 提醒与排序（**调度模式两档：标准/无排序** + 『问重要度』开关 + AI 编排入口位 +
+/// 时间段多段式 + 闹钟模式〔悬浮壳〕）；
 /// 7. 定期挑；8. 灵感文件路径；9. 周期任务在任务池的显示开关；
 /// 10. 主题（**明暗三选一：跟随系统/浅色/深黑** + 强调色预设）；
 /// 11. 回收站；12. 同步（§4.4：主机/从机，局域网文件同步）；13. 关于（版本号 + 反馈）。
@@ -281,14 +280,26 @@ class _SettingsPanelState extends State<SettingsPanel> {
           padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
           child: Row(
             children: [
-              // 三档由强到弱：算法介入程度依次递减，一次只能选一个。
+              // 两档由强到弱：算法介入程度依次递减，一次只能选一个。
+              // 不是三格——以前那第三格"完整"只是"标准 + 问重要度"，现在由下面
+              // 那个开关表达，位置则留给 AI 编排（它不是一档，见下方占位条目）。
               for (final mode in ScheduleMode.values)
                 Expanded(child: _modeButton(_c, s, mode)),
             ],
           ),
         ),
+        // 『问重要度』（§7.0）：只在标准档出现——无排序档不跑公式，问了没处用。
+        // 关掉时整个维度不参与：新建与编辑表单都不出现那一行，排序乘数取 1。
+        if (s.scheduleMode == ScheduleMode.standard)
+          SwitchListTile(
+            secondary: const Icon(Icons.priority_high),
+            title: const Text('问重要度'),
+            subtitle: const Text('新建多问一项 1–5，并把它当排序乘数；关掉时按 1 算'),
+            value: s.askImportance,
+            onChanged: (v) => _c.updateSettings(s.copyWith(askImportance: v)),
+          ),
         // 无排序档的提前量（§7.1）：这一档不跑裕度，两站提醒 = 这个值与任务时刻。
-        // 只在无排序档出现——另外两档按裕度节奏多次响，与它无关。
+        // 只在无排序档出现——标准档按裕度节奏多次响，与它无关。
         if (s.scheduleMode.isManual)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
@@ -315,6 +326,16 @@ class _SettingsPanelState extends State<SettingsPanel> {
               ],
             ),
           ),
+        // **AI 编排的入口位**（§9 第 9 条）：不可点，只写用途。位置留着、形状
+        // 不承诺——它做的是记习惯、估工时、改截止、调参数，排在调度之上，不是
+        // 第三档排序算法。做成灰的一条而不是第三颗模式按钮，就是为了不暗示
+        // "选了它就不按裕度排了"。
+        const ListTile(
+          enabled: false,
+          leading: Icon(Icons.auto_awesome_outlined),
+          title: Text('AI 编排'),
+          subtitle: Text('以后在这儿：记住你的习惯、自动估工时、语音改清单'),
+        ),
         // 全屏闹钟是安卓的通知渠道；桌面到点只有应用内弹窗（§7.2）。
         // 它**覆盖**那一条本该走的通知栏投递，其余提醒照旧横幅 + 通知栏。
         if (_c.caps.alarmChannel)

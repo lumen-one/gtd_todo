@@ -6,7 +6,6 @@ import 'package:gtd_todo/application/task_service.dart';
 import 'package:gtd_todo/application/today_view.dart';
 import 'package:gtd_todo/domain/event.dart';
 import 'package:gtd_todo/domain/routine.dart';
-import 'package:gtd_todo/domain/schedule.dart';
 import 'package:gtd_todo/domain/task.dart';
 import 'package:gtd_todo/domain/time_context.dart';
 import 'package:gtd_todo/repository/markdown_routine_codec.dart';
@@ -342,8 +341,6 @@ void main() {
         repo: MarkdownTaskRepository(dir.path),
         scheduler: const SlackScheduler(),
         workRule: WorkTimeRule.standard,
-        // 本用例要断言"时点提醒还在"，所以要出声（默认标准模式不产出提醒）。
-        scheduleMode: ScheduleMode.full,
         clock: clock,
       );
       await reloaded.refreshSchedule();

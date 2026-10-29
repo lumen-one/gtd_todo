@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gtd_todo/application/settings.dart';
 import 'package:gtd_todo/application/task_service.dart';
@@ -94,11 +94,15 @@ void main() {
     expect(find.text('标准：排先后，提醒按裕度节奏'), findsOneWidget);
   });
 
-  testWidgets('完整模式在设置页说"多问重要度"', (tester) async {
-    await pumpApp(tester, mode: ScheduleMode.full);
-    await revealInSettings(tester, '完整：排先后，多问重要度');
+  testWidgets('标准档把『问重要度』摆出来，AI 编排留位但不可点', (tester) async {
+    await pumpApp(tester, mode: ScheduleMode.standard);
+    await revealInSettings(tester, '问重要度');
 
-    expect(find.text('完整：排先后，多问重要度'), findsOneWidget);
+    expect(find.text('问重要度'), findsOneWidget);
+    // AI 编排是入口位、不是第三档：这一行在界面上，但不接点击。
+    final tile = tester.widget<ListTile>(
+        find.ancestor(of: find.text('AI 编排'), matching: find.byType(ListTile)));
+    expect(tile.enabled, isFalse);
   });
 }
 
