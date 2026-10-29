@@ -1,7 +1,7 @@
 # 送达策略与提醒协调者
 
 两个问题分开答：**什么时候真正打扰用户**（`NotificationWindowRule`，与工时产能
-解耦）和**单闹钟怎么协调两个提醒源**（`ReminderDispatcher`）。门槛放在算法与服务
+解耦）和**单闹钟怎么协调三个提醒源**（`ReminderDispatcher`）。门槛放在算法与服务
 那一层，协调者不必知道调度模式。
 
 **NotificationWindowRule（通知时间段）**：与 WorkTimeRule（工时产能，domain）
@@ -14,26 +14,33 @@
 - 与工时窗口交集为空属用户自选配置：同样按顺延处理，不报错、不静默丢弃。
 
 **ReminderDispatcher（单闹钟协调者）**：订阅 `scheduleReanchored` →
-`alarm.cancel()` → 计算送达时刻（两个提醒源，见下）→ `alarm.scheduleNext()`（带草案）；
+`alarm.cancel()` → 计算送达时刻（三个提醒源，见下）→ `alarm.scheduleNext()`（带草案）；
 订阅 `alarm.fired` → `TaskService.pollReminder()` →（**系统还没投递过时**）
 `NotificationPort.show(...)`（带 actions：完成 / 推迟1小时）→ 再排下一站（链路自续）。
 
-**没有门槛，协调者也不必知道调度模式。** 下一站时刻全由 `ScheduleResult.nextReminderAt`
-与 `TaskService.nextPointReminder()` 给出，`_reschedule()` 直接比早晚。
+**没有门槛，协调者也不必知道调度模式。** 下一站时刻全由 `ScheduleResult.nextReminderAt`、
+`TaskService.nextPointReminder()` 与 `PlanService.nextReminder()` 给出，`_reschedule()`
+直接比早晚。编排那一源与任务无关：它只递上来"一条文字 + 一个时刻"，协调者不需要知道
+那是哪一天排的。
 发不发与响不响是两件事：发不发由"有没有时间"决定，响不响由任务的 metadata `remind`
 决定——协调者拿它挑 `ring` / `silent` 渠道，不做别的判断。
 
-**两个提醒源**：
+**三个提醒源**：
 
 | 源               | 谁                            | 送达时刻                                          | 渠道                                  |
 | ---------------- | ----------------------------- | ------------------------------------------------- | ------------------------------------- |
 | **Slack 软提醒** | 截止型任务（flex + 截止）       | 经 NotificationWindowRule（段外顺延到下一段开头） | 通知栏 + 横幅（按『响铃』分有声/静音） |
 | **时点性提醒**   | 开始型到点 + 设了响的周期实例 + 无排序档的两站 | 原样响（不受静默段限制） | 闹钟模式开且是开始型 → alarm 渠道 + full-screen（覆盖通知栏那条）|
+| **编排条目**     | 今日编排里有时刻的一行           | 准点，**不**经 NotificationWindowRule             | 恒 `silent` + 横幅，没有快捷按钮      |
 
-- 单闹钟取两者中更早的一个（`ScheduleResult.nextReminderAt` vs
-  `TaskService.nextPointReminder()`）。**比的是"送达时刻"**：软提醒先按
-  NotificationWindowRule 顺延、再参与比较——拿原始锚点去比，会把一个被顺延到
+- 单闹钟取三者中更早的一个（`ScheduleResult.nextReminderAt` vs
+  `TaskService.nextPointReminder()` vs `PlanService.nextReminder()`）。**比的是"送达时刻"**：
+  软提醒先按 NotificationWindowRule 顺延、再参与比较——拿原始锚点去比，会把一个被顺延到
   次日上午的软提醒排在今晚的时点闹钟前面，那一晚的闹钟就会被跳过；
+- **编排这一源只递未来的时刻**（`at` 严格晚于现在）。过点即作废、不补响，所以它不需要
+  `point_fired` 那样的幂等标记，`编排.md` 也不落任何提醒状态。同一分钟的多条只排最早
+  那条；与任务提醒撞在同一分钟时编排优先占站点，到点那一刻仍会 `pollReminder`，任务的
+  那一条不会丢；
 - **`pollReminder` 不可重入**：20 秒 tick 与闹钟回调会同时打进来，而软提醒没有
   `point_fired` 那样的幂等标记——上一次还在跑时这一次直接返回 null
   （少发一条，好过同一件事弹两次）；
