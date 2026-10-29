@@ -13,7 +13,7 @@ import 'package:gtd_todo/scheduler/slack_priority_scheduler.dart';
 ///
 /// 无排序档不跑调度：③ 组只收"今天到期"的、顺序走手动序，提醒是截止前一次的
 /// 时点提醒；另把散件段铺到今日页底（⑥）。内核完全不知道排序模式：
-/// `Scheduler.schedule` 只收 reminderMode，成员/顺序/散件都是业务层的查询口径。
+/// `Scheduler.schedule` 只认任务与时间，成员/顺序/散件都是业务层的查询口径。
 void main() {
   const rule = WorkTimeRule.standard;
   const scheduler = SlackPriorityScheduler();
@@ -42,12 +42,8 @@ void main() {
 
   DateTime wed(int h, int m) => DateTime(2026, 10, 7, h, m);
 
-  group('三档是信息深度的阶梯：互拆到内核门槛', () {
-    test('只有完整档放行；标准与无排序都不产出软提醒', () {
-      expect(ScheduleMode.full.reminderMode, ReminderMode.full);
-      expect(ScheduleMode.standard.reminderMode, ReminderMode.standard);
-      expect(ScheduleMode.manual.reminderMode, ReminderMode.standard,
-          reason: '无排序档不跑调度，提醒走时点链路（见 point_reminder_test）');
+  group('三档是信息深度的阶梯', () {
+    test('门槛已取消：三档的差别只剩问什么、谁排序', () {
       expect(ScheduleMode.manual.isManual, isTrue);
       expect(ScheduleMode.standard.isManual, isFalse);
       expect(ScheduleMode.full.isManual, isFalse);
@@ -68,7 +64,7 @@ void main() {
         task(id: 'far', deadline: DateTime(2026, 10, 20, 18, 0)),
       ];
       final schedule = scheduler.schedule(
-          tasks: tasks, now: now, workRule: rule, reminderMode: ReminderMode.full);
+          tasks: tasks, now: now, workRule: rule);
 
       final auto = buildTodayView(
           tasks: tasks, schedule: schedule, now: now,
@@ -90,7 +86,7 @@ void main() {
             remaining: 900, estimated: 900),
       ];
       final schedule = scheduler.schedule(
-          tasks: tasks, now: now, workRule: rule, reminderMode: ReminderMode.full);
+          tasks: tasks, now: now, workRule: rule);
       final metric = schedule.metricOf('far-tight')!;
       expect(metric.displayStatus, TaskDisplayStatus.normal);
       expect(metric.nextReminderAt!.day, 7, reason: '锚点落在今天 17:00');
@@ -122,7 +118,7 @@ void main() {
         }),
       ];
       final schedule = scheduler.schedule(
-          tasks: tasks, now: now, workRule: rule, reminderMode: ReminderMode.full);
+          tasks: tasks, now: now, workRule: rule);
 
       final standard = buildTodayView(
           tasks: tasks, schedule: schedule, now: now,
@@ -184,19 +180,14 @@ void main() {
   });
 
   group('内核与档位无关：ScheduleResult 不认得排序模式', () {
-    test('同样的 reminderMode 下算出来的量完全一致', () {
+    test('同样的入参下算出来的量完全一致', () {
       final tasks = [
         task(id: 'a', deadline: wed(18, 0)),
         task(id: 'b', deadline: DateTime(2026, 10, 9, 18, 0)),
       ];
-      // 内核只有 reminderMode 一个入参：排序模式根本传不进去。
-      final full = scheduler.schedule(
-          tasks: tasks, now: now, workRule: rule, reminderMode: ReminderMode.full);
-      final quiet = scheduler.schedule(
-          tasks: tasks,
-          now: now,
-          workRule: rule,
-          reminderMode: ScheduleMode.manual.reminderMode);
+      // 排序模式根本传不进内核：两次调用给的是同一份入参。
+      final full = scheduler.schedule(tasks: tasks, now: now, workRule: rule);
+      final quiet = scheduler.schedule(tasks: tasks, now: now, workRule: rule);
       for (final id in ['a', 'b']) {
         final x = full.metricOf(id)!;
         final y = quiet.metricOf(id)!;
@@ -206,7 +197,7 @@ void main() {
         expect(y.nextReminderAt, x.nextReminderAt);
       }
       expect(quiet.nextTaskId, full.nextTaskId,
-          reason: '"下一站是谁"由门槛与数学定，与列表顺序无关');
+          reason: '"下一站是谁"由数学定，与列表顺序无关');
     });
   });
 

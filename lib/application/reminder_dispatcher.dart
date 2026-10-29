@@ -16,8 +16,12 @@ import 'task_service.dart';
 ///
 /// 两个提醒源（v1.5）：
 /// - **Slack 软提醒**（截止型任务）：经 [windows] 送达策略（段外顺延到下一段开头）；
-/// - **时点性提醒**（开始型到点 + 设了响的周期实例，决议 3/18）：原样响，
-///   不受静默段限制；[alarmMode] 打开时升级为闹钟渠道（全屏 + 持续响铃）。
+/// - **时点性提醒**（开始型到点 + 设了响的周期实例 + 无排序档的两站）：原样响，
+///   不受静默段限制；[alarmMode] 打开时升级为闹钟渠道（全屏 + 持续响铃），
+///   覆盖掉它本该走的那条通知栏投递。
+///
+/// **渠道只看两件事**：这条是不是时点提醒（能不能升级成闹钟）+ 任务自己的
+/// metadata `remind`（有声 / 静音）。调度模式不参与——三档都提醒。
 class ReminderDispatcher {
   final TaskService service;
   final AlarmPort alarm;
@@ -89,7 +93,7 @@ class ReminderDispatcher {
 
     DateTime? at;
     String? taskId;
-    var fullScreen = false;
+    var pointFired = false;
     if (softDelivery != null &&
         softId != null &&
         (point == null || !point.at.isBefore(softDelivery))) {
@@ -98,11 +102,13 @@ class ReminderDispatcher {
     } else if (point != null) {
       at = point.at; // 时点性提醒：原样响（决议 26）
       taskId = point.taskId;
-      fullScreen = alarmMode;
+      pointFired = true;
     }
     if (at == null || taskId == null) return;
 
     final task = service.byId(taskId);
+    final fullScreen = pointFired && alarmMode;
+    final channel = _channelFor(task, point: pointFired);
     // 挂闹钟时就把"到点要交付什么"定下来：安卓应用被杀时由系统闹钟
     // 自己弹通知（原生接收器照着这份草案渲染）。
     await alarm.scheduleNext(
@@ -112,7 +118,7 @@ class ReminderDispatcher {
         taskId: taskId,
         title: task?.title ?? '该做这件事了',
         body: _bodyOf(task),
-        channel: fullScreen ? ReminderChannel.alarm : ReminderChannel.normal,
+        channel: channel,
         fullScreen: fullScreen,
         actions: defaultActions,
       ),
@@ -135,10 +141,10 @@ class ReminderDispatcher {
       await _reschedule();
       return;
     }
-    final fullScreen = event.kind == ReminderKind.point && alarmMode;
-    final channel =
-        fullScreen ? ReminderChannel.alarm : ReminderChannel.normal;
+    final point = event.kind == ReminderKind.point;
+    final fullScreen = point && alarmMode;
     final task = service.byId(event.taskId);
+    final channel = _channelFor(task, point: point);
     await notifications.show(
       event,
       actions: defaultActions,
@@ -154,6 +160,16 @@ class ReminderDispatcher {
       ),
     );
     await _reschedule(); // 链路自续：排下一站（防 Zeno：只在事件里重排）
+  }
+
+  /// 一条提醒走哪个渠道：**闹钟模式只对时点提醒生效**，其余看任务自己的
+  /// 『响铃』（metadata `remind`，缺键 = 静音）。任务查不到时按静音走——
+  /// 没有主人的提醒不该吵人。
+  ReminderChannel _channelFor(Task? task, {required bool point}) {
+    if (point && alarmMode) return ReminderChannel.alarm;
+    return (task?.ringEnabled ?? false)
+        ? ReminderChannel.ring
+        : ReminderChannel.silent;
   }
 
   String? _bodyOf(Task? task) {

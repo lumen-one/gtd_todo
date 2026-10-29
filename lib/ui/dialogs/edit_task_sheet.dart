@@ -55,7 +55,7 @@ class _EditTaskSheetState extends State<_EditTaskSheet> {
     deadline: widget.task.deadline,
     longTerm: widget.task.isLongTerm,
     importance: widget.task.importance ?? 3,
-    remind: widget.task.remindEnabled,
+    remind: widget.task.ringEnabled,
   );
 
   @override
@@ -99,8 +99,8 @@ class _EditTaskSheetState extends State<_EditTaskSheet> {
       );
       return;
     }
-    // 提醒开关是独立的持久意图（metadata `remind`），只在真的变了时写一次。
-    if (_value.remind != task.remindEnabled) {
+    // 响铃是独立的持久意图（metadata `remind`），只在真的变了时写一次。
+    if (_value.remind != task.ringEnabled) {
       await widget.controller.setTaskReminder(task.id, enabled: _value.remind);
     }
     if (mounted) Navigator.of(context).pop();
@@ -122,7 +122,6 @@ class _EditTaskSheetState extends State<_EditTaskSheet> {
           Text(widget.title, style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 12),
           TaskFormBody(
-            controller: widget.controller,
             value: _value,
             onChanged: (v) => setState(() => _value = v),
             titleCtrl: _titleCtrl,

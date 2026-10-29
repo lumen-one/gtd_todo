@@ -214,8 +214,7 @@ class _CreateFlowSheetState extends State<_CreateFlowSheet> {
 
   Widget _buildFormPage(ThemeData theme) {
     // 问多少由档位决定（§5.1）：无排序档只问标题和日期，标准档多问工时，
-    // 完整档再问重要度。『提醒我』只在标准档有意义——无排序档每件都响一次，
-    // 完整档本来就全响。
+    // 完整档再问重要度。『响铃』不在裁剪之列——提醒一律会发，它只是声音开关。
     final mode = widget.controller.scheduleMode;
     return Column(
       key: const ValueKey('form'),
@@ -223,7 +222,6 @@ class _CreateFlowSheetState extends State<_CreateFlowSheet> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         TaskFormBody(
-          controller: widget.controller,
           value: _value,
           onChanged: (v) => setState(() => _value = v),
           titleCtrl: _titleCtrl,
@@ -235,7 +233,6 @@ class _CreateFlowSheetState extends State<_CreateFlowSheet> {
           onEditTime: _pickTime,
           showWorkStrength: !mode.isManual,
           showImportance: mode == ScheduleMode.full,
-          showRemind: mode == ScheduleMode.standard,
           deadlineActions: [
             TextButton(
               onPressed: () => setState(() => _pickingWhen = true),

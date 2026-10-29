@@ -161,62 +161,57 @@ void main() {
     expect(m.intervalMinutes, 30);
   });
 
-  // ---------- 提醒模式与逐任务提醒开关（v1.9 / 决议 38、D15）----------
+  // ---------- 提醒一律发出与逐任务响铃（v1.9 决议 38 改写：门槛已取消）----------
 
-  group('提醒模式', () {
+  group('提醒', () {
     test('A3：importance 缺省 3——它就是"优先级"，也是调度优先级的乘数', () async {
       final a = await createA();
       expect(a.importance, 3);
     });
 
-    test('默认标准模式：顺序照给、锚点照算，但下一站为空（只排列不提醒）', () async {
+    test('默认标准模式：顺序与下一站都照给（有时间的任务一律提醒）', () async {
       final a = await createA();
-      expect(svc.reminderMode, ReminderMode.standard, reason: '默认标准');
       expect(svc.lastSchedule!.nextTaskId, a.id);
-      expect(svc.lastSchedule!.nextReminderAt, isNull);
-      expect(svc.lastSchedule!.nextReminderTaskId, isNull);
+      expect(svc.lastSchedule!.nextReminderAt, DateTime(2026, 10, 7, 16, 30));
+      expect(svc.lastSchedule!.nextReminderTaskId, a.id);
       final m = svc.lastSchedule!.metricOf(a.id)!;
-      expect(m.nextReminderAt, DateTime(2026, 10, 7, 16, 30),
-          reason: '锚点照算（今日清单准入用它）');
-      expect(m.reminds, isFalse);
-      expect(m.reminderAt, isNull);
+      expect(m.nextReminderAt, DateTime(2026, 10, 7, 16, 30));
     });
 
-    test('setTaskReminder：开了这一件才出声，关掉又回到安静', () async {
+    test('setTaskReminder：只写/删 metadata，不改下一站', () async {
       final a = await createA();
       final types = <DomainEventType>[];
       final sub = svc.events.listen((e) => types.add(e.type));
       addTearDown(sub.cancel);
 
       await svc.setTaskReminder(a.id, enabled: true);
-      expect(svc.byId(a.id)!.remindEnabled, isTrue);
+      expect(svc.byId(a.id)!.ringEnabled, isTrue);
       expect(svc.byId(a.id)!.metadata['remind'], 'true',
           reason: '持久意图落 metadata（附录 B.2 登记键）');
-      expect((await repo.getTask(a.id))!.remindEnabled, isTrue,
+      expect((await repo.getTask(a.id))!.ringEnabled, isTrue,
           reason: '写盘再读回来仍然有效');
-      expect(svc.lastSchedule!.nextReminderAt, DateTime(2026, 10, 7, 16, 30));
-      expect(svc.lastSchedule!.nextReminderTaskId, a.id);
+      expect(svc.lastSchedule!.nextReminderAt, DateTime(2026, 10, 7, 16, 30),
+          reason: '响铃不参与调度，锚点一格都不动');
       expect(types, contains(DomainEventType.taskReminderSet));
 
       await svc.setTaskReminder(a.id, enabled: false);
-      expect(svc.byId(a.id)!.remindEnabled, isFalse);
+      expect(svc.byId(a.id)!.ringEnabled, isFalse);
       expect(svc.byId(a.id)!.metadata.containsKey('remind'), isFalse);
-      expect(svc.lastSchedule!.nextReminderAt, isNull);
+      expect(svc.lastSchedule!.nextReminderAt, DateTime(2026, 10, 7, 16, 30),
+          reason: '关掉响铃只是变静音，提醒照发');
     });
 
-    test('时点提醒过同一道门槛：标准模式默认不响，开了才响', () async {
+    test('时点提醒不看响铃：开始型到点就是候选（三档一样）', () async {
       final meeting = await svc.createTask(
         title: '例会',
         type: TaskType.fixed,
         deadline: DateTime(2026, 10, 7, 18, 0),
       );
-      expect(svc.nextPointReminder(), isNull, reason: '标准模式默认安静');
-
-      await svc.setTaskReminder(meeting.id, enabled: true);
-      expect(svc.nextPointReminder()!.taskId, meeting.id);
+      expect(svc.nextPointReminder()!.taskId, meeting.id,
+          reason: '没有门槛，标准档也响');
 
       await svc.updateScheduleMode(ScheduleMode.full);
-      expect(svc.nextPointReminder(), isNotNull, reason: '完整模式全开');
+      expect(svc.nextPointReminder()!.taskId, meeting.id);
     });
 
     test('切模式：立即重算，一个字节的数据都不动', () async {
@@ -227,7 +222,8 @@ void main() {
       expect(svc.lastSchedule!.nextReminderAt, DateTime(2026, 10, 7, 16, 30));
 
       await svc.updateScheduleMode(ScheduleMode.standard);
-      expect(svc.lastSchedule!.nextReminderAt, isNull);
+      expect(svc.lastSchedule!.nextReminderAt, DateTime(2026, 10, 7, 16, 30),
+          reason: '两档只有"问什么"不同，提醒节奏一样');
 
       final after = await repo.getTask(a.id);
       expect(after!.metadata, before!.metadata);

@@ -87,18 +87,18 @@ void main() {
     expect(find.byType(SettingsPanel), findsOneWidget);
   });
 
-  testWidgets('标准模式在设置页如实说"只响开了提醒的"', (tester) async {
+  testWidgets('标准模式在设置页如实说"提醒按裕度节奏"', (tester) async {
     await pumpApp(tester, mode: ScheduleMode.standard);
-    await revealInSettings(tester, '标准：排先后，只响开了提醒的');
+    await revealInSettings(tester, '标准：排先后，提醒按裕度节奏');
 
-    expect(find.text('标准：排先后，只响开了提醒的'), findsOneWidget);
+    expect(find.text('标准：排先后，提醒按裕度节奏'), findsOneWidget);
   });
 
-  testWidgets('完整模式在设置页说"该响的都响"', (tester) async {
+  testWidgets('完整模式在设置页说"多问重要度"', (tester) async {
     await pumpApp(tester, mode: ScheduleMode.full);
-    await revealInSettings(tester, '完整：排先后，该响的都响');
+    await revealInSettings(tester, '完整：排先后，多问重要度');
 
-    expect(find.text('完整：排先后，该响的都响'), findsOneWidget);
+    expect(find.text('完整：排先后，多问重要度'), findsOneWidget);
   });
 }
 

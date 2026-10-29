@@ -222,7 +222,7 @@ class NativeBridge(
     private fun cancelAlarm(): Boolean = try {
         val manager = activity.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return false
         // 只有 extras 相同的 PendingIntent 才会匹配（FLAG_UPDATE_CURRENT + 同 action/组件）。
-        val placeholder = Reminder("", "", null, false, false, emptyList())
+        val placeholder = Reminder("", "", null, ReminderChannel.RING, false, emptyList())
         manager.cancel(alarmPendingIntent(placeholder))
         true
     } catch (t: Throwable) {
@@ -489,7 +489,7 @@ class NativeBridge(
             taskId = taskId,
             title = title,
             body = call.argument<String>("body"),
-            alarmChannel = call.argument<Boolean>("alarmChannel") ?: false,
+            channel = ReminderChannel.fromName(call.argument<String>("channel")),
             fullScreen = call.argument<Boolean>("fullScreen") ?: false,
             actions = actions,
         )
@@ -615,7 +615,7 @@ internal fun alarmIntent(context: Context, reminder: Reminder): Intent =
         putExtra(ReminderExtras.TASK_ID, reminder.taskId)
         putExtra(ReminderExtras.TITLE, reminder.title)
         putExtra(ReminderExtras.BODY, reminder.body)
-        putExtra(ReminderExtras.ALARM_CHANNEL, reminder.alarmChannel)
+        putExtra(ReminderExtras.CHANNEL, reminder.channel.name)
         putExtra(ReminderExtras.FULL_SCREEN, reminder.fullScreen)
         putStringArrayListExtra(ReminderExtras.ACTION_IDS, ArrayList(reminder.actions.map { it.id }))
         putStringArrayListExtra(ReminderExtras.ACTION_LABELS, ArrayList(reminder.actions.map { it.label }))
@@ -633,7 +633,7 @@ internal fun reminderFromIntent(intent: Intent): Reminder {
         taskId = taskId,
         title = intent.getStringExtra(ReminderExtras.TITLE).orEmpty(),
         body = intent.getStringExtra(ReminderExtras.BODY),
-        alarmChannel = intent.getBooleanExtra(ReminderExtras.ALARM_CHANNEL, false),
+        channel = ReminderChannel.fromName(intent.getStringExtra(ReminderExtras.CHANNEL)),
         fullScreen = intent.getBooleanExtra(ReminderExtras.FULL_SCREEN, false),
         actions = actions,
     )

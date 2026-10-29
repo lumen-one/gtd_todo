@@ -22,11 +22,16 @@ import androidx.core.app.NotificationManagerCompat
  */
 object Notifier {
 
-    const val CHANNEL_NORMAL = "gtd_normal"
+    const val CHANNEL_RING = "gtd_ring"
+    const val CHANNEL_SILENT = "gtd_silent"
     const val CHANNEL_ALARM = "gtd_alarm"
     const val CHANNEL_OVERLAY = "gtd_overlay"
 
-    private const val CHANNEL_NORMAL_NAME = "任务提醒"
+    /** 旧版本的普通通知渠道：渠道属性（重要性、声音）建完就不可改，只能删掉换新 id。 */
+    private const val CHANNEL_LEGACY_NORMAL = "gtd_normal"
+
+    private const val CHANNEL_RING_NAME = "任务提醒"
+    private const val CHANNEL_SILENT_NAME = "任务提醒（静音）"
     private const val CHANNEL_ALARM_NAME = "闹钟提醒"
     private const val CHANNEL_OVERLAY_NAME = "悬浮手柄"
 
@@ -44,10 +49,32 @@ object Notifier {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
         val app = context.applicationContext
 
-        if (manager.getNotificationChannel(CHANNEL_NORMAL) == null) {
-            manager.createNotificationChannel(
-                NotificationChannel(CHANNEL_NORMAL, CHANNEL_NORMAL_NAME, NotificationManager.IMPORTANCE_DEFAULT)
-            )
+        // 旧渠道删掉：留着会让系统设置里出现两个"任务提醒"，而且旧的 IMPORTANCE_DEFAULT
+        // 不弹横幅。删频道会连带清掉用户在上面调过的手动设置，这是渠道不可变的代价。
+        manager.deleteNotificationChannel(CHANNEL_LEGACY_NORMAL)
+
+        // 有声：IMPORTANCE_HIGH = 横幅必现；声音 + 震动都挂在渠道上。
+        if (manager.getNotificationChannel(CHANNEL_RING) == null) {
+            val channel = NotificationChannel(CHANNEL_RING, CHANNEL_RING_NAME, NotificationManager.IMPORTANCE_HIGH)
+            channel.enableVibration(true)
+            channel.vibrationPattern = VIBRATION_PATTERN
+            channel.setShowBadge(true)
+            channel.lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+            val audio = AudioAttributes.Builder()
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                .build()
+            channel.setSound(android.provider.Settings.System.DEFAULT_NOTIFICATION_URI, audio)
+            manager.createNotificationChannel(channel)
+        }
+        // 静音：同一个重要性（横幅照弹），但没有声音与震动。
+        if (manager.getNotificationChannel(CHANNEL_SILENT) == null) {
+            val channel = NotificationChannel(CHANNEL_SILENT, CHANNEL_SILENT_NAME, NotificationManager.IMPORTANCE_HIGH)
+            channel.enableVibration(false)
+            channel.setSound(null, null)
+            channel.setShowBadge(true)
+            channel.lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+            manager.createNotificationChannel(channel)
         }
         if (manager.getNotificationChannel(CHANNEL_ALARM) == null) {
             val channel = NotificationChannel(CHANNEL_ALARM, CHANNEL_ALARM_NAME, NotificationManager.IMPORTANCE_HIGH)
@@ -124,8 +151,13 @@ object Notifier {
     }
 
     private fun build(context: Context, reminder: Reminder): Notification {
-        val alarm = reminder.alarmChannel
-        val builder = NotificationCompat.Builder(context, if (alarm) CHANNEL_ALARM else CHANNEL_NORMAL)
+        val alarm = reminder.channel == ReminderChannel.ALARM
+        val channelId = when (reminder.channel) {
+            ReminderChannel.ALARM -> CHANNEL_ALARM
+            ReminderChannel.SILENT -> CHANNEL_SILENT
+            ReminderChannel.RING -> CHANNEL_RING
+        }
+        val builder = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(reminder.title)
             .setContentText(reminder.body)
@@ -160,8 +192,18 @@ object Notifier {
                 builder.setFullScreenIntent(contentIntent, true)
             }
         } else {
+            // 横幅靠渠道重要性（O+）；O 以下靠 PRIORITY_HIGH。静音那条只掐声音与震动。
             builder.setCategory(NotificationCompat.CATEGORY_REMINDER)
-                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+            if (reminder.channel == ReminderChannel.SILENT) {
+                builder.setSilent(true).setDefaults(0)
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+                    builder.setVibrate(longArrayOf(0L))
+                }
+            } else if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+                builder.setDefaults(NotificationCompat.DEFAULT_ALL)
+                builder.setVibrate(VIBRATION_PATTERN)
+            }
         }
 
         reminder.actions.forEachIndexed { index, action ->

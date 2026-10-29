@@ -65,7 +65,7 @@ class AndroidNativeBridge {
         'taskId': taskId,
         'title': draft?.title ?? '该做这件事了',
         'body': draft?.body,
-        'alarmChannel': draft?.channel == ReminderChannel.alarm,
+        'channel': (draft?.channel ?? ReminderChannel.ring).name,
         'fullScreen': draft?.fullScreen ?? false,
         'actions': _actionsArg(draft?.actions ?? const []),
       });
@@ -76,7 +76,7 @@ class AndroidNativeBridge {
     required String taskId,
     required String title,
     String? body,
-    bool alarmChannel = false,
+    ReminderChannel channel = ReminderChannel.ring,
     bool fullScreen = false,
     List<NotificationAction> actions = const [],
   }) =>
@@ -84,7 +84,7 @@ class AndroidNativeBridge {
         'taskId': taskId,
         'title': title,
         'body': body,
-        'alarmChannel': alarmChannel,
+        'channel': channel.name,
         'fullScreen': fullScreen,
         'actions': _actionsArg(actions),
       });
@@ -210,7 +210,7 @@ class AndroidNotificationPort implements NotificationPort {
   Future<void> show(
     ReminderEvent event, {
     List<NotificationAction> actions = const [],
-    ReminderChannel channel = ReminderChannel.normal,
+    ReminderChannel channel = ReminderChannel.ring,
     bool fullScreen = false,
     ReminderDraft? draft,
   }) async {
@@ -219,7 +219,7 @@ class AndroidNotificationPort implements NotificationPort {
       taskId: event.taskId,
       title: draft?.title ?? task?.title ?? '该做这件事了',
       body: draft?.body ?? _bodyOf(task),
-      alarmChannel: channel == ReminderChannel.alarm,
+      channel: channel,
       fullScreen: fullScreen,
       actions: actions,
     );

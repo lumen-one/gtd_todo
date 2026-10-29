@@ -33,7 +33,7 @@ void printSchedule(TaskService svc, String label) {
       ' | 风险${(m.risk * 100).toStringAsFixed(0).padLeft(3)}%'
       ' | 优先级${m.priority.toStringAsFixed(2).padLeft(6)}'
       ' | 间隔${(m.intervalMinutes?.toString() ?? '—').padLeft(4)}分'
-      ' | 下次提醒${m.reminderAt == null ? '  —      ' : fmt(m.reminderAt!)}'
+      ' | 下次提醒${m.nextReminderAt == null ? '  —      ' : fmt(m.nextReminderAt!)}'
       '$flag',
     );
   }

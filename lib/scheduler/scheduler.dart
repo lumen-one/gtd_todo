@@ -34,15 +34,6 @@ abstract class Scheduler {
 
   List<ParamSpec> get params;
 
-  /// [reminderMode] 是**提醒门槛**（v1.9，D15）：
-  ///
-  /// - [ReminderMode.standard]（**默认**）只排列不提醒——`TaskMetric.nextReminderAt`
-  ///   （锚点）照算，但不出声的任务 `reminds = false`、`intervalMinutes = null`，
-  ///   于是 `ScheduleResult.nextReminderAt`（下一站会响的提醒）通常为 null；
-  /// - [ReminderMode.full] 凡算法判定该响的都响（原方案）。
-  ///
-  /// 默认值取"标准"是刻意的：忘记传参数时得到的是**安静**，不是打扰。
-  ///
   /// [anchors] 是**锚点表**（v1.25，C2 的另一半）：调用方（TaskService）把上次算出的
   /// 锚点按任务 id 存着，这里能沿用就沿用——`nextReminderAt` 只在这件任务自己变了
   /// 或旧锚点迟到太多时才重算。没有它的话，每条命令都会把别人的提醒往后推一格。
@@ -51,7 +42,6 @@ abstract class Scheduler {
     required List<Task> tasks,
     required DateTime now,
     required WorkTimeRule workRule,
-    ReminderMode reminderMode = ReminderMode.standard,
     Map<String, DateTime> anchors = const {},
   });
 }

@@ -20,9 +20,8 @@ import 'scheduler.dart';
 /// 风险函数、间隔公式、锚点沿用、过滤条件（fixed / 散件 / 周期实例不进调度）、
 /// 派生状态（infeasible / overdue / snoozed）、四档排序全部一致。
 ///
-/// **提醒门槛（D15）**：`reminderAllowed(task, reminderMode)` 不成立时这一件不出声
-/// （`reminds = false`、`ScheduleResult.nextReminderAt` 不会取到它）；
-/// 但**锚点照算**——"今天该看哪几件"是调度问题，不该被提醒模式改掉（今日清单准入用它）。
+/// **不筛提醒**：算法只算"下一站是什么时候"；响不响铃是任务自己的 metadata `remind`，
+/// 到送达那一刻才分渠道（§3.2 规则 B4）。
 class SlackPriorityScheduler implements Scheduler {
   static const String defaultId = 'slack-priority.v1';
 
@@ -85,7 +84,6 @@ class SlackPriorityScheduler implements Scheduler {
     required List<Task> tasks,
     required DateTime now,
     required WorkTimeRule workRule,
-    ReminderMode reminderMode = ReminderMode.standard,
     Map<String, DateTime> anchors = const {},
   }) {
     final metrics = <TaskMetric>[];
@@ -175,8 +173,6 @@ class SlackPriorityScheduler implements Scheduler {
         priority: priority,
         urgency: urgency,
         nextReminderAt: nextReminderAt,
-        // 门槛（D15）：锚点照算，但只有"允许出声"的任务才会真的响。
-        reminds: schedulable && reminderAllowed(task, reminderMode),
         intervalMinutes: interval,
       );
       metrics.add(metric);
@@ -208,11 +204,11 @@ class SlackPriorityScheduler implements Scheduler {
       }
     }
 
-    // 下一站 = **会响**的提醒里最早的那个（锚点 ∩ 门槛）；标准模式下通常没有。
+    // 下一站 = 各任务锚点里最早的那个。
     DateTime? nextReminderAt;
     String? nextReminderTaskId;
     for (final m in ordered) {
-      final at = m.reminderAt;
+      final at = m.nextReminderAt;
       if (at != null &&
           (nextReminderAt == null || at.isBefore(nextReminderAt))) {
         nextReminderAt = at;

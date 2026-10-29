@@ -128,65 +128,37 @@ void main() {
     });
   });
 
-  // ---------- 提醒门槛（两个模式） ----------
+  // ---------- 不筛提醒：锚点全给，响不响看任务自己 ----------
 
-  group('提醒门槛（D15）', () {
-    test('门槛判据：完整模式恒真；标准模式只看"是否被显式要求"', () {
+  group('提醒一律产出（门槛已取消）', () {
+    test('ringEnabled 只看 metadata remind；规则设了响不改变它', () {
       final plain = task(id: 'p', deadline: wed(18, 0));
-      final asked =
+      final ringing =
           task(id: 'q', deadline: wed(18, 0), metadata: {'remind': 'true'});
       final routine = task(id: 'r',
           deadline: wed(18, 0), metadata: {'routine_remind': 'true'});
 
-      expect(plain.reminderRequested, isFalse);
-      expect(asked.reminderRequested, isTrue);
-      expect(routine.reminderRequested, isTrue, reason: '规则设了响也是"被要求"');
-
-      expect(reminderAllowed(plain, ReminderMode.full), isTrue);
-      expect(reminderAllowed(plain, ReminderMode.standard), isFalse);
-      expect(reminderAllowed(asked, ReminderMode.standard), isTrue);
-      expect(reminderAllowed(routine, ReminderMode.standard), isTrue);
+      expect(plain.ringEnabled, isFalse, reason: '缺键 = 静音');
+      expect(ringing.ringEnabled, isTrue);
+      expect(routine.ringEnabled, isFalse,
+          reason: '周期规则的"响"是"要不要提醒"，不是"响不响铃"');
     });
 
-    test('默认（标准模式）：顺序与锚点照算，但下一站为空 = 不出声', () {
+    test('默认就算下一站：没有"只排列不提醒"的模式', () {
       final r = scheduler.schedule(
         tasks: [task(id: 'a', deadline: wed(18, 0))],
         now: now,
         workRule: rule,
       );
       final m = r.metricOf('a')!;
-      expect(r.nextTaskId, 'a', reason: '排列照给');
-      expect(m.nextReminderAt, wed(16, 30),
-          reason: '锚点照算——今日清单准入用的是它');
-      expect(m.intervalMinutes, 30, reason: '节奏也照算（0.5 × slack 60）');
-      expect(m.reminds, isFalse);
-      expect(m.reminderAt, isNull, reason: '锚点 ∩ 门槛 = 不出声');
-      expect(r.nextReminderAt, isNull);
-      expect(r.nextReminderTaskId, isNull);
-    });
-
-    test('标准模式 + 这一件开了提醒 → 只有它出声；顺序不受影响', () {
-      final r = scheduler.schedule(
-        tasks: [
-          task(id: 'quiet', deadline: wed(18, 0)),
-          task(id: 'loud',
-              deadline: wed(18, 0), metadata: {'remind': 'true'}),
-        ],
-        now: now,
-        workRule: rule,
-      );
-      expect(r.metricOf('quiet')!.reminds, isFalse);
-      expect(r.metricOf('loud')!.reminds, isTrue);
+      expect(r.nextTaskId, 'a');
+      expect(m.nextReminderAt, wed(16, 30), reason: '锚点就是下一站');
+      expect(m.intervalMinutes, 30, reason: '节奏照算（0.5 × slack 60）');
       expect(r.nextReminderAt, wed(16, 30));
-      expect(r.nextReminderTaskId, 'loud');
-      // 两者风险/优先级完全相同 → 顺序由 deadline/id 裁决，与门槛无关
-      expect(
-        r.metricOf('quiet')!.priority,
-        closeTo(r.metricOf('loud')!.priority, 1e-12),
-      );
+      expect(r.nextReminderTaskId, 'a');
     });
 
-    test('完整模式：该响的都响，下一站取最早的一个', () {
+    test('两件都有锚点：下一站取最早的那个，响铃标记不参与', () {
       final r = scheduler.schedule(
         tasks: [
           task(id: 'a', deadline: wed(18, 0)), // 锚点 16:30
@@ -194,10 +166,8 @@ void main() {
         ],
         now: now,
         workRule: rule,
-        reminderMode: ReminderMode.full,
       );
-      expect(r.metricOf('a')!.reminds, isTrue);
-      expect(r.metricOf('c')!.reminds, isTrue);
+      expect(r.metricOf('a')!.nextReminderAt, wed(16, 30));
       expect(r.nextReminderAt, wed(16, 30));
       expect(r.nextReminderTaskId, 'a');
     });
@@ -219,13 +189,12 @@ void main() {
       ],
       now: now,
       workRule: rule,
-      reminderMode: ReminderMode.full,
     );
     expect(r.overdueTaskIds, ['overdue']);
-    expect(r.metricOf('overdue')!.reminderAt, isNull);
+    expect(r.metricOf('overdue')!.nextReminderAt, isNull);
     expect(r.infeasibleTaskIds, ['infeasible']);
-    expect(r.metricOf('snoozed')!.reminds, isFalse,
-        reason: '推到未来 → 现在不该响');
+    expect(r.metricOf('snoozed')!.nextReminderAt, isNull,
+        reason: '推到未来 → 这一轮没有它的事');
     expect(r.items.last.taskId, 'snoozed', reason: 'snooze 沉底');
     expect(r.nextTaskId, 'infeasible');
   });
@@ -268,7 +237,6 @@ void main() {
       ],
       now: now,
       workRule: rule,
-      reminderMode: ReminderMode.full,
     );
     expect(r.items, isEmpty);
     expect(r.nextTaskId, isNull);
@@ -303,7 +271,6 @@ void main() {
         tasks: [task(id: 'A', deadline: wed(16, 0))],
         now: now,
         workRule: rule,
-        reminderMode: ReminderMode.full,
       );
       expect(r.nextReminderAt, wed(16, 0),
           reason: 'available=0 → 不可行 → 间隔取下限 30 分钟，锚点 16:30 已越过截止');
@@ -316,7 +283,6 @@ void main() {
         tasks: [task(id: 'B', deadline: DateTime(2026, 10, 31, 18, 0))],
         now: sat,
         workRule: rule,
-        reminderMode: ReminderMode.full,
       );
       expect(r.nextReminderAt, DateTime(2026, 10, 31, 18, 0));
     });
@@ -327,7 +293,6 @@ void main() {
         tasks: [task(id: 'C', deadline: deadline)],
         now: now,
         workRule: rule,
-        reminderMode: ReminderMode.full,
       );
       final at = r.metricOf('C')!.nextReminderAt!;
       expect(at.isAfter(now), isTrue);

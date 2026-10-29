@@ -104,13 +104,12 @@ class Task {
   /// 规则是否设了响（决议 18：时点性提醒，到点走系统闹钟）。
   bool get routineRemind => metadata['routine_remind'] == 'true';
 
-  /// **逐任务提醒开关**（v0.9 决议 38，metadata `remind`）：标准模式下给**这一件**
-  /// 开提醒。它不改顺序，只改"出不出声"；完整模式下无意义（本来就全响）。
-  bool get remindEnabled => metadata['remind'] == 'true';
-
-  /// 这一件是否被**显式要求提醒**（提醒门槛的判据，§3.2 规则 B4）：
-  /// 逐任务开关，或周期实例的规则设了响——后者同样是人对这一件开了口。
-  bool get reminderRequested => remindEnabled || routineRemind;
+  /// **逐任务响铃开关**（metadata `remind`，界面上的『响铃』）：提醒照发，它只决定
+  /// 这条提醒走有声渠道还是静音渠道，不改顺序、不改提醒时刻。
+  ///
+  /// **缺键 = 静音**：旧版本只在人主动开提醒时才写 `true`，那个意图就照静音延续；
+  /// 静音只是没声音，横幅与通知栏照旧（§3.2 规则 B4）。
+  bool get ringEnabled => metadata['remind'] == 'true';
 
   /// 跳过标记（决议 23「跳过今天」）：值 = 被跳过的发生日 yyyy-MM-dd。
   String? get routineSkippedDate => metadata['routine_skipped'];
@@ -153,8 +152,9 @@ class Task {
   /// null = 没排过序（沉在末尾）。自动模式下原样保留、**不参与排序**。
   int? get manualOrder => int.tryParse(metadata['manual_order'] ?? '');
 
-  /// 已响过的那一次时点提醒（值 = 当时的 pointReminderAt ISO 串）。
-  /// 用于「只到点响一次」的幂等判定（改期/推迟后值不再匹配 → 会重新响）。
+  /// 已响过的**那一站**时点提醒（值 = 那一站的 ISO 串）。
+  /// 用于「每一站只响一次」的幂等判定：无排序档两站（`T − 提前量` / `T`）靠先后
+  /// 推进区分；改期后值不再匹配 → 会重新响。
   String? get pointFiredMark => metadata['point_fired'];
 
   /// 工作强度 = **'长期'**（v1.17，D18 / ui 决议 46）：三无任务的创建缺省。

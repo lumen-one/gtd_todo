@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../domain/schedule.dart';
 import '../../domain/task.dart';
-import '../app_controller.dart';
 import '../theme.dart';
 import '../widgets/task_tile.dart' show fmtTime;
 import 'date_pick.dart' show atDefaultHour;
@@ -75,7 +74,6 @@ const Object _keep = Object();
 /// 受控组件——[value] 由宿主持有，每次改动经 [onChanged] 交回去，
 /// 提交按钮、日期摘要这些就都能跟着状态走。
 class TaskFormBody extends StatelessWidget {
-  final AppController controller;
   final TaskFormValue value;
   final ValueChanged<TaskFormValue> onChanged;
   final TextEditingController titleCtrl;
@@ -106,11 +104,9 @@ class TaskFormBody extends StatelessWidget {
   /// 唯一入口，藏起工时行等于让人先切档。
   final bool showWorkStrength;
   final bool showImportance;
-  final bool showRemind;
 
   const TaskFormBody({
     super.key,
-    required this.controller,
     required this.value,
     required this.onChanged,
     required this.titleCtrl,
@@ -123,7 +119,6 @@ class TaskFormBody extends StatelessWidget {
     this.onSubmit,
     this.showWorkStrength = true,
     this.showImportance = true,
-    this.showRemind = true,
   });
 
   @override
@@ -255,16 +250,17 @@ class TaskFormBody extends StatelessWidget {
             ],
           ],
         ],
-        // 散件永不出声（§7.0），问"要不要吵你"没有意义。
-        if (!value.isLoose && showRemind)
+        // 散件永远不提醒（§7.0），问"响不响铃"没有意义。
+        // **三档都摆这一行**：提醒一律会发，它管的是声音，不管发不发。
+        if (!value.isLoose)
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            secondary: const Icon(Icons.notifications_active_outlined),
-            title: const Text('提醒我'),
+            secondary: Icon(value.remind
+                ? Icons.volume_up_outlined
+                : Icons.volume_off_outlined),
+            title: const Text('响铃'),
             subtitle: Text(
-              controller.reminderMode == ReminderMode.full
-                  ? '完整模式下该响的都会响'
-                  : '通知栏消息，关掉就不吵你',
+              '提醒一律发到通知栏（带横幅）；关掉只是不出声',
               style: theme.textTheme.bodySmall,
             ),
             value: value.remind,

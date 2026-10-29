@@ -34,9 +34,9 @@ String _mm(int minuteOfDay) {  final h = (minuteOfDay ~/ 60).toString().padLeft(
 /// 界面上只留半句（"谁排前后 / 出不出声"），细化解释不去挤窄屏——三档的差别
 /// 用户切一下就体会到了。
 String _modeHint(ScheduleMode mode) => switch (mode) {
-      ScheduleMode.full => '完整：排先后，该响的都响',
-      ScheduleMode.standard => '标准：排先后，只响开了提醒的',
-      ScheduleMode.manual => '无排序：不排，截止前提醒一次',
+      ScheduleMode.full => '完整：排先后，多问重要度',
+      ScheduleMode.standard => '标准：排先后，提醒按裕度节奏',
+      ScheduleMode.manual => '无排序：不排，截止前与截止各提醒一次',
     };
 
 /// 无排序档提前量的四个常用落点（分钟）：15 分 / 半小时 / 1 小时 / 2 小时。
@@ -287,7 +287,7 @@ class _SettingsPanelState extends State<SettingsPanel> {
             ],
           ),
         ),
-        // 无排序档的提前量（§7.1）：这一档不跑裕度，提醒时刻 = 截止 − 这个值。
+        // 无排序档的提前量（§7.1）：这一档不跑裕度，两站提醒 = 这个值与任务时刻。
         // 只在无排序档出现——另外两档按裕度节奏多次响，与它无关。
         if (s.scheduleMode.isManual)
           Padding(
@@ -295,7 +295,7 @@ class _SettingsPanelState extends State<SettingsPanel> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('截止前多久提醒',
+                Text('提前多久提醒（截止型与开始型同一套）',
                     style: Theme.of(context).textTheme.bodySmall),
                 const SizedBox(height: 6),
                 Wrap(
@@ -316,11 +316,12 @@ class _SettingsPanelState extends State<SettingsPanel> {
             ),
           ),
         // 全屏闹钟是安卓的通知渠道；桌面到点只有应用内弹窗（§7.2）。
+        // 它**覆盖**那一条本该走的通知栏投递，其余提醒照旧横幅 + 通知栏。
         if (_c.caps.alarmChannel)
           SwitchListTile(
             secondary: const Icon(Icons.alarm),
             title: const Text('闹钟模式'),
-            subtitle: const Text('只对开始型生效：到点全屏 + 持续响铃；其余走通知栏'),
+            subtitle: const Text('开始型到点用全屏闹钟覆盖通知栏；其余一律通知栏 + 横幅'),
             value: s.alarmMode,
             onChanged: (v) => _c.updateSettings(s.copyWith(alarmMode: v)),
           ),

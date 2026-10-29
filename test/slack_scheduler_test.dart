@@ -40,7 +40,6 @@ void main() {
       ],
       now: now,
       workRule: rule,
-      reminderMode: ReminderMode.full,
     );
     final m = r.metricOf('a')!;
     expect(m.slackMinutes, 60);
@@ -146,23 +145,13 @@ void main() {
     expect(r.nextReminderAt, isNull);
   });
 
-  test('提醒门槛：换算法不能绕过模式（v1.9，D15）', () {
+  test('换算法也一样不筛提醒：锚点即下一站', () {
     final tasks = [
       task(id: 'a', deadline: DateTime(2026, 10, 7, 18, 0), remaining: 60),
     ];
 
-    final standard = scheduler.schedule(tasks: tasks, now: now, workRule: rule);
-    expect(standard.metricOf('a')!.nextReminderAt, isNotNull,
-        reason: '锚点照算（今日清单准入用它）');
-    expect(standard.metricOf('a')!.reminderAt, isNull);
-    expect(standard.nextReminderAt, isNull, reason: '标准模式没有下一站');
-
-    final full = scheduler.schedule(
-      tasks: tasks,
-      now: now,
-      workRule: rule,
-      reminderMode: ReminderMode.full,
-    );
-    expect(full.nextReminderAt, DateTime(2026, 10, 7, 16, 30));
+    final r = scheduler.schedule(tasks: tasks, now: now, workRule: rule);
+    expect(r.metricOf('a')!.nextReminderAt, DateTime(2026, 10, 7, 16, 30));
+    expect(r.nextReminderAt, DateTime(2026, 10, 7, 16, 30));
   });
 }

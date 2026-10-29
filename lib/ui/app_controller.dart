@@ -580,9 +580,6 @@ class AppController extends ChangeNotifier {
   /// 调度模式（决议 43）：完整 / 标准 / 无排序（新装默认）。
   ScheduleMode get scheduleMode => _settings.scheduleMode;
 
-  /// 派生：给内核的提醒门槛（编辑表单的提示文案、清单头的状态句用它）。
-  ReminderMode get reminderMode => _settings.scheduleMode.reminderMode;
-
   /// 无排序 = 关掉算法排序（顺序全手动拖）。UI 用它决定拖拽是"定序"还是"插队"。
   bool get isManualSort => _settings.scheduleMode.isManual;
 

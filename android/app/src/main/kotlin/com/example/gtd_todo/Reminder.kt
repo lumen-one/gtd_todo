@@ -11,10 +11,29 @@ data class Reminder(
     val taskId: String,
     val title: String,
     val body: String?,
-    val alarmChannel: Boolean,
+    val channel: ReminderChannel,
     val fullScreen: Boolean,
     val actions: List<ReminderAction>,
 )
+
+/**
+ * 通知渠道三档（与 Dart 侧 `ReminderChannel` 同名同序）：
+ * - [RING] 有声 + 震动，IMPORTANCE_HIGH（横幅必现）；
+ * - [SILENT] 同样 IMPORTANCE_HIGH、横幅照弹，但没有声音与震动；
+ * - [ALARM] 全屏 + 持续响铃，只在设置页开了『闹钟模式』的时点提醒上用。
+ */
+enum class ReminderChannel {
+    RING, SILENT, ALARM;
+
+    companion object {
+        /** Dart 传的是枚举名（ring / silent / alarm）；认不出按有声走。 */
+        fun fromName(name: String?): ReminderChannel = when (name) {
+            "silent" -> SILENT
+            "alarm" -> ALARM
+            else -> RING
+        }
+    }
+}
 
 /** 通知按钮：id 回到 Dart（`done` / `snooze1h`），label 只用于显示。 */
 data class ReminderAction(val id: String, val label: String)
@@ -24,7 +43,7 @@ object ReminderExtras {
     const val TASK_ID = "taskId"
     const val TITLE = "title"
     const val BODY = "body"
-    const val ALARM_CHANNEL = "alarmChannel"
+    const val CHANNEL = "channel"
     const val FULL_SCREEN = "fullScreen"
     const val ACTION_IDS = "actionIds"
     const val ACTION_LABELS = "actionLabels"

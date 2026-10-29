@@ -2,36 +2,17 @@ import 'dart:math' as math;
 
 import 'task.dart';
 
-/// 提醒模式（ui-interaction.md §7.0、architecture.md D15）：
-///
-/// - [standard] **标准（默认）**：只排列不提醒——算法照常排出先后，但不给任务
-///   产出"下一站"；只有显式开了提醒的任务（metadata `remind`）例外；
-/// - [full] **完整**：现在的原方案——凡算法判定该响的都响。
-///
-/// 这是"**门槛**"不是"送达策略"：门槛决定**要不要**出声
-/// （`nextReminderAt` 为 null 就是不出声），送达策略（NotificationWindowRule）
-/// 决定出声时**什么时候**允许打扰；两者串联（D10 + D15）。
-enum ReminderMode {
-  standard,
-  full;
-
-  /// JSON/设置里的稳定写法（app 设置落盘用）。
-  static ReminderMode byName(String? name) => switch (name) {
-        'full' => ReminderMode.full,
-        _ => ReminderMode.standard,
-      };
-}
-
 /// **调度模式**（ui-interaction.md §7.0 / 决定卡 mode-as-information-depth）：
 /// 用户可见的**三档**，一次只能选一个——它们是**一条信息深度的谱系**：
 /// 每上一档多问一样属性，多换一种能力。
 ///
 /// - [manual] **无排序（新装默认）**：只问标题与日期。不跑调度算法，今日截止型组
-///   只收"今天到期"的、顺序由人拖（`manual_order`），提醒是截止前一次的时点提醒
-///   （`manual_lead_minutes`）。没有裕度、风险、不可行判定，也不做工时对账；
-/// - [standard] **标准**：问工时。算法排先后，但默认不出声——
-///   只有显式开了『提醒我』的那一件才响；
-/// - [full] **完整**：再问重要度（乘数进排序键），且算法判定该响的都响。
+///   只收"今天到期"的、顺序由人拖（`manual_order`），提醒是两站时点提醒
+///   （`T − manual_lead_minutes` 与 `T`）。没有裕度、风险、不可行判定，也不做工时对账；
+/// - [standard] **标准**：问工时。算法排先后，提醒按裕度节奏响；
+/// - [full] **完整**：再问重要度（乘数进排序键）。
+///
+/// 三档都**不筛提醒**：有时间的任务一律提醒，响不响是任务自己的 metadata `remind`。
 ///
 /// 三档都**不改任务数据**：档位是查询口径与算法入参，切档只重算，不迁移。
 enum ScheduleMode {
@@ -49,13 +30,6 @@ enum ScheduleMode {
         'manual' => ScheduleMode.manual,
         _ => ScheduleMode.standard,
       };
-
-  /// 映射成内核的**提醒门槛**：只有完整档放行，标准与无排序都是"只排列不提醒"。
-  ///
-  /// 无排序档的"每件都响"不在门槛里表达：它不走调度，提醒由 application 层的
-  /// 时点提醒链路给出（`TaskService.nextPointReminder` 对它不看门槛）。
-  ReminderMode get reminderMode =>
-      this == ScheduleMode.full ? ReminderMode.full : ReminderMode.standard;
 
   /// 无排序档：不跑调度、今日截止型组只认"今天到期"、顺序走手动序。
   bool get isManual => this == ScheduleMode.manual;
@@ -78,13 +52,6 @@ int compareManualOrder(Task a, Task b) {
   }
   return a.id.compareTo(b.id);
 }
-
-/// 该任务在 [mode] 下是否**允许出声**（architecture.md §3.2 规则 B4 的正典实现）。
-///
-/// 完整模式 = 恒真；标准模式 = 这一件被显式要求提醒过（[Task.reminderRequested]：
-/// metadata `remind`，或周期实例的规则设了响——那也是人对这一件开了口）。
-bool reminderAllowed(Task task, ReminderMode mode) =>
-    mode == ReminderMode.full || task.reminderRequested;
 
 /// 风险尺度默认值 τ：1 个工作日（480 工作分钟）的额外裕度把风险压到 1/e。
 const double defaultRiskScaleMinutes = 480;
@@ -197,12 +164,9 @@ class TaskMetric {
 
   /// **提醒锚点**：算法算出的"下一次该看它"的时刻（墙钟）；逾期为 null。
   ///
-  /// 它**不问模式**——"今天该看哪几件"是调度问题（今日清单准入用它），
-  /// "会不会出声"看 [reminds]（v1.9）。
+  /// 它只管"什么时候发"——响不响铃是任务自己的 metadata `remind`，在送达时
+  /// 挑渠道（`ReminderChannel` 的 ring / silent），不进派生指标。
   final DateTime? nextReminderAt;
-
-  /// 在当前提醒模式下，这件事**会不会出声**（提醒门槛，D15）。
-  final bool reminds;
 
   /// 本次锚定的提醒间隔（工作分钟）。
   final int? intervalMinutes;
@@ -216,12 +180,8 @@ class TaskMetric {
     required this.priority,
     required this.urgency,
     this.nextReminderAt,
-    this.reminds = false,
     this.intervalMinutes,
   });
-
-  /// 真正**会响**的时刻 = 门槛 ∩ 锚点；不出声 → null。
-  DateTime? get reminderAt => reminds ? nextReminderAt : null;
 }
 
 /// 展示/排序用的派生状态。注意 overdue 是派生事实，不要求写入存储。
@@ -236,10 +196,9 @@ class ScheduleResult {
   /// 当前最值得做的任务。
   final String? nextTaskId;
 
-  /// 全局**下一站会响的提醒**（最早的各任务 [TaskMetric.reminderAt]）。
+  /// 全局**下一站提醒**（最早的各任务 [TaskMetric.nextReminderAt]）。
   ///
-  /// 标准模式下通常为 null（没有任务被显式要求提醒，或开了提醒的都还没到点）——
-  /// 单闹钟、前台轮询、通知链路据此天然安静，不必各自判断模式（D15）。
+  /// 三档都产出；响不响在送达时才分（挑渠道），不在这里筛。
   final DateTime? nextReminderAt;
   final String? nextReminderTaskId;
 

@@ -51,7 +51,7 @@ class _FakeNotifications implements NotificationPort {
   Future<void> show(
     ReminderEvent event, {
     List<NotificationAction> actions = const [],
-    ReminderChannel channel = ReminderChannel.normal,
+    ReminderChannel channel = ReminderChannel.ring,
     bool fullScreen = false,
     ReminderDraft? draft,
   }) async {
@@ -193,9 +193,9 @@ void main() {
     expect(notifications.shownList, isEmpty);
   });
 
-  // 无排序档不跑调度（决定卡 mode-as-information-depth）：截止型任务的提醒是
-  // 时点型的"截止前一次"，所以它不吃通知时间段，也不按裕度节奏推下一轮。
-  test('无排序档只挂截止前那一次：即使落在静默段也原样响', () async {
+  // 无排序档不跑调度（决定卡 mode-as-information-depth）：提醒是两站时点型
+  // （提前一站 + 到点一站），所以它不吃通知时间段，也不按裕度节奏推下一轮。
+  test('无排序档先挂提前那一站：即使落在静默段也原样响', () async {
     await svc.updateScheduleMode(ScheduleMode.manual);
     const evening =
         NotificationWindowRule([NotificationWindow(19 * 60, 21 * 60)]);
@@ -248,7 +248,7 @@ void main() {
     expect(notifications.shownList, hasLength(1));
   });
 
-  test('无排序档：提前量越界 → 退到截止时刻（不退就彻底静默）', () async {
+  test('无排序档：提前站早于创建 → 整站不排，只挂截止站', () async {
     await svc.updateScheduleMode(ScheduleMode.manual);
     await svc.updateManualLead(60);
     await startDispatcher();

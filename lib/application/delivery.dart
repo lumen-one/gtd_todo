@@ -3,9 +3,15 @@ import '../domain/reminder.dart';
 /// 交付类插座（§4.2）：application 定义形状，平台适配器实现，组装点装配。
 /// 适配器无自主权——只执行"取消旧的、挂新的"，不得自行重排或补挂。
 
-/// 通知渠道：normal = 普通通知；alarm = 闹钟渠道（全屏 + 持续响铃，媒体静音压不住）。
-/// 只对时点性提醒生效（开始型到点 + 设了响的周期任务）；截止型的 Slack 软提醒永远 normal。
-enum ReminderChannel { normal, alarm }
+/// 通知渠道三档（`Notifier` 的三个原生渠道一一对应）：
+///
+/// - [ring]   **有声**：高优先级 + 声音 + 震动。高优先级 = 一定弹横幅（heads-up），
+///   这是提醒的默认形态；
+/// - [silent] **静音**：同样高优先级、横幅照弹，但没有声音与震动——任务 metadata
+///   `remind` 关掉时走这一条；
+/// - [alarm]**闹钟**：全屏 + 持续响铃（媒体静音压不住），只在设置页开了『闹钟模式』
+///   且这条是时点提醒时用，**覆盖**掉它本该走的那条通知栏投递。
+enum ReminderChannel { ring, silent, alarm }
 
 /// 平台权限（安卓为主）。被拒时调用方按 UI 文档 §11 降级。
 enum PermissionKind {
@@ -35,7 +41,7 @@ class ShownNotification {
   const ShownNotification({
     required this.event,
     this.actions = const [],
-    this.channel = ReminderChannel.normal,
+    this.channel = ReminderChannel.ring,
     this.fullScreen = false,
   });
 }
@@ -57,20 +63,20 @@ class ReminderDraft {
     required this.taskId,
     required this.title,
     this.body,
-    this.channel = ReminderChannel.normal,
+    this.channel = ReminderChannel.ring,
     this.fullScreen = false,
     this.actions = const [],
   });
 }
 
 abstract class NotificationPort {
-  /// 呈现一条提醒。安卓 = 系统通知（fullScreen 时走 full-screen intent）；
-  /// 桌面 = 应用内弹窗（经 [shown] 回流）。[draft] 提供标题/正文等交付内容，
+  /// 呈现一条提醒。安卓 = 系统通知（[ReminderChannel.alarm] 且 fullScreen 时走
+  /// full-screen intent）；桌面 = 应用内弹窗（经 [shown] 回流，渠道不参与渲染）。[draft] 提供标题/正文等交付内容，
   /// 系统通知实现（没法自己查任务）用它渲染文案。
   Future<void> show(
     ReminderEvent event, {
     List<NotificationAction> actions = const [],
-    ReminderChannel channel = ReminderChannel.normal,
+    ReminderChannel channel = ReminderChannel.ring,
     bool fullScreen = false,
     ReminderDraft? draft,
   });

@@ -47,7 +47,7 @@ class StreamNotificationPort implements NotificationPort {
   Future<void> show(
     ReminderEvent event, {
     List<NotificationAction> actions = const [],
-    ReminderChannel channel = ReminderChannel.normal,
+    ReminderChannel channel = ReminderChannel.ring,
     bool fullScreen = false,
     ReminderDraft? draft,
   }) async {

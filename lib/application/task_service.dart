@@ -32,19 +32,18 @@ class TaskService {
   /// **调度模式**（v1.12，决议 43）：**完整 / 标准 / 无排序**三档，装配点按设置
   /// 传进来（新装默认无排序）。
   ///
-  /// 它同时决定两件事：给内核的**提醒门槛**（[ScheduleMode.reminderMode]）与
-  /// 业务层的**清单顺序**（[ScheduleMode.isManual]）。设置页改动经装配点回调调
-  /// [updateScheduleMode]；模式只改查询口径与调度入参，**不动任何任务数据**。
+  /// 它只决定**清单顺序与统计口径**（[ScheduleMode.isManual]）以及提醒的算法来源
+  /// （跑不跑调度）。**不再筛提醒**：有时间的任务一律提醒，响不响是任务自己的
+  /// metadata `remind`。设置页改动经装配点回调调 [updateScheduleMode]；模式只改
+  /// 查询口径与调度入参，**不动任何任务数据**。
   ScheduleMode scheduleMode;
-
-  /// 给内核的提醒门槛（三档 → 标准/完整两档：无排序也是"只排列不提醒"）。
-  ReminderMode get reminderMode => scheduleMode.reminderMode;
 
   /// 是否关掉排序（今日截止型组改用手动序）。
   bool get isManualSort => scheduleMode.isManual;
 
-  /// **无排序档的提醒提前量**（分钟，§7.1）：这一档不跑公式，有截止的任务就在
-  /// `deadline − manualLeadMinutes` 响一次。只在这一档用，改它走 [updateManualLead]。
+  /// **无排序档的提醒提前量**（分钟，§7.1）：这一档不跑公式，每件有时间的任务
+  /// 在 `T − manualLeadMinutes` 与 `T` 各响一次。只在这一档用，改它走
+  /// [updateManualLead]。
   int manualLeadMinutes = 30;
 
   /// 可注入时钟：测试与仿真可以自由拨动时间。
@@ -122,7 +121,6 @@ class TaskService {
       tasks: _tasks,
       now: now(),
       workRule: workRule,
-      reminderMode: scheduleMode.reminderMode,
       anchors: _carriableAnchors(),
     );
     _rememberAnchors();
@@ -532,9 +530,8 @@ class TaskService {
     return updated;
   }
 
-  /// **逐任务提醒开关**（v1.9 决议 38）：在标准模式下让**这一件**出声（metadata
-  /// `remind`）。它**不改顺序**、不改其他字段；完整模式下开了也等于没开（本来就全响）。
-  /// 开始型（fixed）与周期实例也适用——时点性提醒走同一道门槛（D15）。
+  /// **逐任务响铃开关**（界面上的『响铃』）：写 metadata `remind`。提醒照发，它只
+  /// 决定这条提醒走有声渠道还是静音渠道——**不改顺序、不改时刻**，三档一样。
   Future<Task> setTaskReminder(String id,
       {required bool enabled, EventOrigin origin = EventOrigin.user}) async {
     final updated = _withMeta(_require(id), (m) {
@@ -642,19 +639,16 @@ class TaskService {
   // ---------- 提醒轮询 ----------
 
   /// 时点性提醒候选（决议 3/18）：开始型到点 + 设了响的周期实例；
-  /// **无排序档再加一类**——有截止的截止型任务，时刻 = `deadline − manualLeadMinutes`。
-  /// 已响过（point_fired 与当前时刻一致）与超过补响宽限的不再返回。
+  /// **无排序档换成两站**——截止型与开始型同一套，`T − manualLeadMinutes` 与 `T`。
+  /// 已响过那一站（`point_fired` 与它一致）与超过补响宽限的不再返回。
   ///
-  /// **v1.9：再过一道提醒门槛**（D15）——标准模式下只有被显式要求提醒的才出声。
-  /// 无排序档不看门槛：那一档没有逐件开关，每件有截止的都响一次（§7.0）。
+  /// **没有提醒门槛**：三档都提醒，响不响由送达时的渠道决定（`remind`）。
   PointReminder? nextPointReminder() {
     final current = now();
     final manual = scheduleMode.isManual;
     PointReminder? best;
     for (final t in _tasks) {
       if (t.isCompleted) continue;
-      // 提醒门槛（v1.9，D15）：标准模式下只有被显式要求提醒的任务才出声。
-      if (!manual && !reminderAllowed(t, reminderMode)) continue;
       final at = manual ? _manualReminderAt(t) : t.pointReminderAt;
       if (at == null) continue;
       if (t.pointFiredMark == at.toIso8601String()) continue; // 只到点响一次
@@ -666,34 +660,54 @@ class TaskService {
     return best;
   }
 
-  /// 无排序档的提醒时刻：截止型 = `deadline − manualLeadMinutes`（墙钟算，
-  /// 不吃通知时间段，也不换成工作分钟）；开始型与设了响的周期实例照旧到点响。
-  /// 被推迟到更晚时取推迟那一刻——那是用户意图，不是软件安排。
+  /// 无排序档的提醒时刻：**两站**，截止型与开始型同一套（§3.1）。
+  ///
+  /// 站 = `[T − manualLeadMinutes, T]`，`T` 取任务自己的时刻（两种类型都存在
+  /// `deadline` 里）。规则：
+  /// - 已响过的那一站写在 metadata `point_fired`，**按先后推进**——`fired` 之前的
+  ///   站都算响过，下一个更大的站才是候选；
+  /// - **推迟优先**：`snoozedUntil` 晚于当前候选站时，就把这一站的时刻挪到推迟到
+  ///   那一刻。推迟到 `T` 之后时，`T` 那一站自然被越过（再也找不到更大的站）——
+  ///   这正是"推迟之后 T 不再单独响"；
+  /// - **提前那一站越界就不排**：`T − 提前量` 早于这件任务出生（进提前量窗口里才
+  ///   建的单、或提前量刚被调大），这一站整个不排，只留 `T`。判据必须是 `created`
+  ///   而不是"现在"：用 now 会让同一站随"什么时候重算"一路漂，响完再重算就再响
+  ///   一次——这比不响更难查。
   DateTime? _manualReminderAt(Task t) {
-    final point = t.pointReminderAt;
-    if (point != null) return point;
-    if (t.type != TaskType.flex || t.isLongTerm) return null;
-    final d = t.deadline;
-    if (d == null) return null;
-    final lead = d.subtract(Duration(minutes: manualLeadMinutes));
+    final stations = _manualStations(t);
+    if (stations.isEmpty) return null;
+    final firedAt = DateTime.tryParse(t.pointFiredMark ?? '');
+    DateTime? next;
+    for (final at in stations) {
+      if (firedAt != null && !at.isAfter(firedAt)) continue;
+      next = at;
+      break;
+    }
+    if (next == null) return null;
     final s = t.snoozedUntil;
-    if (s != null && s.isAfter(lead)) return s;
-    // **越界退到截止**（§3.1）：`截止 − 提前量` 早于这件任务出生（进提前量窗口
-    // 里才建的单、或提前量刚被调大），就退到截止那一刻。不退这一下，这件要么
-    // 被当成"错过太久"整个丢掉、到截止也不响，要么落进补响宽限里当场炸一条。
-    //
-    // 判据必须是 `created` 而不是"现在"：用 now 会让同一个时刻随"什么时候重算"
-    // 一路漂（17:30 响完，18:00 的一次重算漂到 18:00），`point_fired` 对不上就
-    // 再响一次——这比不响更难查。
-    return lead.isAfter(t.created) ? lead : d;
+    if (s != null && s.isAfter(next)) return s;
+    return next;
+  }
+
+  /// 无排序档的站表（升序）：截止型与开始型都有 `T − 提前量` 与 `T` 两站；
+  /// 周期实例只有 `T` 一站、且**规则设了响才排**（规则自己就是"到点响一次"，
+  /// 不吃全局提前量）；散件（无截止）与'长期'任务不排站。
+  List<DateTime> _manualStations(Task t) {
+    final d = t.deadline;
+    if (d == null) return const [];
+    if (t.type == TaskType.routine) return t.routineRemind ? [d] : const [];
+    if (t.isLongTerm) return const [];
+    final lead = d.subtract(Duration(minutes: manualLeadMinutes));
+    return [if (lead.isAfter(t.created)) lead, d];
   }
 
   /// 有没有"snooze 已到期、但状态还挂着 snoozed"的任务（A4 的定时触点）。
   ///
   /// `_reload` 里写回 active，而 `_reload` 只由 `refreshSchedule` 调；
-  /// 标准档下 `lastSchedule.nextReminderAt` 恒为 null，`pollReminder` 会提前
-  /// return，永远走不到那条路——被推迟的件就卡在 snoozed 里：不进清单、
-  /// 不参与排序、也不再提醒。轮询是唯一不依赖"别的事件"的发现方式。
+  /// 没有任务有锚点时（全散件）`lastSchedule.nextReminderAt` 为 null，
+  /// `pollReminder` 会提前 return，走不到那条写回 active 的路——被推迟的件就卡在
+  /// snoozed 里：不进清单、不参与排序、也不再提醒。轮询是唯一不依赖"别的事件"的
+  /// 发现方式。
   bool get hasExpiredSnooze {
     final current = now();
     for (final t in _tasks) {
@@ -713,8 +727,8 @@ class TaskService {
   /// 到点则产出 ReminderEvent 并重锚；未到点返回 null。
   /// 绝对不要在这里无条件 refreshSchedule（C2）。
   ///
-  /// 两种提醒都已过**门槛**（D15）：时点提醒在 [nextPointReminder] 里过滤，
-  /// 软提醒取 `ScheduleResult.nextReminderAt`（那是"会响的下一站"，标准模式下通常为 null）。
+  /// 两种提醒都不筛：时点提醒取 [nextPointReminder]（最早那一站），软提醒取
+  /// `ScheduleResult.nextReminderAt`（最早锚点）。响不响留给送达时挑渠道。
   ///
   /// **不可重入**：上一次还在跑（里面有 await 读盘/落盘）时，这一次直接返回 null
   /// ——少发一条，好过同一件事弹两次。
@@ -729,11 +743,10 @@ class TaskService {
   }
 
   Future<ReminderEvent?> _pollReminder() async {
-    // A4 先跑：到期的 snooze 要写回 active 并重锚，否则它既不在清单里、
-    // 也不在"下一站"里，没有任何东西会把它叫醒。
-    if (hasExpiredSnooze) {
-      await refreshSchedule(origin: EventOrigin.system);
-    }
+    // **时点提醒先判、A4 后跑**：无排序档的"推迟"就是这一件的下一站，
+    // 而 A4 会把到期的 snooze 连 `snoozedUntil` 一起清掉——先清就再也算不出
+    // 那一站，推迟到点那一下会被悄悄吞掉。交付完写下的 `point_fired` 落在
+    // 推迟时刻上，A4 随后清掉 snooze，`T` 那一站自然被越过（推迟优先）。
     final current = now();
     final point = nextPointReminder();
     if (point != null && !point.at.isAfter(current)) {
@@ -752,6 +765,12 @@ class TaskService {
         kind: ReminderKind.point,
         schedule: before,
       );
+    }
+
+    // A4：到期的 snooze 写回 active 并重锚，否则它既不在清单里、也不在"下一站"里，
+    // 没有任何东西会把它叫醒。放在时点提醒之后，理由见本方法开头。
+    if (hasExpiredSnooze) {
+      await refreshSchedule(origin: EventOrigin.system);
     }
 
     final s = lastSchedule;

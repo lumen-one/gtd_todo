@@ -66,7 +66,6 @@ class SlackScheduler implements Scheduler {
     required List<Task> tasks,
     required DateTime now,
     required WorkTimeRule workRule,
-    ReminderMode reminderMode = ReminderMode.standard,
     Map<String, DateTime> anchors = const {},
   }) {
     final metrics = <TaskMetric>[];
@@ -145,7 +144,6 @@ class SlackScheduler implements Scheduler {
         priority: slackRisk(slack) * (task.importance ?? 3),
         urgency: urgency,
         nextReminderAt: nextReminderAt,
-        reminds: schedulable && reminderAllowed(task, reminderMode),
         intervalMinutes: interval,
       );
       metrics.add(metric);
@@ -177,11 +175,11 @@ class SlackScheduler implements Scheduler {
       }
     }
 
-    // 下一站 = **会响**的提醒里最早的那个（锚点 ∩ 门槛，D15）；标准模式下通常没有。
+    // 下一站 = 各任务锚点里最早的那个。
     DateTime? nextReminderAt;
     String? nextReminderTaskId;
     for (final m in ordered) {
-      final at = m.reminderAt;
+      final at = m.nextReminderAt;
       if (at != null &&
           (nextReminderAt == null || at.isBefore(nextReminderAt))) {
         nextReminderAt = at;
