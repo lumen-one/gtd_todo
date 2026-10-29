@@ -1,8 +1,12 @@
 /// 今日编排（ui-interaction.md §6.11；存储格式见 docs/formats/plan.md）。
 ///
 /// 编排与任务**不相交**：一条编排不是 `Task`——没有 id、没有完成态、不进调度、
-/// 不占工时、不响提醒。它只是"今天打算几点做什么"的一张纸，和主线同族：一个文件
-/// 装全部日子，正文就是数据，应用保存时按模型重写。
+/// 不占工时。它只是"今天打算几点做什么"的一张纸，和主线同族：一个文件装全部日子，
+/// 正文就是数据，应用保存时按模型重写。
+///
+/// 到点提醒是这层纸唯一伸出去的手（决定卡 2026-10-29-plan-reminder）：条目到点发一条
+/// 静音消息，但**不回写任何状态**——[PlanReminder.id] 只在单闹钟那一趟里认"这一站是
+/// 谁"，不落盘，条目也不会因此长出完成态或推迟。
 library;
 
 /// 取当天零点（编排按"天"分段）。
@@ -93,4 +97,35 @@ List<PlanEntry> sortPlanEntries(List<PlanEntry> entries) {
     timed[j + 1] = entry;
   }
   return [...timed, ...untimed];
+}
+
+/// 编排到点提醒的 id 前缀：单闹钟与通知按它区分"这一站是条目还是任务"。
+///
+/// 条目本身没有 id（[PlanEntry] 只有时刻 + 标题），这个串是**临时**的：只在挂闹钟那一趟
+/// 里认人，不落盘、不进文件。
+const String planReminderPrefix = 'plan|';
+
+/// `plan|2026-10-29|870` = 那一天那一刻的站点。**按分钟**：同一分钟的多条只响最早那条，
+/// 所以同一分钟的条目共用一个站点（[panels/plan.md](../../docs/panels/plan.md)『到点提醒』）。
+String planReminderId(DateTime day, int minutesOfDay) =>
+    '$planReminderPrefix${planDayKey(day)}|$minutesOfDay';
+
+bool isPlanReminderId(String id) => id.startsWith(planReminderPrefix);
+
+/// 一条会到点响的编排条目（给 `ReminderDispatcher` 的第三个提醒源）。
+///
+/// 只排**未来**的时刻：过点即作废、不补响，所以它不像任务的 `point_fired` 那样需要幂等
+/// 标记（[plan_service](../application/plan_service.dart) 的 `nextReminder`）。
+class PlanReminder {
+  /// [planReminderId] 算出来的站点 id。
+  final String id;
+
+  final DateTime at;
+
+  final String title;
+
+  const PlanReminder({required this.id, required this.at, required this.title});
+
+  @override
+  String toString() => 'PlanReminder($id, $title)';
 }

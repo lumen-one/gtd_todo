@@ -145,7 +145,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // 六条约 230dp，超过框高上限（176）：框内自己滚，不再把整页撑开。
-    final box = find.byType(SingleChildScrollView);
+    final box = find.byKey(const ValueKey('planCandidates'));
     expect(box, findsOneWidget);
     final boxed = tester
         .state<ScrollableState>(
@@ -163,6 +163,27 @@ void main() {
     await tester.pumpAndSettle();
     expect(boxed.pixels, greaterThan(0));
     expect(timeline.pixels, timelineBefore);
+  });
+
+  // 曾经这里带一个"最多六条"：挂起组排在最前，挂起件一到六件，池子里的任务就再也
+  // 进不了候选表——看着像"候选里只有挂起的任务"（panels/plan.md『添加、拖动、编辑』）。
+  testWidgets('候选不被挂起件吃满：滚到框底能看到池子里的任务', (tester) async {
+    final c = makeController();
+    for (var i = 0; i < 7; i++) {
+      final t = await c.createTask(title: '挂起的长期任务 $i');
+      await c.setInProgress(t.id, enabled: true);
+    }
+    await c.createTask(title: '写方案');
+    await pumpOverlay(tester, c);
+    await tester.tap(find.text('添加一项'));
+    await tester.pumpAndSettle();
+
+    // 前四条半被挂起件占着，池子那一件在框底。
+    expect(find.text('写方案'), findsNothing);
+    await tester.drag(
+        find.byKey(const ValueKey('planCandidates')), const Offset(0, -240));
+    await tester.pumpAndSettle();
+    expect(find.text('写方案'), findsOneWidget);
   });
 
   testWidgets('快捷添加：输入框里的字用来筛候选', (tester) async {

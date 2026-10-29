@@ -1,10 +1,13 @@
+import 'dart:async';
+
 import '../domain/plan.dart';
 import '../repository/plan_repository.dart';
 
 /// 今日编排的应用服务（ui-interaction.md §6.11）。
 ///
 /// **与 TaskService 完全独立**：编排条目不是任务，这里不重锚调度、不发领域事件、
-/// 不碰 `.gtd/`。它只做三件事：读整份 `编排.md`、改一天、整份写回。
+/// 不碰 `.gtd/`。它只做三件事：读整份 `编排.md`、改一天、整份写回；外加一件只读的事——
+/// 给单闹钟递"下一条到点的条目"（[nextReminder]）。
 ///
 /// 每个命令都是"**先读盘 → 改那一天 → 整份写回**"：两个引擎（应用内 / 悬浮窗）
 /// 可能同时写同一个文件，读一遍再改能把"另一个引擎刚写的别的日子"带上，不至于被
@@ -14,7 +17,14 @@ class PlanService {
 
   List<DayPlan> _days = const [];
 
+  /// 编排变了（读盘 / 任何命令之后）。单闹钟协调者据此重挂下一站——它不认识编排，
+  /// 只认这个信号（决定卡 2026-10-29-plan-reminder）。
+  final _changes = StreamController<void>.broadcast();
+
   PlanService({required this.repo});
+
+  /// 变更信号（广播；没有监听者时也不会攒）。
+  Stream<void> get changes => _changes.stream;
 
   /// 解析告警（诊断用）。
   List<String> get warnings => repo.warnings;
@@ -25,6 +35,7 @@ class PlanService {
   /// 读盘（启动 / 文件变更 / 回前台时调；幂等）。
   Future<void> load() async {
     _days = _sort(await repo.loadAll());
+    _notifyChanged();
   }
 
   /// 某一天的条目；没有编排 → 空表。
@@ -34,6 +45,32 @@ class PlanService {
       if (planDayKey(d.day) == key) return d.entries;
     }
     return const [];
+  }
+
+  /// 下一条到点的条目：**严格晚于 [now]** 的最早一条；没有 → null。
+  ///
+  /// **只排未来**是这一源的全部幂等机制：响过的条目自然落在过去，重排时再也挑不到它，
+  /// 所以 `编排.md` 不需要"已响"标记（代价：错过不补响，登记在 arch §11）。
+  /// 同一分钟有多条时取文件里的第一条——它们的 [PlanReminder.id] 相同，站点只有一个。
+  PlanReminder? nextReminder(DateTime now) {
+    PlanReminder? best;
+    for (final d in _days) {
+      final day = planDay(d.day);
+      for (final e in d.entries) {
+        final m = e.minutesOfDay;
+        if (m == null) continue;
+        final at = DateTime(day.year, day.month, day.day, m ~/ 60, m % 60);
+        if (!at.isAfter(now)) continue;
+        if (best == null || at.isBefore(best.at)) {
+          best = PlanReminder(
+            id: planReminderId(day, m),
+            at: at,
+            title: e.title,
+          );
+        }
+      }
+    }
+    return best;
   }
 
   /// 追加一条：按时刻归位（同刻的排在已有那几条之后）。
@@ -91,6 +128,11 @@ class PlanService {
     final sorted = _sort(next);
     await repo.saveAll(sorted);
     _days = sorted;
+    _notifyChanged();
+  }
+
+  void _notifyChanged() {
+    if (!_changes.isClosed) _changes.add(null);
   }
 
   /// 空标题的条目直接丢掉（输入框里按了回车又没写字的场景）。

@@ -56,6 +56,7 @@ class StreamNotificationPort implements NotificationPort {
       actions: actions,
       channel: channel,
       fullScreen: fullScreen,
+      draft: draft,
     ));
   }
 

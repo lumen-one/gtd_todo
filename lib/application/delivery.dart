@@ -38,11 +38,16 @@ class ShownNotification {
   final ReminderChannel channel;
   final bool fullScreen;
 
+  /// 交付内容的定稿（标题 / 正文 / 渠道 / 按钮）。**编排条目的提醒只有它有标题**：
+  /// 事件里的 id 不是任务，UI 查不到人，渲染只能照这份草案来。
+  final ReminderDraft? draft;
+
   const ShownNotification({
     required this.event,
     this.actions = const [],
     this.channel = ReminderChannel.ring,
     this.fullScreen = false,
+    this.draft,
   });
 }
 

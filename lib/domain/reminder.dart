@@ -12,19 +12,24 @@ enum ReminderKind { soft, point }
 class ReminderEvent {
   final DateTime firedAt;
 
-  /// 本次提醒的目标任务（正典：消费方不再从 schedule 里猜）。
+  /// 本次提醒的目标（正典：消费方不再从 schedule 里猜）。任务 = `task.id`；
+  /// 编排条目 = [plan.dart](plan.dart) 里的站点 id（`plan|2026-10-29|870`），
+  /// 它不对应任何任务，查不到是正常的。
   final String taskId;
 
   final ReminderKind kind;
 
   /// 触发这一次的调度结果快照（重锚之前的那份）；重锚本身由
   /// TaskService.pollReminder 内部完成。
-  final ScheduleResult schedule;
+  ///
+  /// **编排条目没有调度结果**（它不进调度），那一源给的提醒事件这里为 null——
+  /// 消费方只认 [taskId] 与 [kind]，不必为它编一份空快照。
+  final ScheduleResult? schedule;
 
   const ReminderEvent({
     required this.firedAt,
     required this.taskId,
-    required this.schedule,
+    this.schedule,
     this.kind = ReminderKind.soft,
   });
 }

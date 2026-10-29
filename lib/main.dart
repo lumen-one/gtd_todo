@@ -11,6 +11,7 @@ import 'application/reminder_dispatcher.dart';
 import 'application/routine_service.dart';
 import 'application/shell_capabilities.dart';
 import 'application/task_service.dart';
+import 'domain/plan.dart';
 import 'domain/time_context.dart';
 import 'platform/android_adapters.dart';
 import 'platform/app_adapters.dart';
@@ -159,6 +160,9 @@ Future<void> main() async {
     service: service,
     alarm: alarm,
     notifications: notifications,
+    // 编排是第三个提醒源：条目到点发一条静音消息（决定卡 2026-10-29-plan-reminder）。
+    // 只挂主引擎——悬浮引擎没有自己的一份闹钟。
+    plans: planService,
     windows: NotificationWindowRule.defaultRule,
   );
 
@@ -172,7 +176,13 @@ Future<void> main() async {
           event['taskId'] as String? ?? '',
         );
       case 'notificationTap':
-        controller.locateTask(event['taskId'] as String? ?? '');
+        final tapped = event['taskId'] as String? ?? '';
+        if (isPlanReminderId(tapped)) {
+          // 编排条目没有任务 id，按任务定位只会得到"已删除"。
+          controller.openPlanFromNotification();
+        } else {
+          controller.locateTask(tapped);
+        }
       case 'overlayHandleOpened':
         // 悬浮面板已就地展开（系统级面板）；这里的旧路径只在原生降级时才用。
         controller.requestOpenPanel();

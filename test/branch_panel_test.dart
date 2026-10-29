@@ -136,7 +136,7 @@ void main() {
     await tester.tap(find.text('添加任务'));
     await tester.pumpAndSettle();
 
-    final box = find.byType(SingleChildScrollView);
+    final box = find.byKey(const ValueKey('branchCandidates'));
     expect(box, findsOneWidget);
     final boxed = tester
         .state<ScrollableState>(

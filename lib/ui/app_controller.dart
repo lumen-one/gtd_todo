@@ -20,7 +20,6 @@ import '../domain/branch.dart';
 import '../domain/event.dart';
 import '../domain/mainline.dart';
 import '../domain/plan.dart';
-import '../domain/reminder.dart';
 import '../domain/routine.dart';
 import '../domain/schedule.dart';
 import '../domain/task.dart';
@@ -108,7 +107,9 @@ class AppController extends ChangeNotifier {
   /// 不能跟着每次设置保存都推一遍。
   final void Function(WorkTimeRule rule)? onWorkRuleChanged;
 
-  ReminderEvent? _lastReminder;
+  /// 最近一次要弹出来的提醒。**存整个回流对象**（不只是事件）：编排条目的 id
+  /// 不是任务，UI 查不到人，只能照草案的标题渲染（`ShownNotification.draft`）。
+  ShownNotification? _lastReminder;
   StreamSubscription<DomainEvent>? _sub;
   StreamSubscription<DomainEvent>? _routineSub;
   StreamSubscription<ShownNotification>? _notifSub;
@@ -133,7 +134,7 @@ class AppController extends ChangeNotifier {
   String? _settingsFocusRoutineId;
   int _panelCloseRequest = 0;
 
-  ReminderEvent? get lastReminder => _lastReminder;
+  ShownNotification? get lastReminder => _lastReminder;
 
   AppSettings get settings => _settings;
 
@@ -496,7 +497,7 @@ class AppController extends ChangeNotifier {
     _routineSub = routineService?.events.listen((_) => notifyListeners());
     // 桌面：NotificationPort 的"托盘"就是本应用窗口，回流渲染成弹窗。
     _notifSub = notificationSurface?.listen((shown) {
-      _lastReminder = shown.event;
+      _lastReminder = shown;
       notifyListeners();
     });
   }
@@ -615,7 +616,7 @@ class AppController extends ChangeNotifier {
       await syncRoutineInstancesIfNewDay();
       final event = await service.pollReminder();
       if (event != null) {
-        _lastReminder = event;
+        _lastReminder = ShownNotification(event: event);
         notifyListeners();
       }
     } finally {
@@ -1286,6 +1287,16 @@ class AppController extends ChangeNotifier {
       _panelOpenRequest++;
       _pendingNotice = '已定位到「${task.title}」';
     }
+    notifyListeners();
+  }
+
+  /// 点编排条目的提醒 → 展开面板并落到编排页的今天。
+  ///
+  /// 不走 [locateTask]：条目没有任务 id，按任务去查只会得到"已删除"。
+  void openPlanFromNotification() {
+    _openRequestLocates = false;
+    _panelOpenRequest++;
+    openPlan();
     notifyListeners();
   }
 

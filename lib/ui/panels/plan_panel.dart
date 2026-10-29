@@ -2,8 +2,8 @@ import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 
+import '../../application/today_view.dart';
 import '../../domain/plan.dart';
-import '../../domain/task.dart';
 import '../app_controller.dart';
 import '../theme.dart';
 import 'branch_panel.dart';
@@ -280,10 +280,8 @@ class _DayTimelineState extends State<_DayTimeline> {
   static const double _railGap = 16;
   static const double _railX = _timeWidth + 8;
 
-  /// 候选最多几条（再多就该用输入框筛了，面板也就那么高）。
-  static const int _maxCandidates = 6;
-
-  /// 候选框的高度上限（约四条半）：六条在窄面板里装不下，超过就在框里自己滚。
+  /// 候选框的高度上限（约四条半）。候选**不截断**：超出就在框里自己滚，靠输入框筛字，
+  /// 而不是砍掉排在后面的任务。
   static const double _candidateMaxHeight = 176;
 
   /// 新条目默认离开上一条一小时。
@@ -696,36 +694,27 @@ class _DayTimelineState extends State<_DayTimeline> {
     );
   }
 
-  /// 快捷添加的候选：今日清单（按清单顺序）+ 任务池（计划段、散件段）的标题。
+  /// 快捷添加的候选：**今日清单**（挂起 / 逾期 / 开始型 / 截止型 / 例行 / 被挑 / 散件）
+  /// 与**任务池**（计划段、散件段）的任务标题，顺序由 [arrangeCandidates] 给。
   ///
   /// **只借标题文字**（『贴的是文字，不是引用』）：点击后的编排条目与任务没有任何
-  /// 关系，所以这里也按标题去重——同名任务贴一次就够。输入框里的字按包含匹配筛，最多
-  /// [_maxCandidates] 条。
+  /// 关系，所以这里也按标题去重——同名任务贴一次就够。输入框里的字按包含匹配筛。
+  /// **不设条数上限**：框高封顶约四条半、多出来的在框里自己滚；截断只会让"挂起的那几件"
+  /// 把别人挤出去（[panels/plan.md](../../docs/panels/plan.md)『添加、拖动、编辑』）。
   List<String> _candidates() {
-    final controller = widget.controller;
-    final today = controller.todayView;
-    final pool = controller.poolView;
-    final ordered = <Task>[
-      ...today.inProgress,
-      ...today.overdue,
-      ...today.fixed,
-      ...today.pinned,
-      ...today.flex,
-      ...today.routines,
-      if (today.picked != null) today.picked!,
-      ...today.loose,
-      ...pool.plan,
-      ...pool.loose,
-    ];
-    final query = _draft.text.trim().toLowerCase();
+    final ordered = filterCandidates(
+      arrangeCandidates(
+        today: widget.controller.todayView,
+        pool: widget.controller.poolView,
+      ),
+      _draft.text,
+    );
     final seen = <String>{};
     final out = <String>[];
     for (final task in ordered) {
       final title = task.title.trim();
       if (title.isEmpty || !seen.add(title)) continue;
-      if (query.isNotEmpty && !title.toLowerCase().contains(query)) continue;
       out.add(title);
-      if (out.length >= _maxCandidates) break;
     }
     return out;
   }
@@ -750,42 +739,43 @@ class _DayTimelineState extends State<_DayTimeline> {
         // 就会被当成要退出覆盖页。
         child: NotificationListener<ScrollNotification>(
           onNotification: (_) => true,
-          child: SingleChildScrollView(
+          // 懒构建：候选是"全部任务"，几百条也不该在展开那一帧全建出来。
+          child: ListView.builder(
+            key: const ValueKey('planCandidates'),
+            shrinkWrap: true,
             padding: EdgeInsets.zero,
             physics: const ClampingScrollPhysics(),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                for (final title in items)
-                  InkWell(
-                    borderRadius: BorderRadius.circular(10),
-                    onTap: () => _pickCandidate(title),
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
-                      child: Row(
-                        children: [
-                          Icon(Icons.add, size: 15, color: hint),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.bodySmall,
-                            ),
-                          ),
-                          if (planned.contains(title))
-                            Text(
-                              '已排',
-                              style: theme.textTheme.labelSmall
-                                  ?.copyWith(color: AppColors.accent),
-                            ),
-                        ],
+            itemCount: items.length,
+            itemBuilder: (context, i) {
+              final title = items[i];
+              return InkWell(
+                borderRadius: BorderRadius.circular(10),
+                onTap: () => _pickCandidate(title),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
+                  child: Row(
+                    children: [
+                      Icon(Icons.add, size: 15, color: hint),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall,
+                        ),
                       ),
-                    ),
+                      if (planned.contains(title))
+                        Text(
+                          '已排',
+                          style: theme.textTheme.labelSmall
+                              ?.copyWith(color: AppColors.accent),
+                        ),
+                    ],
                   ),
-              ],
-            ),
+                ),
+              );
+            },
           ),
         ),
       ),

@@ -3,13 +3,16 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gtd_todo/application/delivery.dart';
 import 'package:gtd_todo/application/notification_window.dart';
+import 'package:gtd_todo/application/plan_service.dart';
 import 'package:gtd_todo/application/reminder_dispatcher.dart';
 import 'package:gtd_todo/application/task_service.dart';
+import 'package:gtd_todo/domain/plan.dart';
 import 'package:gtd_todo/domain/reminder.dart';
 import 'package:gtd_todo/domain/schedule.dart';
 import 'package:gtd_todo/domain/task.dart';
 import 'package:gtd_todo/domain/time_context.dart';
 import 'package:gtd_todo/platform/desktop_adapters.dart';
+import 'package:gtd_todo/repository/memory_plan_repository.dart';
 import 'package:gtd_todo/repository/memory_task_repository.dart';
 import 'package:gtd_todo/scheduler/slack_scheduler.dart';
 
@@ -60,6 +63,7 @@ class _FakeNotifications implements NotificationPort {
       actions: actions,
       channel: channel,
       fullScreen: fullScreen,
+      draft: draft,
     ));
   }
 
@@ -92,16 +96,109 @@ void main() {
 
   Future<ReminderDispatcher> startDispatcher({
     NotificationWindowRule windows = NotificationWindowRule.defaultRule,
+    PlanService? plans,
   }) async {
     final d = ReminderDispatcher(
       service: svc,
       alarm: alarm,
       notifications: notifications,
+      plans: plans,
       windows: windows,
     );
     await d.start();
     return d;
   }
+
+  /// 编排（第三个提醒源）：一天里排几条，挂进分发器。
+  Future<PlanService> startPlans(List<PlanEntry> entries, {int day = 7}) async {
+    final plans = PlanService(
+      repo: MemoryPlanRepository([
+        DayPlan(day: DateTime(2026, 10, day), entries: entries),
+      ]),
+    );
+    await plans.load();
+    return plans;
+  }
+
+  test('编排条目占站点：准点、静音、没有按钮（不吃通知时间段）', () async {
+    // 晚间窗口 19:00–21:00：软提醒会被顺延，编排条目原样响。
+    const evening =
+        NotificationWindowRule([NotificationWindow(19 * 60, 21 * 60)]);
+    final plans = await startPlans(const [
+      PlanEntry(title: '项目评审', minutesOfDay: 17 * 60),
+    ]);
+    await startDispatcher(windows: evening, plans: plans);
+
+    await Future<void>.delayed(Duration.zero);
+    expect(alarm.scheduledAt, DateTime(2026, 10, 7, 17, 0));
+    expect(isPlanReminderId(alarm.taskId!), isTrue);
+    expect(alarm.draft!.title, '项目评审');
+    expect(alarm.draft!.body, '编排 10-07 17:00');
+    expect(alarm.draft!.channel, ReminderChannel.silent);
+    expect(alarm.draft!.actions, isEmpty, reason: '能推迟的是任务，编排只排不做');
+  });
+
+  test('编排到点 → 一条静音消息，然后排下一条', () async {
+    final plans = await startPlans(const [
+      PlanEntry(title: '项目评审', minutesOfDay: 17 * 60),
+      PlanEntry(title: '写周报', minutesOfDay: 18 * 60),
+    ]);
+    await startDispatcher(plans: plans);
+    await Future<void>.delayed(Duration.zero);
+
+    now = DateTime(2026, 10, 7, 17, 0);
+    alarm.fire();
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    expect(notifications.shownList, hasLength(1));
+    final shown = notifications.shownList.first;
+    expect(shown.channel, ReminderChannel.silent);
+    expect(shown.actions, isEmpty);
+    expect(shown.draft!.title, '项目评审', reason: '条目没有任务可查，只能照草案渲染');
+    expect(alarm.scheduledAt, DateTime(2026, 10, 7, 18, 0),
+        reason: '响完这一站就排下一条');
+  });
+
+  test('编排与任务撞在同一刻：编排占站点，到点两条都弹', () async {
+    final meeting = await svc.createTask(
+      title: '例会',
+      type: TaskType.fixed,
+      deadline: DateTime(2026, 10, 7, 17, 0),
+    );
+    final plans = await startPlans(const [
+      PlanEntry(title: '项目评审', minutesOfDay: 17 * 60),
+    ]);
+    await startDispatcher(plans: plans);
+    await Future<void>.delayed(Duration.zero);
+
+    final planId = alarm.taskId!;
+    expect(isPlanReminderId(planId), isTrue, reason: '同一刻编排先占站点');
+
+    now = DateTime(2026, 10, 7, 17, 0);
+    alarm.fire();
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    final ids = notifications.shownList.map((s) => s.event.taskId).toList();
+    expect(ids, containsAll(<String>[planId, meeting.id]));
+  });
+
+  test('编排条目改时刻 → 重挂下一站（变更信号）', () async {
+    final plans = await startPlans(const [
+      PlanEntry(title: '项目评审', minutesOfDay: 17 * 60),
+    ]);
+    await startDispatcher(plans: plans);
+    await Future<void>.delayed(Duration.zero);
+    expect(alarm.scheduledAt, DateTime(2026, 10, 7, 17, 0));
+
+    await plans.addEntry(
+      DateTime(2026, 10, 7),
+      const PlanEntry(title: '提前的评审', minutesOfDay: 16 * 60 + 30),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    expect(alarm.scheduledAt, DateTime(2026, 10, 7, 16, 30));
+    expect(alarm.draft!.title, '提前的评审');
+  });
 
   test('重锚 → 挂唯一闹钟；默认送达窗口内原样时刻', () async {
     final d = await startDispatcher();
@@ -167,7 +264,7 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 20));
 
     expect(notifications.shownList, hasLength(1));
-    expect(notifications.shownList.first.event.schedule.nextTaskId, isNotNull);
+    expect(notifications.shownList.first.event.schedule!.nextTaskId, isNotNull);
     expect(
       notifications.shownList.first.actions.map((a) => a.id),
       containsAll(['done', 'snooze1h']),

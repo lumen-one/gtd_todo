@@ -147,6 +147,51 @@ int compareLooseOrder(Task a, Task b) {
   return a.created.compareTo(b.created);
 }
 
+/// 编排与支线的候选来源：今日清单各段 + 任务池两段，按"今天该做的在前"排好。
+///
+/// **不截断**（[arrangeCandidates] 只给顺序，框多高、怎么滚由界面定）。原先两页各抄
+/// 一份候选逻辑，都带"最多六条"——挂起组排在最前，挂起件一到六件，别的任务就再也进
+/// 不了那张表，看上去像"候选里只有挂起的任务"（[panels/plan.md](../../docs/panels/plan.md)
+/// 『添加、拖动、编辑』）。
+///
+/// [includeRoutines] 给支线关掉：例行实例是当天的，明天就不在了，挂进去只剩失效引用。
+List<Task> arrangeCandidates({
+  required TodayView today,
+  required PoolView pool,
+  bool includeRoutines = true,
+}) {
+  final out = <Task>[];
+  final seen = <String>{};
+  void take(Iterable<Task> tasks) {
+    for (final t in tasks) {
+      if (seen.add(t.id)) out.add(t);
+    }
+  }
+
+  take(today.inProgress);
+  take(today.overdue);
+  take(today.fixed);
+  take(today.pinned);
+  take(today.flex);
+  if (includeRoutines) take(today.routines);
+  final picked = today.picked;
+  if (picked != null) take([picked]);
+  take(today.loose);
+  take(pool.plan);
+  take(pool.loose);
+  return out;
+}
+
+/// 输入框里的字按标题做包含匹配（不分大小写）；空串原样返回。
+List<Task> filterCandidates(List<Task> ordered, String query) {
+  final q = query.trim().toLowerCase();
+  if (q.isEmpty) return ordered;
+  return [
+    for (final t in ordered)
+      if (t.title.toLowerCase().contains(q)) t,
+  ];
+}
+
 /// 聚合今日清单。[schedule] 为当前调度结果（截止型组排序 + "提醒锚点"口径来源）；
 /// 无排序档不用它——那一档既不排序也没有锚点（`TaskService.lastSchedule` 是空结果）。
 ///

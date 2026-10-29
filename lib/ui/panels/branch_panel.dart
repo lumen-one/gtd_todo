@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../application/today_view.dart';
 import '../../domain/branch.dart';
 import '../../domain/task.dart';
 import '../app_controller.dart';
@@ -25,10 +26,7 @@ class BranchBoard extends StatefulWidget {
 }
 
 class _BranchBoardState extends State<BranchBoard> {
-  /// 候选最多几条（与编排的添加行同一档：再多就该用输入框筛了）。
-  static const int _maxCandidates = 6;
-
-  /// 候选框的高度上限（约四条半）。超过就在框里自己滚：交给外层滚会把整张卡片
+  /// 候选框的高度上限（约四条半）。候选**不截断**，超出就在框里自己滚：交给外层滚会把整张卡片
   /// 带着走，手指按在候选上、动的却是别处。
   static const double _candidateMaxHeight = 176;
 
@@ -437,16 +435,15 @@ class _BranchBoardState extends State<BranchBoard> {
                 // 候选滚到底再拖一下就会被当成要退出。
                 child: NotificationListener<ScrollNotification>(
                   onNotification: (_) => true,
-                  child: SingleChildScrollView(
+                  // 懒构建：候选是"全部任务"，不该在展开那一帧全建出来。
+                  child: ListView.builder(
+                    key: const ValueKey('branchCandidates'),
+                    shrinkWrap: true,
                     padding: EdgeInsets.zero,
                     physics: const ClampingScrollPhysics(),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        for (final task in items)
-                          _candidateRow(theme, index, task),
-                      ],
-                    ),
+                    itemCount: items.length,
+                    itemBuilder: (context, i) =>
+                        _candidateRow(theme, index, items[i]),
                   ),
                 ),
               ),
@@ -496,37 +493,17 @@ class _BranchBoardState extends State<BranchBoard> {
     );
   }
 
-  /// 候选：今日清单（按清单顺序）+ 任务池（计划段、散件段）。
+  /// 候选：今日清单（按清单顺序）+ 任务池（计划段、散件段），**不截断**。
   ///
   /// **例行实例不列**：那是当天的实例，明天就不在了，挂进来只会立刻失效。
-  List<Task> _candidates(int index) {
-    final controller = widget.controller;
-    final today = controller.todayView;
-    final pool = controller.poolView;
-    final ordered = <Task>[
-      ...today.inProgress,
-      ...today.overdue,
-      ...today.fixed,
-      ...today.pinned,
-      ...today.flex,
-      if (today.picked != null) today.picked!,
-      ...today.loose,
-      ...pool.plan,
-      ...pool.loose,
-    ];
-    final query = _draft.text.trim().toLowerCase();
-    final seen = <String>{};
-    final out = <Task>[];
-    for (final task in ordered) {
-      if (!seen.add(task.id)) continue;
-      if (query.isNotEmpty && !task.title.toLowerCase().contains(query)) {
-        continue;
-      }
-      out.add(task);
-      if (out.length >= _maxCandidates) break;
-    }
-    return out;
-  }
+  List<Task> _candidates(int index) => filterCandidates(
+        arrangeCandidates(
+          today: widget.controller.todayView,
+          pool: widget.controller.poolView,
+          includeRoutines: false,
+        ),
+        _draft.text,
+      );
 
   Future<void> _pick(int index, String taskId) async {
     await widget.controller.addTaskToBranch(index, taskId);

@@ -148,7 +148,7 @@ void main() {
     now = anchor;
     final event = await svc.pollReminder();
     expect(event, isNotNull);
-    expect(event!.schedule.nextReminderAt, anchor);
+    expect(event!.schedule!.nextReminderAt, anchor);
     expect(svc.lastSchedule!.nextReminderAt!.isAfter(anchor), isTrue); // 17:00
     expect(svc.lastSchedule!.computedAt, anchor);
   });
