@@ -63,6 +63,8 @@
 | [2026-10-28-create-month-calendar.md](2026-10-28-create-month-calendar.md) | 新建第 1 页是月历：点某天即落定，时刻按类型取默认 |
 | [2026-10-28-mode-as-information-depth.md](2026-10-28-mode-as-information-depth.md) | 三档调度模式 = 信息深度的三个停靠点，界面按档裁剪、数据不留空白 |
 | [2026-10-28-tile-time-and-detail-slim.md](2026-10-28-tile-time-and-detail-slim.md) | 清单行右端只报时间，详情卡只留看 |
+| [2026-10-31-plan-drag-aligns-time.md](2026-10-31-plan-drag-aligns-time.md) | 编排拖动 = 把时刻对齐到旁边那条 |
+| [2026-10-31-pool-plan-date-order.md](2026-10-31-pool-plan-date-order.md) | 任务池计划段按日期排，取消手动整理序 |
 
 待补（都是"会被重新质疑"的取舍，按需要慢慢写）：
 
