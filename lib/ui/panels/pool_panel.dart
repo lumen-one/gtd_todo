@@ -12,8 +12,9 @@ import '../widgets/task_tile.dart';
 
 /// 任务池页（ui-interaction.md §6.3；页序见 `ui/panel_pages.dart`）。
 /// 一条横线分两段：横线前 = 计划段（未来任务 + 周期规则条目），横线后 =
-/// 散件段（三无）。拖拽仅为整理位置（无调度含义），顺序持久化（记 metadata，
-/// 重启保留）；新建任务进对应组末尾。空状态："池干水清"。
+/// 散件段（三无）。**计划段按日期升序、不可拖**；**散件段可上下拖拽**，仅为整理
+/// 位置（无调度含义），顺序记 metadata（`pool_order`）重启保留，新建散件进组末尾。
+/// 空状态："池干水清"。
 ///
 /// 周期条目（决议 27）：按下一次发生日期升序插入计划段对应位置，是否显示
 /// 由设置『周期任务在任务池的显示』决定；条目本身只读，点它跳『编辑规则』。
@@ -64,16 +65,8 @@ class PoolPanel extends StatelessWidget {
       children: [
         if (view.rows.isNotEmpty) ...[
           const _SectionLabel('计划段'),
-          ReorderableListView(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            buildDefaultDragHandles: false,
-            onReorder: (o, n) => _persistRows(view.rows, o, n),
-            children: [
-              for (var i = 0; i < view.rows.length; i++)
-                _row(context, theme, view.rows[i], i),
-            ],
-          ),
+          // **不可拖**：这一段按日期排（panels/pool.md），行尾也不摆拖把手。
+          for (final row in view.rows) _row(context, theme, row),
         ],
         if (view.rows.isNotEmpty && view.loose.isNotEmpty)
           const _PoolDivider(),
@@ -82,7 +75,8 @@ class PoolPanel extends StatelessWidget {
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             buildDefaultDragHandles: false,
-            onReorder: (o, n) => _persistOrder(view.loose, o, n),
+            // 新 API：`newIndex` 已按"移除旧位"调整好，直接就是落点（同挂起组与编排）。
+            onReorderItem: (o, n) => _persistOrder(view.loose, o, n),
             children: [
               for (var i = 0; i < view.loose.length; i++)
                 TaskTile(
@@ -103,8 +97,8 @@ class PoolPanel extends StatelessWidget {
     );
   }
 
-  /// 计划段的一行：任务行可拖，周期条目只读（点它跳设置页『编辑规则』）。
-  Widget _row(BuildContext context, ThemeData theme, PoolRow row, int index) {
+  /// 计划段的一行：任务行与周期条目都只读——这一段按日期排，不给拖。
+  Widget _row(BuildContext context, ThemeData theme, PoolRow row) {
     if (row is PoolRoutineRow) {
       final focused = controller.settingsFocusRoutineId == row.routine.id;
       return Card(
@@ -142,7 +136,6 @@ class PoolPanel extends StatelessWidget {
       selected: selection.contains(task.id),
       onTap: _tap(context, task),
       onLongPress: _longPress(context, task),
-      trailing: _grip(index, theme),
     );
   }
 
@@ -157,7 +150,7 @@ class PoolPanel extends StatelessWidget {
           : () => showPoolMenu(context, controller, task,
               onSelectMode: () => selection.begin(task.id));
 
-  /// 拖把手：选择模式下不渲染 = 那两段不可拖。
+  /// 拖把手（只有散件段有）：选择模式下不渲染 = 那一段不可拖。
   Widget? _grip(int i, ThemeData theme) => selection.selecting
       ? null
       : ReorderableDragStartListener(
@@ -168,29 +161,18 @@ class PoolPanel extends StatelessWidget {
         );
 
   /// 拖拽整理 = 仅显示序（决议 14）：整段重编 pool_order，重启保留。
-  /// 周期条目不可拖：拖动后取"任务行的相对顺序"落盘。
   ///
-  /// 无排序模式下改为写 `manual_order`（决议 43）——与今日清单共用同一个序号，
-  /// 两处顺序一致；pool_order 是自动模式下的"整理序"，两套各管各的。
-  Future<void> _persistRows(List<PoolRow> rows, int oldIndex, int newIndex) async {
-    if (rows[oldIndex] is! PoolTaskRow) return;
-    final insert = newIndex > oldIndex ? newIndex - 1 : newIndex;
-    final list = [...rows]
-      ..removeAt(oldIndex)
-      ..insert(insert, rows[oldIndex]);
-    final ids = [
-      for (final r in list)
-        if (r is PoolTaskRow) r.task.id,
-    ];
-    await controller.setPoolOrders(ids);
-  }
-
+  /// **只有散件段走这里**（[setPoolOrders]）：计划段按日期排、不可拖，所以在池子里
+  /// 整理位置这件事只剩"散件谁在前"这一件（[决定](../../docs/decisions/2026-10-31-pool-plan-date-order.md)）。
+  ///
+  /// 无排序模式下写的是同一个 `pool_order`（决议 43）：今日页 ⑥ 与池子散件段共用，
+  /// 两处顺序一致；`manual_order` 是今日 ③ 的序号，与这里互不相干。
   Future<void> _persistOrder(
       List<Task> section, int oldIndex, int newIndex) async {
-    final insert = newIndex > oldIndex ? newIndex - 1 : newIndex;
+    if (oldIndex == newIndex) return;
     final ids = [for (final t in section) t.id]
       ..removeAt(oldIndex)
-      ..insert(insert, section[oldIndex].id);
+      ..insert(newIndex, section[oldIndex].id);
     await controller.setPoolOrders(ids);
   }
 

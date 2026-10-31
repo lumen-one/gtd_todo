@@ -196,6 +196,26 @@ void main() {
     expect(find.byType(DatePickerDialog), findsNothing);
   });
 
+  testWidgets('长按当天列表里的任务：弹菜单，点编辑进表单', (tester) async {
+    final controller = await build(tester);
+    await open(tester, controller);
+    final now = DateTime.now();
+    await tester.tap(dayCell(now.day));
+    await tester.pumpAndSettle();
+    expect(find.text('今天的事'), findsOneWidget);
+
+    await tester.longPress(find.text('今天的事'));
+    await tester.pumpAndSettle();
+    expect(find.text('编辑'), findsOneWidget, reason: '长按弹菜单');
+    expect(find.text('删除'), findsOneWidget);
+    expect(find.text('插队到最前'), findsNothing,
+        reason: '日历里没有"最前"这个序');
+
+    await tester.tap(find.text('编辑'));
+    await tester.pumpAndSettle();
+    expect(find.text('编辑任务'), findsOneWidget, reason: '进同一张编辑表单');
+  });
+
   testWidgets('过去的已完成件也留在那天（完成点不抹掉）', (tester) async {
     final controller = await build(tester);
     final now = DateTime.now();

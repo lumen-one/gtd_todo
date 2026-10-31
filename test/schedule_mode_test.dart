@@ -321,16 +321,16 @@ void main() {
     });
   });
 
-  group('任务池：与调度模式无关（池子本来就是手动整理序）', () {
-    test('计划段按 pool_order / 截止排，不认 manual_order', () {
+  group('任务池：与调度模式无关', () {
+    test('计划段只按日期排：pool_order 与 manual_order 都压不到它上面', () {
       final all = [
         task(id: 'p-far', deadline: DateTime(2026, 10, 20, 18, 0),
-            metadata: const {'manual_order': '0'}),
+            metadata: const {'manual_order': '0', 'pool_order': '0'}),
         task(id: 'p-near', deadline: DateTime(2026, 10, 9, 18, 0)),
       ];
       final view = buildPoolView(tasks: all, now: now);
       expect(view.plan.map((t) => t.id).toList(), ['p-near', 'p-far'],
-          reason: '池子认 pool_order / 截止日期，manual_order 只对今日生效');
+          reason: '计划段按日期升序；整理序只剩散件段用，manual_order 只对今日生效');
     });
   });
 

@@ -284,7 +284,7 @@ void main() {
     expect(find.text('晨会（改）'), findsOneWidget);
   });
 
-  testWidgets('拖动：长按整条改顺序（只改行序，不动时刻）', (tester) async {
+  testWidgets('拖动：长按整条，时刻对齐到旁边那条', (tester) async {
     final c = makeController(plan: [
       DayPlan(day: day, entries: const [
         PlanEntry(title: '晨会', minutesOfDay: 8 * 60 + 30),
@@ -303,11 +303,13 @@ void main() {
     await gesture.up();
     await tester.pumpAndSettle();
 
-    final titles = [for (final e in c.planEntriesFor(day)) e.title];
-    expect(titles.first, isNot('晨会'));
-    // 时刻跟着条目走，没有变
-    final moved = c.planEntriesFor(day).firstWhere((e) => e.title == '晨会');
-    expect(moved.timeText, '08:30');
+    final entries = c.planEntriesFor(day);
+    final at = entries.indexWhere((e) => e.title == '晨会');
+    expect(at, greaterThan(0), reason: '拖下来了');
+    // 时刻取相邻那条的：落位之后轴仍然按时刻升序读下来。
+    expect(entries[at].timeText, entries[at - 1].timeText);
+    expect(entries[at].timeText, isNot('08:30'),
+        reason: '不再是"只换行序、时刻原样跟着走"');
   });
 
   /// 游标（带 GlobalKey 的定位锚）就挂在某一条的 Column 里：拖那一条时它会被

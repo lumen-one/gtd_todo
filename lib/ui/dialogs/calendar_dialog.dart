@@ -8,6 +8,7 @@ import '../../domain/task.dart';
 import '../app_controller.dart';
 import '../theme.dart';
 import '../widgets/month_calendar.dart';
+import '../widgets/task_actions.dart';
 import '../widgets/task_tile.dart';
 import 'date_pick.dart' show pickDateTime;
 import 'routine_edit_dialog.dart' show routineSubtitle;
@@ -55,7 +56,8 @@ List<Task> _tasksOn(
 ///   （§8 的日历点色板），一天最多三点；
 /// - 点某天 → 当天列表从弹窗底部下滑展开（同一弹窗内联动，不叠层）；
 /// - **长按某天** → 顶部升起一行输入，回车即在那天落一件（截止型 + 有截止）；
-/// - 当天列表里可改任务日期，改完调度自动重锚（决议 24：例行实例只读、
+/// - 当天列表里**点条目改期**、**长按条目开菜单**（完成 / 推迟 / 编辑 / 删除，
+///   编辑走与别处同一张表单），改完调度自动重锚（决议 24：例行实例只读、
 ///   散件无日期不进日历——例行未落地前无需处理）。
 Future<void> showCalendarDialog(
     BuildContext context, AppController controller) {
@@ -79,6 +81,24 @@ class _CalendarDialogState extends State<_CalendarDialog> {
 
   /// 当天列表顶部那行输入框是否升起（长按某天进来，加完或取消就收）。
   bool _adding = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_onChanged);
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_onChanged);
+    super.dispose();
+  }
+
+  /// 弹窗是独立路由，不随侧边栏重建：任务在里面被改（改期、菜单里的完成 / 编辑 /
+  /// 删除）之后，当天列表与月历上的点都得自己跟一次。
+  void _onChanged() {
+    if (mounted) setState(() {});
+  }
 
   /// 这天还没干完的活。
   List<Task> _openOf(DateTime day) =>
@@ -280,6 +300,11 @@ class _DayList extends StatelessWidget {
                     if (dt == null) return;
                     await controller.updateTask(t.id, deadline: dt);
                   },
+                  // 点按是改期（这一页的主动作），长按才给其余动作：完成 / 推迟 /
+                  // 编辑 / 删除。日历里没有"最前"这个序，所以菜单里也不给插队。
+                  onLongPress: () =>
+                      showTaskMenu(context, controller, t,
+                          kind: TaskMenuKind.calendar),
                 ),
               for (final t in done) _DoneRow(task: t),
             ],

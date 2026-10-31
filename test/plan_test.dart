@@ -189,12 +189,12 @@ void main() {
       expect([for (final e in svc.entriesFor(today)) e.title], ['C', 'A', 'B']);
     });
 
-    test('只改标题不重排：拖出来的顺序留着', () async {
+    test('只改标题不重排：拖动落下的顺序留着', () async {
       final svc = PlanService(repo: MemoryPlanRepository());
       await svc.load();
       await svc.addEntry(today, const PlanEntry(title: 'A', minutesOfDay: 540));
       await svc.addEntry(today, const PlanEntry(title: 'B', minutesOfDay: 600));
-      // 拖动是手动顺序：setEntries 不排序。
+      // 拖动走 setEntries：整份按落好的顺序写，不再排一次。
       await svc.setEntries(today, [...svc.entriesFor(today).reversed]);
 
       await svc.updateEntry(today, 0, const PlanEntry(title: 'B 改名', minutesOfDay: 600));
@@ -237,6 +237,46 @@ void main() {
         const PlanEntry(title: '  评审  ', minutesOfDay: 9 * 60),
       ]);
       expect(svc.entriesFor(today).single.title, '评审');
+    });
+  });
+
+  group('拖动落位：时刻对齐到邻居', () {
+    PlanEntry e(String title, int? minutes) =>
+        PlanEntry(title: title, minutesOfDay: minutes);
+    List<String> times(List<PlanEntry> list) =>
+        [for (final x in list) x.timeText ?? '—'];
+
+    test('取上方那一条的时刻', () {
+      // 原序 14:30 / 16:16 / 18:30，把 18:30 拖到 14:30 与 16:16 之间。
+      final next = [e('A', 870), e('C', 1110), e('B', 976)];
+      final out = alignPlanEntryTime(next, 1);
+      expect(times(out), ['14:30', '14:30', '16:16']);
+      expect([for (final x in out) x.title], ['A', 'C', 'B']);
+    });
+
+    test('拖到最前：上方没有，取下一条的时刻', () {
+      final out = alignPlanEntryTime([e('B', 976), e('A', 870)], 0);
+      expect(times(out), ['14:30', '14:30']);
+    });
+
+    test('上方是"没有时刻"的条目：跳过它继续往上找', () {
+      final next = [e('A', 870), e('X', null), e('C', 1110)];
+      expect(times(alignPlanEntryTime(next, 2)), ['14:30', '—', '14:30']);
+    });
+
+    test('整条轴都没有时刻：原样不动', () {
+      final next = [e('A', null), e('B', null)];
+      expect(identical(alignPlanEntryTime(next, 1), next), isTrue);
+    });
+
+    test('已经同刻：不造新对象（列表按身份做行 key）', () {
+      final next = [e('A', 870), e('B', 870)];
+      expect(identical(alignPlanEntryTime(next, 1), next), isTrue);
+    });
+
+    test('下标越界：原样返回', () {
+      final next = [e('A', 870)];
+      expect(identical(alignPlanEntryTime(next, 3), next), isTrue);
     });
   });
 }

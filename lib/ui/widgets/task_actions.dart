@@ -58,6 +58,9 @@ List<TaskMenuEntry> taskMenuEntries(
       TaskMenuKind.pool => _poolEntries(context, controller, task),
       TaskMenuKind.loose => _looseEntries(context, controller, task),
       TaskMenuKind.completed => _completedEntries(context, controller, task),
+      // 日历弹窗（§6.4）：点按是改期，动作全在长按菜单里。直接复用今日清单那张表——
+      // kind 不是 flex，所以不会给出『插队到最前』（"最前"是今日清单的位置）。
+      TaskMenuKind.calendar => _todayEntries(context, controller, task, kind),
       _ => _todayEntries(context, controller, task, kind),
     };
 
@@ -273,6 +276,7 @@ class _SelectModeTile extends StatelessWidget {
 /// [inProgress] = 今日页最顶的挂起组（决议 47：长期任务"正在做"）。
 /// [completed] = 已完成页（ui 文档 §6.7：只有恢复未完成 / 删除）。
 /// [branch] = 支线视图（ui 文档 §6.12：条目是任务引用，动作与今日清单同款）。
+/// [calendar] = 日历弹窗的当天列表（ui 文档 §6.4：点按改期，其余动作在长按菜单）。
 enum TaskMenuKind {
   overdue,
   fixed,
@@ -283,7 +287,8 @@ enum TaskMenuKind {
   loose,
   inProgress,
   completed,
-  branch
+  branch,
+  calendar
 }
 
 class _MenuTag extends StatelessWidget {

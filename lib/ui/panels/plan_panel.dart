@@ -14,7 +14,8 @@ import 'branch_panel.dart';
 /// 时间轴——左侧时刻、右侧标题、中间一条竖线。
 ///
 /// 三天窗口：昨天只读、今天明天可排，打开落在今天。改时刻或新增一条时，应用会把这
-/// 一天按时刻归位（`PlanService` 里做），拖动是唯一能盖过它的操作。
+/// 一天按时刻归位（`PlanService` 里做）；拖动落位后把被拖那条的时刻对齐到邻居
+/// （[alignPlanEntryTime]），所以它走的也是同一条规则。
 class PlanOverlay extends StatefulWidget {
   final AppController controller;
 
@@ -299,7 +300,7 @@ class _DayTimelineState extends State<_DayTimeline> {
   /// 正在写的那一条的时刻；null = 没有时刻。
   int? _draftMinutes;
 
-  /// 拖动改顺序后、落盘完成前的行序（见 [_reorder]）。null = 用控制器那份。
+  /// 拖动落位后、落盘完成前的行序与时刻（见 [_reorder]）。null = 用控制器那份。
   List<PlanEntry>? _dragged;
 
   List<PlanEntry> get _entries =>
@@ -875,18 +876,24 @@ class _DayTimelineState extends State<_DayTimeline> {
 
   // ---- 排序 ----
 
-  /// 拖动改顺序：**先把新序摆上去，再落盘**。
+  /// 拖动落位：**时刻跟着走**，不是只换行序（panels/plan.md『添加、拖动、编辑』）。
   ///
-  /// 落盘是"读整份 → 改一天 → 整份写回"，等它回来才重排的话，松手那一帧会先
-  /// 弹回原位、写完再跳到新位——看着就是来回闪两下。所以顺序在本地先定住，
+  /// 被拖那条的时刻改成相邻那条的（[alignPlanEntryTime]），所以落位之后轴仍然按时刻
+  /// 升序读下来 —— 拖动不再是一个"会过期的手动顺序"，下次改时刻或新增也不会把它打散。
+  ///
+  /// **先把新序摆上去，再落盘**。落盘是"读整份 → 改一天 → 整份写回"，等它回来才重排的话，
+  /// 松手那一帧会先弹回原位、写完再跳到新位——看着就是来回闪两下。所以顺序在本地先定住，
   /// 控制器的数据跟上之后再交回它（那时两边一致，交换不产生任何位移）。
   Future<void> _reorder(List<PlanEntry> entries, int from, int to) async {
+    // 拖了一下又放回原位：不改时刻（否则"没动"也会换掉它的时间）。
+    if (from == to) return;
     final next = [...entries]
       ..removeAt(from)
       ..insert(to, entries[from]);
-    setState(() => _dragged = next);
+    final aligned = alignPlanEntryTime(next, to);
+    setState(() => _dragged = aligned);
     try {
-      await widget.controller.setPlanEntries(widget.day, next);
+      await widget.controller.setPlanEntries(widget.day, aligned);
     } finally {
       if (mounted) setState(() => _dragged = null);
     }

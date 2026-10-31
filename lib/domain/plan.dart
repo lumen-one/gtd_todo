@@ -99,6 +99,42 @@ List<PlanEntry> sortPlanEntries(List<PlanEntry> entries) {
   return [...timed, ...untimed];
 }
 
+/// 拖动落位之后，把第 [index] 条的时刻对齐到相邻那一条
+/// （[panels/plan.md](../../docs/panels/plan.md)『添加、拖动、编辑』）。
+///
+/// 规则：先看**上方**那一条，上方没有时刻就继续往上找，一路找不到才往下找；整条轴都
+/// 没有时刻才原样不动。于是被拖的那条与邻居并排在同一时刻，谁在上由拖决定——顺序与
+/// 时刻序自然一致，不会留下"行序和时刻打架"的状态。
+///
+/// **不排序**：对齐后它就在邻居旁边，再排一次是多余的；而且排序会打乱同一时刻里刚
+/// 拖出来的相对顺序。**不取整**：`16:16` 原样复制给邻居，轴上的数字只有人写的那一个
+/// 来源。
+List<PlanEntry> alignPlanEntryTime(List<PlanEntry> ordered, int index) {
+  if (index < 0 || index >= ordered.length) return ordered;
+  int? target;
+  for (var i = index - 1; i >= 0; i--) {
+    final m = ordered[i].minutesOfDay;
+    if (m != null) {
+      target = m;
+      break;
+    }
+  }
+  if (target == null) {
+    for (var i = index + 1; i < ordered.length; i++) {
+      final m = ordered[i].minutesOfDay;
+      if (m != null) {
+        target = m;
+        break;
+      }
+    }
+  }
+  final current = ordered[index];
+  if (target == null || current.minutesOfDay == target) return ordered;
+  final out = [...ordered];
+  out[index] = PlanEntry(title: current.title, minutesOfDay: target);
+  return out;
+}
+
 /// 编排到点提醒的 id 前缀：单闹钟与通知按它区分"这一站是条目还是任务"。
 ///
 /// 条目本身没有 id（[PlanEntry] 只有时刻 + 标题），这个串是**临时**的：只在挂闹钟那一趟

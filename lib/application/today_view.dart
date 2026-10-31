@@ -105,14 +105,15 @@ class PoolRoutineRow extends PoolRow {
 
 /// 任务池聚合查询（ui-interaction.md §6.3）：一条横线分两段。
 class PoolView {
-  /// 横线前（计划段）：明天及以后的任务（有截止 flex + 未来 fixed）。
+  /// 横线前（计划段）：明天及以后的任务（有截止 flex + 未来 fixed），按日期升序。
   final List<Task> plan;
 
   /// 横线后（散件段）：全部三无散件（被挑走的今日不重复出现）。
   final List<Task> loose;
 
-  /// 计划段的显示行：手工整理过的任务在前，其余任务与周期条目按日期混排
-  /// （决议 14 + 决议 27；周期条目是否显示由设置 `routineShowInPool` 决定）。
+  /// 计划段的显示行：任务与周期条目按日期混排（决议 27；周期条目是否显示由设置
+  /// `routineShowInPool` 决定）。**没有"手动整理过的在前"这一层**——计划段不可拖
+  /// （[决定](../docs/decisions/2026-10-31-pool-plan-date-order.md)）。
   final List<PoolRow> rows;
 
   /// 无排序档被搬去今日页底部的散件数（v1.27）：[loose] 在这档为空，
@@ -137,6 +138,7 @@ bool _sameDay(DateTime a, DateTime b) =>
     a.year == b.year && a.month == b.month && a.day == b.day;
 
 /// 整理序（`pool_order` → 创建时间）：任务池散件段与今日页 ⑥ 散件段共用。
+/// **计划段不用它**——那一段按日期升序，见 [buildPoolView]。
 /// 与 ③ 的手动序（`manual_order`）是两套序号，互不参与。
 int compareLooseOrder(Task a, Task b) {
   final oa = a.poolOrder;
@@ -400,48 +402,32 @@ PoolView buildPoolView({
     loose.add(t);
   }
 
-  int cmp(Task a, Task b) {
-    final oa = a.poolOrder;
-    final ob = b.poolOrder;
-    if (oa != null && ob != null) return oa.compareTo(ob);
-    if (oa != null) return -1; // 整理过的排前面
-    if (ob != null) return 1;
-    // 计划段按截止升序；散件按创建时间（新建进组末尾，决议 14）。
-    final da = a.deadline;
-    final db = b.deadline;
-    if (da != null && db != null) return da.compareTo(db);
-    return a.created.compareTo(b.created);
-  }
-
-  plan.sort(cmp);
+  // 计划段：**日期升序**，同日按创建时间（新建的在后）。这一段的读法是"哪天轮到我"，
+  // 手动整理序一旦写下就永久压在日期前面，一条 11-01 会一直排在 10-20 上面
+  // （[决定](../docs/decisions/2026-10-31-pool-plan-date-order.md)）。散件段仍按整理序：
+  // 散件没有日期可比，那个位置才需要人来定。
+  plan.sort((a, b) {
+    final c = a.deadline!.compareTo(b.deadline!);
+    return c != 0 ? c : a.created.compareTo(b.created);
+  });
   loose.sort(compareLooseOrder);
 
-  // 计划段显示行：手工整理过的任务在前；其余任务与周期条目按日期混排
-  // （决议 27：周期任务按下一次发生日期升序插入对应位置）。
-  final rows = <PoolRow>[
-    for (final t in plan)
-      if (t.poolOrder != null) PoolTaskRow(t),
-  ];
-  final manualIds = {
-    for (final t in plan)
-      if (t.poolOrder != null) t.id,
-  };
-  final autoTasks = [
-    for (final t in plan)
-      if (!manualIds.contains(t.id)) PoolTaskRow(t),
-  ];
+  // 计划段显示行：任务与周期条目按日期混排（决议 27：周期任务按下一次发生日期升序
+  // 插入对应位置）。两条路各自已按日期排好，归并一次就够。
+  final planTasks = <PoolRow>[for (final t in plan) PoolTaskRow(t)];
   final routineRows = <PoolRow>[
     if (routineShowInPool)
       for (final o in routineOccurrences) PoolRoutineRow(o.routine, o.at),
   ];
+  final rows = <PoolRow>[];
   var i = 0;
   var j = 0;
-  while (i < autoTasks.length || j < routineRows.length) {
+  while (i < planTasks.length || j < routineRows.length) {
     final takeTask = j >= routineRows.length ||
-        (i < autoTasks.length &&
-            !autoTasks[i].sortKey.isAfter(routineRows[j].sortKey));
+        (i < planTasks.length &&
+            !planTasks[i].sortKey.isAfter(routineRows[j].sortKey));
     if (takeTask) {
-      rows.add(autoTasks[i++]);
+      rows.add(planTasks[i++]);
     } else {
       rows.add(routineRows[j++]);
     }
