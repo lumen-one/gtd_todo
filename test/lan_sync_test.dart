@@ -2,8 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gtd_todo/application/sync.dart';
-import 'package:gtd_todo/platform/lan_sync.dart';
+import 'package:qixing/application/sync.dart';
+import 'package:qixing/platform/lan_sync.dart';
 
 /// LanSyncAdapter 的回环集成测试（architecture.md §4.4）：
 /// 主机与从机都跑在本机（127.0.0.1），发现走手填 peer（广播在测试环境不可靠），

@@ -2,14 +2,14 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gtd_todo/application/task_service.dart';
-import 'package:gtd_todo/domain/task.dart';
-import 'package:gtd_todo/domain/time_context.dart';
-import 'package:gtd_todo/repository/memory_task_repository.dart';
-import 'package:gtd_todo/scheduler/slack_scheduler.dart';
-import 'package:gtd_todo/ui/app_controller.dart';
-import 'package:gtd_todo/ui/dialogs/calendar_dialog.dart';
-import 'package:gtd_todo/ui/theme.dart';
+import 'package:qixing/application/task_service.dart';
+import 'package:qixing/domain/task.dart';
+import 'package:qixing/domain/time_context.dart';
+import 'package:qixing/repository/memory_task_repository.dart';
+import 'package:qixing/scheduler/slack_scheduler.dart';
+import 'package:qixing/ui/app_controller.dart';
+import 'package:qixing/ui/dialogs/calendar_dialog.dart';
+import 'package:qixing/ui/theme.dart';
 
 /// 日历弹窗（ui-interaction.md §6.4）：左右横滑与两侧箭头是同一个动作的两种
 /// 走法；**切月清空当天选中**（展开的当天列表收回去）；长按某天直接加一件；

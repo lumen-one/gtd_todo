@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gtd_todo/application/today_view.dart';
-import 'package:gtd_todo/domain/task.dart';
+import 'package:qixing/application/today_view.dart';
+import 'package:qixing/domain/task.dart';
 
 /// 编排 / 支线的候选来源（panels/plan.md『添加、拖动、编辑』）：
 /// **不截断**——曾经两页各带一个"最多六条"，挂起件一多就把别的任务全挤出去。

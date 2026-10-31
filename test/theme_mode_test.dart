@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gtd_todo/application/settings.dart';
-import 'package:gtd_todo/application/task_service.dart';
-import 'package:gtd_todo/domain/time_context.dart';
-import 'package:gtd_todo/repository/memory_task_repository.dart';
-import 'package:gtd_todo/scheduler/slack_scheduler.dart';
-import 'package:gtd_todo/ui/app_controller.dart';
-import 'package:gtd_todo/ui/panels/settings_panel.dart';
-import 'package:gtd_todo/ui/theme.dart';
+import 'package:qixing/application/settings.dart';
+import 'package:qixing/application/task_service.dart';
+import 'package:qixing/domain/time_context.dart';
+import 'package:qixing/repository/memory_task_repository.dart';
+import 'package:qixing/scheduler/slack_scheduler.dart';
+import 'package:qixing/ui/app_controller.dart';
+import 'package:qixing/ui/panels/settings_panel.dart';
+import 'package:qixing/ui/theme.dart';
 
 /// 暗黑模式契约（ui-interaction.md §8 / §10 #20）：明暗三选一落
 /// `settings.json` 的 `theme_mode`，缺省跟随系统；枚举与 ThemeMode 映射在

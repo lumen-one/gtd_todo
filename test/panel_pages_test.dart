@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gtd_todo/application/settings.dart';
-import 'package:gtd_todo/ui/panel_pages.dart';
+import 'package:qixing/application/settings.dart';
+import 'package:qixing/ui/panel_pages.dart';
 
 /// 页序表（ui-interaction.md §6.0 / §9 第 12 条）：页名、页序、默认页与页码
 /// 都从 [PanelPage] 派生，这里钉住"派生关系"本身。

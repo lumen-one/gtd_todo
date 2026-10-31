@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gtd_todo/application/plan_service.dart';
-import 'package:gtd_todo/domain/plan.dart';
-import 'package:gtd_todo/repository/markdown_plan_codec.dart';
-import 'package:gtd_todo/repository/memory_plan_repository.dart';
+import 'package:qixing/application/plan_service.dart';
+import 'package:qixing/domain/plan.dart';
+import 'package:qixing/repository/markdown_plan_codec.dart';
+import 'package:qixing/repository/memory_plan_repository.dart';
 
 /// 今日编排（§6.11 / 附录 B.7）：格式往返 + 命令语义。
 void main() {

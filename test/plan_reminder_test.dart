@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gtd_todo/application/plan_service.dart';
-import 'package:gtd_todo/domain/plan.dart';
-import 'package:gtd_todo/repository/memory_plan_repository.dart';
+import 'package:qixing/application/plan_service.dart';
+import 'package:qixing/domain/plan.dart';
+import 'package:qixing/repository/memory_plan_repository.dart';
 
 /// 编排的第三个提醒源（决定卡 2026-10-29-plan-reminder）：
 /// `PlanService.nextReminder` 只递**严格晚于现在**的最早一条。

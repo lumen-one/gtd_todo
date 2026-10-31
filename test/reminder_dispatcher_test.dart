@@ -1,20 +1,20 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gtd_todo/application/delivery.dart';
-import 'package:gtd_todo/application/notification_window.dart';
-import 'package:gtd_todo/application/plan_service.dart';
-import 'package:gtd_todo/application/reminder_dispatcher.dart';
-import 'package:gtd_todo/application/task_service.dart';
-import 'package:gtd_todo/domain/plan.dart';
-import 'package:gtd_todo/domain/reminder.dart';
-import 'package:gtd_todo/domain/schedule.dart';
-import 'package:gtd_todo/domain/task.dart';
-import 'package:gtd_todo/domain/time_context.dart';
-import 'package:gtd_todo/platform/desktop_adapters.dart';
-import 'package:gtd_todo/repository/memory_plan_repository.dart';
-import 'package:gtd_todo/repository/memory_task_repository.dart';
-import 'package:gtd_todo/scheduler/slack_scheduler.dart';
+import 'package:qixing/application/delivery.dart';
+import 'package:qixing/application/notification_window.dart';
+import 'package:qixing/application/plan_service.dart';
+import 'package:qixing/application/reminder_dispatcher.dart';
+import 'package:qixing/application/task_service.dart';
+import 'package:qixing/domain/plan.dart';
+import 'package:qixing/domain/reminder.dart';
+import 'package:qixing/domain/schedule.dart';
+import 'package:qixing/domain/task.dart';
+import 'package:qixing/domain/time_context.dart';
+import 'package:qixing/platform/desktop_adapters.dart';
+import 'package:qixing/repository/memory_plan_repository.dart';
+import 'package:qixing/repository/memory_task_repository.dart';
+import 'package:qixing/scheduler/slack_scheduler.dart';
 
 /// 假闹钟：记录预约，测试里手动触发 fired。
 class _FakeAlarm implements AlarmPort {

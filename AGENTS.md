@@ -22,7 +22,7 @@ dart run tool/seed_tasks.dart       # 生成样例任务（tasks.md + .gtd/<id>.
 flutter build windows --release
 ```
 
-产物是 `build/windows/x64/runner/Release/` 整个文件夹（`gtd_todo.exe` +
+产物是 `build/windows/x64/runner/Release/` 整个文件夹（`qixing.exe` +
 `flutter_windows.dll` + `data/`），原样拷到 Win10/11 就能双击，目标机不需要 Flutter，
 但要有 VC++ 运行库（缺了报 `vcruntime140.dll`）。
 

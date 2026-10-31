@@ -2,23 +2,23 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gtd_todo/application/delivery.dart';
-import 'package:gtd_todo/application/settings.dart';
-import 'package:gtd_todo/application/shell_capabilities.dart';
-import 'package:gtd_todo/application/task_service.dart';
-import 'package:gtd_todo/domain/reminder.dart';
-import 'package:gtd_todo/domain/schedule.dart';
-import 'package:gtd_todo/domain/task.dart';
-import 'package:gtd_todo/domain/time_context.dart';
-import 'package:gtd_todo/repository/memory_task_repository.dart';
-import 'package:gtd_todo/scheduler/slack_scheduler.dart';
-import 'package:gtd_todo/ui/app_controller.dart';
-import 'package:gtd_todo/ui/panels/completed_panel.dart';
-import 'package:gtd_todo/ui/panels/notes_panel.dart';
-import 'package:gtd_todo/ui/panels/settings_panel.dart';
-import 'package:gtd_todo/ui/panels/side_panel.dart';
-import 'package:gtd_todo/ui/panels/today_panel.dart';
-import 'package:gtd_todo/ui/shells/desktop_shell.dart';
+import 'package:qixing/application/delivery.dart';
+import 'package:qixing/application/settings.dart';
+import 'package:qixing/application/shell_capabilities.dart';
+import 'package:qixing/application/task_service.dart';
+import 'package:qixing/domain/reminder.dart';
+import 'package:qixing/domain/schedule.dart';
+import 'package:qixing/domain/task.dart';
+import 'package:qixing/domain/time_context.dart';
+import 'package:qixing/repository/memory_task_repository.dart';
+import 'package:qixing/scheduler/slack_scheduler.dart';
+import 'package:qixing/ui/app_controller.dart';
+import 'package:qixing/ui/panels/completed_panel.dart';
+import 'package:qixing/ui/panels/notes_panel.dart';
+import 'package:qixing/ui/panels/settings_panel.dart';
+import 'package:qixing/ui/panels/side_panel.dart';
+import 'package:qixing/ui/panels/today_panel.dart';
+import 'package:qixing/ui/shells/desktop_shell.dart';
 
 /// 桌面壳（ui-interaction.md §6.10 / architecture.md §5.1，v1.32）。
 ///

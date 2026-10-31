@@ -34,7 +34,7 @@ import 'ui/theme.dart';
 /// 入口是 `overlay_main.dart` 的 `overlayMain`（@pragma('vm:entry-point')）。
 /// Dart 只编译从 main.dart **可达**的库——这里 export 一下，那个库才会进 kernel；
 /// 否则原生侧解析 entrypoint 会直接失败：
-/// `Dart_LookupLibrary: library 'package:gtd_todo/overlay_main.dart' not found`。
+/// `Dart_LookupLibrary: library 'package:qixing/overlay_main.dart' not found`。
 /// （原生两种解析形式都试：先显式库 URI，再纯函数名——export 让两者都成立。）
 export 'overlay_main.dart';
 

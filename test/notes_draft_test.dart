@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gtd_todo/application/notes_reader.dart';
+import 'package:qixing/application/notes_reader.dart';
 
 /// 灵感页的编辑草稿（docs/panels/notes.md）：编辑态与只读态看到同一批行，
 /// 被 `[[` 屏蔽的行不进编辑框，保存时按原行号插回。

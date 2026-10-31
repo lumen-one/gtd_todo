@@ -1,10 +1,10 @@
 # Project-level configuration.
 cmake_minimum_required(VERSION 3.14)
-project(gtd_todo LANGUAGES CXX)
+project(qixing LANGUAGES CXX)
 
 # The name of the executable created for the application. Change this to change
 # the on-disk name of your application.
-set(BINARY_NAME "gtd_todo")
+set(BINARY_NAME "qixing")
 
 # Explicitly opt in to modern CMake behaviors to avoid warnings with recent
 # versions of CMake.
@@ -72,7 +72,7 @@ set(CMAKE_VS_INCLUDE_INSTALL_TO_DEFAULT_BUILD 1)
 # `C:/Program Files/<app>`；之后再 configure 时 `INITIALIZED_TO_DEFAULT` 就是
 # FALSE，模板那段条件判断从此不再生效。后果是 INSTALL 把 `data/` 与
 # `flutter_windows.dll` 装到 `C:\Program Files\<app>` 去，而 `flutter build windows`
-# 依然打印"√ Built ...\runner\Debug\gtd_todo.exe"——但那个 exe 旁边没有 data/ 与
+# 依然打印"√ Built ...\runner\Debug\qixing.exe"——但那个 exe 旁边没有 data/ 与
 # DLL，一启动就 `Failed to start Flutter engine: error 2` 然后退出。
 set(CMAKE_INSTALL_PREFIX "${BUILD_BUNDLE_DIR}" CACHE PATH "..." FORCE)
 

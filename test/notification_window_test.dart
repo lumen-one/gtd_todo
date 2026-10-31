@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gtd_todo/application/notification_window.dart';
+import 'package:qixing/application/notification_window.dart';
 
 void main() {
   group('NotificationWindowRule（D10 送达策略）', () {

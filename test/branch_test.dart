@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gtd_todo/application/branch_service.dart';
-import 'package:gtd_todo/domain/branch.dart';
-import 'package:gtd_todo/repository/markdown_branch_codec.dart';
-import 'package:gtd_todo/repository/memory_branch_repository.dart';
+import 'package:qixing/application/branch_service.dart';
+import 'package:qixing/domain/branch.dart';
+import 'package:qixing/repository/markdown_branch_codec.dart';
+import 'package:qixing/repository/memory_branch_repository.dart';
 
 /// 支线（§6.12 / 附录 B.8）：格式往返 + 命令语义。
 void main() {

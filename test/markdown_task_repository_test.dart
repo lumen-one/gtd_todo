@@ -1,12 +1,12 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gtd_todo/application/task_service.dart';
-import 'package:gtd_todo/domain/task.dart';
-import 'package:gtd_todo/domain/time_context.dart';
-import 'package:gtd_todo/repository/markdown_task_repository.dart';
-import 'package:gtd_todo/repository/task_document.dart';
-import 'package:gtd_todo/scheduler/slack_scheduler.dart';
+import 'package:qixing/application/task_service.dart';
+import 'package:qixing/domain/task.dart';
+import 'package:qixing/domain/time_context.dart';
+import 'package:qixing/repository/markdown_task_repository.dart';
+import 'package:qixing/repository/task_document.dart';
+import 'package:qixing/scheduler/slack_scheduler.dart';
 
 /// 双文档存储（决议 36）的验收测试：
 /// - 人类文档 `tasks.md`：一行一条任务，应用只改自己那一行；

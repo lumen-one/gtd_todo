@@ -51,7 +51,7 @@ Windows 10/11 · Android · MIT
 
 ```bash
 git clone https://github.com/lumen-one/qixing.git
-cd gtd_todo
+cd qixing
 flutter pub get
 flutter run -d windows     # 或 -d android
 dart run tool/seed_tasks.dart   # 想先看点样例数据就跑这句

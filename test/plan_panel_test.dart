@@ -2,19 +2,19 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gtd_todo/application/plan_service.dart';
-import 'package:gtd_todo/application/task_service.dart';
-import 'package:gtd_todo/domain/plan.dart';
-import 'package:gtd_todo/domain/time_context.dart';
-import 'package:gtd_todo/repository/memory_plan_repository.dart';
-import 'package:gtd_todo/repository/memory_task_repository.dart';
-import 'package:gtd_todo/repository/plan_repository.dart';
-import 'package:gtd_todo/scheduler/slack_scheduler.dart';
-import 'package:gtd_todo/ui/app_controller.dart';
-import 'package:gtd_todo/ui/panel_pages.dart';
-import 'package:gtd_todo/ui/panels/plan_panel.dart';
-import 'package:gtd_todo/ui/panels/side_panel.dart';
-import 'package:gtd_todo/ui/panels/today_panel.dart';
+import 'package:qixing/application/plan_service.dart';
+import 'package:qixing/application/task_service.dart';
+import 'package:qixing/domain/plan.dart';
+import 'package:qixing/domain/time_context.dart';
+import 'package:qixing/repository/memory_plan_repository.dart';
+import 'package:qixing/repository/memory_task_repository.dart';
+import 'package:qixing/repository/plan_repository.dart';
+import 'package:qixing/scheduler/slack_scheduler.dart';
+import 'package:qixing/ui/app_controller.dart';
+import 'package:qixing/ui/panel_pages.dart';
+import 'package:qixing/ui/panels/plan_panel.dart';
+import 'package:qixing/ui/panels/side_panel.dart';
+import 'package:qixing/ui/panels/today_panel.dart';
 
 /// 落盘永远不回来的编排仓储：用来验证"顺序不等落盘"。
 class _StuckPlanRepository implements PlanRepository {

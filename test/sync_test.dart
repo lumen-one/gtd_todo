@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gtd_todo/application/sync.dart';
+import 'package:qixing/application/sync.dart';
 
 /// SyncPort 模型的单测（§4.4）：UI 只消费这些值，摘要文案要对。
 void main() {

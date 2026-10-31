@@ -1,15 +1,15 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gtd_todo/application/event_log.dart';
-import 'package:gtd_todo/application/task_service.dart';
-import 'package:gtd_todo/domain/event.dart';
-import 'package:gtd_todo/domain/task.dart';
-import 'package:gtd_todo/domain/time_context.dart';
-import 'package:gtd_todo/platform/app_adapters.dart';
-import 'package:gtd_todo/repository/memory_task_repository.dart';
-import 'package:gtd_todo/repository/task_document.dart';
-import 'package:gtd_todo/scheduler/slack_scheduler.dart';
+import 'package:qixing/application/event_log.dart';
+import 'package:qixing/application/task_service.dart';
+import 'package:qixing/domain/event.dart';
+import 'package:qixing/domain/task.dart';
+import 'package:qixing/domain/time_context.dart';
+import 'package:qixing/platform/app_adapters.dart';
+import 'package:qixing/repository/memory_task_repository.dart';
+import 'package:qixing/repository/task_document.dart';
+import 'package:qixing/scheduler/slack_scheduler.dart';
 
 /// 决议 37：`log` 数据单独一个文档（`.gtd/log.md`），append-only。
 void main() {

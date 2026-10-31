@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gtd_todo/application/settings.dart';
-import 'package:gtd_todo/application/task_service.dart';
-import 'package:gtd_todo/domain/time_context.dart';
-import 'package:gtd_todo/overlay_main.dart';
-import 'package:gtd_todo/repository/memory_task_repository.dart';
-import 'package:gtd_todo/scheduler/slack_scheduler.dart';
-import 'package:gtd_todo/ui/app_controller.dart';
-import 'package:gtd_todo/ui/panel_pages.dart';
-import 'package:gtd_todo/ui/panels/side_panel.dart';
+import 'package:qixing/application/settings.dart';
+import 'package:qixing/application/task_service.dart';
+import 'package:qixing/domain/time_context.dart';
+import 'package:qixing/overlay_main.dart';
+import 'package:qixing/repository/memory_task_repository.dart';
+import 'package:qixing/scheduler/slack_scheduler.dart';
+import 'package:qixing/ui/app_controller.dart';
+import 'package:qixing/ui/panel_pages.dart';
+import 'package:qixing/ui/panels/side_panel.dart';
 
 /// 系统级悬浮面板宿主（overlay_main.dart）的契约测试：
 /// 展开时渲染同一套 panels；收起/进应用走 `gtd/overlay` 通道。

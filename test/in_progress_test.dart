@@ -1,17 +1,17 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gtd_todo/application/task_service.dart';
-import 'package:gtd_todo/application/today_view.dart';
-import 'package:gtd_todo/domain/event.dart';
-import 'package:gtd_todo/domain/schedule.dart';
-import 'package:gtd_todo/domain/task.dart';
-import 'package:gtd_todo/domain/time_context.dart';
-import 'package:gtd_todo/repository/markdown_task_repository.dart';
-import 'package:gtd_todo/repository/memory_task_repository.dart';
-import 'package:gtd_todo/repository/task_codec.dart';
-import 'package:gtd_todo/repository/task_sidecar.dart';
-import 'package:gtd_todo/scheduler/slack_priority_scheduler.dart';
+import 'package:qixing/application/task_service.dart';
+import 'package:qixing/application/today_view.dart';
+import 'package:qixing/domain/event.dart';
+import 'package:qixing/domain/schedule.dart';
+import 'package:qixing/domain/task.dart';
+import 'package:qixing/domain/time_context.dart';
+import 'package:qixing/repository/markdown_task_repository.dart';
+import 'package:qixing/repository/memory_task_repository.dart';
+import 'package:qixing/repository/task_codec.dart';
+import 'package:qixing/repository/task_sidecar.dart';
+import 'package:qixing/scheduler/slack_priority_scheduler.dart';
 
 /// '挂起进行'（v1.18 / D19 / ui 决议 47，决定卡 2026-10-31-suspend-daily-habit）的
 /// 验收测试：

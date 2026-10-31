@@ -1,18 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gtd_todo/application/branch_service.dart';
-import 'package:gtd_todo/application/plan_service.dart';
-import 'package:gtd_todo/application/task_service.dart';
-import 'package:gtd_todo/domain/branch.dart';
-import 'package:gtd_todo/domain/time_context.dart';
-import 'package:gtd_todo/repository/memory_branch_repository.dart';
-import 'package:gtd_todo/repository/memory_plan_repository.dart';
-import 'package:gtd_todo/repository/memory_task_repository.dart';
-import 'package:gtd_todo/scheduler/slack_scheduler.dart';
-import 'package:gtd_todo/ui/app_controller.dart';
-import 'package:gtd_todo/ui/panels/plan_panel.dart';
-import 'package:gtd_todo/ui/panels/today_panel.dart';
-import 'package:gtd_todo/ui/widgets/task_selection.dart';
+import 'package:qixing/application/branch_service.dart';
+import 'package:qixing/application/plan_service.dart';
+import 'package:qixing/application/task_service.dart';
+import 'package:qixing/domain/branch.dart';
+import 'package:qixing/domain/time_context.dart';
+import 'package:qixing/repository/memory_branch_repository.dart';
+import 'package:qixing/repository/memory_plan_repository.dart';
+import 'package:qixing/repository/memory_task_repository.dart';
+import 'package:qixing/scheduler/slack_scheduler.dart';
+import 'package:qixing/ui/app_controller.dart';
+import 'package:qixing/ui/panels/plan_panel.dart';
+import 'package:qixing/ui/panels/today_panel.dart';
+import 'package:qixing/ui/widgets/task_selection.dart';
 
 /// 支线（§6.12）：入口、卡片渲染、勾完沉底。
 void main() {

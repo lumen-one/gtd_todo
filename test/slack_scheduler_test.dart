@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gtd_todo/domain/schedule.dart';
-import 'package:gtd_todo/domain/task.dart';
-import 'package:gtd_todo/domain/time_context.dart';
-import 'package:gtd_todo/scheduler/slack_scheduler.dart';
+import 'package:qixing/domain/schedule.dart';
+import 'package:qixing/domain/task.dart';
+import 'package:qixing/domain/time_context.dart';
+import 'package:qixing/scheduler/slack_scheduler.dart';
 
 void main() {
   const rule = WorkTimeRule.standard;

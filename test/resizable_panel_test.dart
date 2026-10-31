@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gtd_todo/application/settings.dart';
-import 'package:gtd_todo/application/task_service.dart';
-import 'package:gtd_todo/domain/time_context.dart';
-import 'package:gtd_todo/repository/memory_task_repository.dart';
-import 'package:gtd_todo/scheduler/slack_scheduler.dart';
-import 'package:gtd_todo/ui/app_controller.dart';
-import 'package:gtd_todo/ui/panels/side_panel.dart';
+import 'package:qixing/application/settings.dart';
+import 'package:qixing/application/task_service.dart';
+import 'package:qixing/domain/time_context.dart';
+import 'package:qixing/repository/memory_task_repository.dart';
+import 'package:qixing/scheduler/slack_scheduler.dart';
+import 'package:qixing/ui/app_controller.dart';
+import 'package:qixing/ui/panels/side_panel.dart';
 
 /// ResizablePanel（ui/panels/side_panel.dart）契约测试：安装默认尺寸（240 × 425）、
 /// 垂直居中于把手锚点（触边夹紧）、拖底边把手改高并落盘；末了一组是

@@ -2,17 +2,17 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gtd_todo/application/task_service.dart';
-import 'package:gtd_todo/domain/event.dart';
-import 'package:gtd_todo/domain/schedule.dart';
-import 'package:gtd_todo/domain/task.dart';
-import 'package:gtd_todo/domain/time_context.dart';
-import 'package:gtd_todo/repository/memory_task_repository.dart';
-import 'package:gtd_todo/scheduler/slack_scheduler.dart';
-import 'package:gtd_todo/ui/app_controller.dart';
-import 'package:gtd_todo/ui/panels/today_panel.dart';
-import 'package:gtd_todo/ui/widgets/panel_dock.dart';
-import 'package:gtd_todo/ui/widgets/task_selection.dart';
+import 'package:qixing/application/task_service.dart';
+import 'package:qixing/domain/event.dart';
+import 'package:qixing/domain/schedule.dart';
+import 'package:qixing/domain/task.dart';
+import 'package:qixing/domain/time_context.dart';
+import 'package:qixing/repository/memory_task_repository.dart';
+import 'package:qixing/scheduler/slack_scheduler.dart';
+import 'package:qixing/ui/app_controller.dart';
+import 'package:qixing/ui/panels/today_panel.dart';
+import 'package:qixing/ui/widgets/panel_dock.dart';
+import 'package:qixing/ui/widgets/task_selection.dart';
 
 /// 多选（ui-interaction.md §10#23）的验收测试：
 ///

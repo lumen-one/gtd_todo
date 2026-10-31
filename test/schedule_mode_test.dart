@@ -1,12 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gtd_todo/application/settings.dart';
-import 'package:gtd_todo/application/task_service.dart';
-import 'package:gtd_todo/application/today_view.dart';
-import 'package:gtd_todo/domain/schedule.dart';
-import 'package:gtd_todo/domain/task.dart';
-import 'package:gtd_todo/domain/time_context.dart';
-import 'package:gtd_todo/repository/memory_task_repository.dart';
-import 'package:gtd_todo/scheduler/slack_priority_scheduler.dart';
+import 'package:qixing/application/settings.dart';
+import 'package:qixing/application/task_service.dart';
+import 'package:qixing/application/today_view.dart';
+import 'package:qixing/domain/schedule.dart';
+import 'package:qixing/domain/task.dart';
+import 'package:qixing/domain/time_context.dart';
+import 'package:qixing/repository/memory_task_repository.dart';
+import 'package:qixing/scheduler/slack_priority_scheduler.dart';
 
 /// 调度模式两档（决定卡 mode-as-information-depth）：一条**信息深度**的谱系——
 /// 上一档多问工时。重要度不是档位，是标准档里的一个开关（`ask_importance`）：

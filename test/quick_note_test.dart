@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gtd_todo/ui/panels/side_panel.dart';
+import 'package:qixing/ui/panels/side_panel.dart';
 
 /// 拖出头快记的输入条（ui-interaction.md §6.8）。
 ///

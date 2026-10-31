@@ -1,8 +1,8 @@
 import 'dart:io';
 
-import 'package:gtd_todo/domain/task.dart';
-import 'package:gtd_todo/repository/markdown_task_repository.dart';
-import 'package:gtd_todo/repository/task_document.dart';
+import 'package:qixing/domain/task.dart';
+import 'package:qixing/repository/markdown_task_repository.dart';
+import 'package:qixing/repository/task_document.dart';
 
 /// 一次性工具：按照应用的格式生成示例任务数据（`tasks.md` + `.gtd/*.md`）。
 /// 运行：`dart run tool/seed_tasks.dart`

@@ -1,19 +1,19 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gtd_todo/application/routine_service.dart';
-import 'package:gtd_todo/application/task_service.dart';
-import 'package:gtd_todo/application/today_view.dart';
-import 'package:gtd_todo/domain/event.dart';
-import 'package:gtd_todo/domain/routine.dart';
-import 'package:gtd_todo/domain/task.dart';
-import 'package:gtd_todo/domain/time_context.dart';
-import 'package:gtd_todo/repository/markdown_routine_codec.dart';
-import 'package:gtd_todo/repository/markdown_routine_repository.dart';
-import 'package:gtd_todo/repository/markdown_task_repository.dart';
-import 'package:gtd_todo/repository/memory_routine_repository.dart';
-import 'package:gtd_todo/repository/memory_task_repository.dart';
-import 'package:gtd_todo/scheduler/slack_scheduler.dart';
+import 'package:qixing/application/routine_service.dart';
+import 'package:qixing/application/task_service.dart';
+import 'package:qixing/application/today_view.dart';
+import 'package:qixing/domain/event.dart';
+import 'package:qixing/domain/routine.dart';
+import 'package:qixing/domain/task.dart';
+import 'package:qixing/domain/time_context.dart';
+import 'package:qixing/repository/markdown_routine_codec.dart';
+import 'package:qixing/repository/markdown_routine_repository.dart';
+import 'package:qixing/repository/markdown_task_repository.dart';
+import 'package:qixing/repository/memory_routine_repository.dart';
+import 'package:qixing/repository/memory_task_repository.dart';
+import 'package:qixing/scheduler/slack_scheduler.dart';
 
 /// 周期任务（决议 5/10/12/23/27）的契约测试。
 void main() {

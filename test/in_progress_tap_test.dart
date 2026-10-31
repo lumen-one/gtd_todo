@@ -2,14 +2,14 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gtd_todo/application/task_service.dart';
-import 'package:gtd_todo/domain/schedule.dart';
-import 'package:gtd_todo/domain/time_context.dart';
-import 'package:gtd_todo/repository/memory_task_repository.dart';
-import 'package:gtd_todo/scheduler/slack_scheduler.dart';
-import 'package:gtd_todo/ui/app_controller.dart';
-import 'package:gtd_todo/ui/panels/today_panel.dart';
-import 'package:gtd_todo/ui/widgets/task_selection.dart';
+import 'package:qixing/application/task_service.dart';
+import 'package:qixing/domain/schedule.dart';
+import 'package:qixing/domain/time_context.dart';
+import 'package:qixing/repository/memory_task_repository.dart';
+import 'package:qixing/scheduler/slack_scheduler.dart';
+import 'package:qixing/ui/app_controller.dart';
+import 'package:qixing/ui/panels/today_panel.dart';
+import 'package:qixing/ui/widgets/task_selection.dart';
 
 /// 挂起组点按 = **今天做过**（决议 47，决定卡 2026-10-31-suspend-daily-habit）：
 /// 清掉今天这一挂、退回原来的家（无排序档回 ⑥ 散件段），不弹详情卡；

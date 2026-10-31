@@ -90,7 +90,7 @@ class OverlayHandleService : Service() {
          * 面板一片透明）。给出库 URI 后按 "库 + 函数名" 解析即可命中
          * `lib/overlay_main.dart` 里的 `overlayMain`。
          */
-        private const val OVERLAY_ENTRYPOINT_LIBRARY = "package:gtd_todo/overlay_main.dart"
+        private const val OVERLAY_ENTRYPOINT_LIBRARY = "package:qixing/overlay_main.dart"
 
         private const val TAG = "gtd"
 

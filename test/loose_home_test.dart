@@ -1,11 +1,11 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gtd_todo/application/task_service.dart';
-import 'package:gtd_todo/domain/event.dart';
-import 'package:gtd_todo/domain/time_context.dart';
-import 'package:gtd_todo/repository/markdown_task_repository.dart';
-import 'package:gtd_todo/scheduler/slack_scheduler.dart';
+import 'package:qixing/application/task_service.dart';
+import 'package:qixing/domain/event.dart';
+import 'package:qixing/domain/time_context.dart';
+import 'package:qixing/repository/markdown_task_repository.dart';
+import 'package:qixing/scheduler/slack_scheduler.dart';
 
 /// 散件的家（metadata `loose_home`）：无排序档把 ⑥ 里的单件搬进任务池散件段，
 /// 长期有效、切档不迁移（分区口径在 [buildTodayView] / [buildPoolView]，

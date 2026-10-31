@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gtd_todo/application/mainline_service.dart';
-import 'package:gtd_todo/domain/mainline.dart';
-import 'package:gtd_todo/repository/markdown_mainline_codec.dart';
-import 'package:gtd_todo/repository/memory_mainline_repository.dart';
+import 'package:qixing/application/mainline_service.dart';
+import 'package:qixing/domain/mainline.dart';
+import 'package:qixing/repository/markdown_mainline_codec.dart';
+import 'package:qixing/repository/memory_mainline_repository.dart';
 
 /// 主线（§6.9 / 附录 B.6）：格式往返 + 命令语义。
 void main() {

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gtd_todo/application/notes_markdown.dart';
+import 'package:qixing/application/notes_markdown.dart';
 
 /// 灵感页只读态的分块与行内样式（docs/panels/notes.md）。
 /// 这里只测纯函数；长什么样在 widget 层，不在这测。

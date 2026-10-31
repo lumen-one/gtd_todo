@@ -1,10 +1,10 @@
 import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gtd_todo/domain/schedule.dart';
-import 'package:gtd_todo/domain/task.dart';
-import 'package:gtd_todo/domain/time_context.dart';
-import 'package:gtd_todo/scheduler/slack_priority_scheduler.dart';
+import 'package:qixing/domain/schedule.dart';
+import 'package:qixing/domain/task.dart';
+import 'package:qixing/domain/time_context.dart';
+import 'package:qixing/scheduler/slack_priority_scheduler.dart';
 
 /// 时间裕度优先（v1.9 默认算法，决议 39 / D16）：
 /// `risk = f(slack)` **非线性**、`priority = risk × importance`，
