@@ -1,4 +1,4 @@
-# 动态任务调度 Todo
+# 启行
 
 以 Markdown 存数据、按「时间裕度」决定先做什么的本地任务提醒应用。
 Windows 上是一个四页横滑的面板，安卓上是一枚随时拖出来的悬浮把手；没有账号、没有服务器，
@@ -44,13 +44,13 @@ Windows 10/11 · Android · MIT
 
 ## 装上
 
-**安卓**：到 [Releases](https://github.com/lumen-one/gtd_todo/releases) 下 `arm64-v8a` 那个 APK
+**安卓**：到 [Releases](https://github.com/lumen-one/qixing/releases) 下 `arm64-v8a` 那个 APK
 （近几年的手机都适用；老的 32 位机用 `armeabi-v7a`），装在手机上时允许「安装未知来源应用」。
 
 **从源码跑**（Windows / 安卓）：需要 Flutter（Dart 3）。
 
 ```bash
-git clone https://github.com/lumen-one/gtd_todo.git
+git clone https://github.com/lumen-one/qixing.git
 cd gtd_todo
 flutter pub get
 flutter run -d windows     # 或 -d android
