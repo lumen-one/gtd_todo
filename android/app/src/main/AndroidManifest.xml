@@ -20,7 +20,7 @@
          debug/profile 的 manifest 里那份是给 Flutter 工具用的，release 包没有。 -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <application
-        android:label="动态任务调度 Todo"
+        android:label="启行"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true">

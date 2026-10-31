@@ -1,4 +1,4 @@
-package com.example.gtd_todo
+package com.lumenone.qixing
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -112,8 +112,8 @@ object Notifier {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         return NotificationCompat.Builder(context, CHANNEL_OVERLAY)
-            .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("动态任务调度")
+            .setSmallIcon(R.drawable.ic_notify_star)
+            .setContentTitle("启行")
             .setContentText("悬浮手柄已开启，点按可打开面板")
             .setContentIntent(contentIntent)
             .setPriority(NotificationCompat.PRIORITY_MIN)
@@ -158,7 +158,7 @@ object Notifier {
             ReminderChannel.RING -> CHANNEL_RING
         }
         val builder = NotificationCompat.Builder(context, channelId)
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_notify_star)
             .setContentTitle(reminder.title)
             .setContentText(reminder.body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(reminder.body ?: reminder.title))

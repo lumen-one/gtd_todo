@@ -1,4 +1,4 @@
-package com.example.gtd_todo
+package com.lumenone.qixing
 
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -15,7 +15,7 @@ class ActionReceiver : BroadcastReceiver() {
 
     companion object {
         /** PendingIntent 身份的一部分；固定值，避免每次投递产生新 PendingIntent。 */
-        const val ACTION_REMINDER_ACTION = "com.example.gtd_todo.action.REMINDER_ACTION"
+        const val ACTION_REMINDER_ACTION = "com.lumenone.qixing.action.REMINDER_ACTION"
 
         const val EXTRA_ACTION_ID = "actionId"
     }

@@ -80,7 +80,7 @@ void main() {
   testWidgets('Markdown 里的任务摆进今日清单，设置页就在右栏', (tester) async {
     await pumpApp(tester, mode: ScheduleMode.standard);
 
-    expect(find.text('动态任务调度 Todo'), findsOneWidget);
+    expect(find.text('启行'), findsOneWidget);
     expect(find.text('写周报'), findsOneWidget);
     // 桌面壳 = 侧栏 + 设置页（v1.32），两栏都在。
     expect(find.byType(SidePanel), findsOneWidget);

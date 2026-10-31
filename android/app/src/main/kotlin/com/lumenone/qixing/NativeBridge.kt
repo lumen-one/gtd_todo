@@ -1,4 +1,4 @@
-package com.example.gtd_todo
+package com.lumenone.qixing
 
 import android.app.Activity
 import android.app.AlarmManager

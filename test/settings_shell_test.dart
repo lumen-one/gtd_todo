@@ -109,7 +109,7 @@ void main() {
     expect(find.text('关于'), findsOneWidget);
     expect(find.text('版本'), findsOneWidget);
     expect(find.text('QQ 3110741060'), findsOneWidget);
-    expect(find.text('https://github.com/lumen-one/gtd_todo'), findsOneWidget);
+    expect(find.text('https://github.com/lumen-one/qixing'), findsOneWidget);
   });
 
   /// 版本号由装配点注入（安卓是原生 `PackageManager` 读回来的两截），

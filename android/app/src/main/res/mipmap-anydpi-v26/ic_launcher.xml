@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 前景就是那张满版插画（星与彗尾居中、四周是天空渐变），系统按 66dp
+         可见圆裁掉外圈；背景色只在启动器把前景缩小绘制时兜底，正常看不见。 -->
     <background android:drawable="@color/ic_launcher_background" />
-    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+    <foreground android:drawable="@mipmap/ic_launcher_fg" />
 </adaptive-icon>

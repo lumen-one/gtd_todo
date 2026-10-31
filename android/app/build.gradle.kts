@@ -17,7 +17,7 @@ if (hasReleaseKey) {
 }
 
 android {
-    namespace = "com.example.gtd_todo"
+    namespace = "com.lumenone.qixing"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -27,8 +27,7 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.gtd_todo"
+        applicationId = "com.lumenone.qixing"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

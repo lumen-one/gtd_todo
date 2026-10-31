@@ -3,6 +3,6 @@
 <resources>
     <color name="gtd_handle_orange">#FF8A3D</color>
     <color name="gtd_handle_orange_light">#33FFFFFF</color>
-    <!-- 自适应图标背景 -->
-    <color name="ic_launcher_background">#1F2430</color>
+    <!-- 自适应图标背景：取插画天空的中间调，前景图缩小绘制时露出的边 -->
+    <color name="ic_launcher_background">#F4F5FC</color>
 </resources>

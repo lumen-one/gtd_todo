@@ -1,4 +1,4 @@
-package com.example.gtd_todo
+package com.lumenone.qixing
 
 import android.app.Service
 import android.content.Context
@@ -69,12 +69,12 @@ import kotlin.math.min
 class OverlayHandleService : Service() {
 
     companion object {
-        const val ACTION_START = "com.example.gtd_todo.action.OVERLAY_START"
-        const val ACTION_STOP = "com.example.gtd_todo.action.OVERLAY_STOP"
+        const val ACTION_START = "com.lumenone.qixing.action.OVERLAY_START"
+        const val ACTION_STOP = "com.lumenone.qixing.action.OVERLAY_STOP"
         const val ACTION_HOST_FOREGROUND =
-            "com.example.gtd_todo.action.OVERLAY_HOST_FOREGROUND"
+            "com.lumenone.qixing.action.OVERLAY_HOST_FOREGROUND"
         const val ACTION_HOST_BACKGROUND =
-            "com.example.gtd_todo.action.OVERLAY_HOST_BACKGROUND"
+            "com.lumenone.qixing.action.OVERLAY_HOST_BACKGROUND"
 
         /** 悬浮面板 ↔ 它自己的 isolate（Dart `overlayMain`）。 */
         const val CHANNEL_OVERLAY = "gtd/overlay"

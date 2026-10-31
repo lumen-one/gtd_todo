@@ -256,7 +256,7 @@ class GtdTodoApp extends StatelessWidget {
         final preset = controller.themePreset;
         AppColors.applyPreset(preset);
         return MaterialApp(
-          title: '动态任务调度 Todo',
+          title: '启行',
           theme: buildAppTheme(Brightness.light, preset: preset),
           darkTheme: buildAppTheme(Brightness.dark, preset: preset),
           themeMode: controller.themeMode,

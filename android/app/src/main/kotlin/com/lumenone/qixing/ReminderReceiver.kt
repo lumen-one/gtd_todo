@@ -1,4 +1,4 @@
-package com.example.gtd_todo
+package com.lumenone.qixing
 
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -15,7 +15,7 @@ class ReminderReceiver : BroadcastReceiver() {
 
     companion object {
         /** 空闲闹钟用的固定 action，是 PendingIntent 身份的一部分（见 alarmIntent）。 */
-        const val ACTION_REMINDER_ALARM = "com.example.gtd_todo.action.REMINDER_ALARM"
+        const val ACTION_REMINDER_ALARM = "com.lumenone.qixing.action.REMINDER_ALARM"
 
         /** 通知按钮的 requestCode 派生规则，Dart 侧不需要知道，但必须与 Notifier 一致。 */
         fun actionRequestCode(taskId: String, index: Int): Int {

@@ -86,7 +86,7 @@ class _DesktopShellState extends State<DesktopShell> {
       controller: controller,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('动态任务调度 Todo'),
+          title: const Text('启行'),
           actions: [
             // 单栏形态下设置页没地方摆，退回"标题栏进独立页"（§6.10）；
             // 两栏形态下设置页就在右边，标题栏不必重复一颗（旧桌面壳的

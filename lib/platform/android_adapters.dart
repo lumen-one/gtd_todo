@@ -11,7 +11,7 @@ import '../domain/task.dart';
 /// 安卓交付类适配器（§4.2/§4.3）：系统精确闹钟 + 系统通知（含快捷按钮与
 /// 全屏闹钟）+ 权限引导 + 任务目录选择。
 ///
-/// 原生侧（android/app/src/main/kotlin/com/example/gtd_todo/）：
+/// 原生侧（android/app/src/main/kotlin/com/lumenone/qixing/）：
 /// - MethodChannel `gtd/native`：Dart 调原生（挂闹钟/弹通知/权限/悬浮把手/读版本号）；
 /// - MethodChannel `gtd/native/events`：原生回传（到点、通知按钮、点通知定位、
 ///   把手拖出）。应用被杀时原生接收器自己按"内容草案"弹通知；

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 通知栏小图标：只取原图那颗四角星的轮廓。系统按 alpha 把这里染成单色，
+     彩色启动图放进来会糊成一个白方块，所以单开一份。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M21.8,7 Q14.7,12.9 17,21.8 Q11.1,14.7 2.2,17 Q9.3,11.1 7,2.2 Q12.9,9.3 21.8,7 Z" />
+</vector>

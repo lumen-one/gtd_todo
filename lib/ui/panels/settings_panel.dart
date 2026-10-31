@@ -22,7 +22,7 @@ const String _feedbackQq = '3110741060';
 
 /// 仓库地址（§9 第 14 条）：与 QQ 同一套做法——点整行复制，不引 `url_launcher`。
 /// 行尾不写『点一下复制』：一长串地址再缀四个字，窄栏里必然折成第二行。
-const String _repoUrl = 'https://github.com/lumen-one/gtd_todo';
+const String _repoUrl = 'https://github.com/lumen-one/qixing';
 
 String _mm(int minuteOfDay) {  final h = (minuteOfDay ~/ 60).toString().padLeft(2, '0');
   final m = (minuteOfDay % 60).toString().padLeft(2, '0');
