@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../domain/task.dart';
 import '../app_controller.dart';
+import '../dialogs/branch_pick_sheet.dart';
 import '../dialogs/edit_task_sheet.dart';
 import '../dialogs/snooze_sheet.dart';
 import '../theme.dart';
@@ -64,6 +65,23 @@ List<TaskMenuEntry> taskMenuEntries(
       _ => _todayEntries(context, controller, task, kind),
     };
 
+/// 『归到支线』这一条（panels/branch.md『从任务这一侧归堆』）：从任务出发
+/// 挑线，勾选式，一件任务可以同时挂几条线，也能在原地拿出来。
+///
+/// **例行实例与已完成的件不给**：前者是当天的实例，明天就失效；后者归线没
+/// 意义。支线没装配（`hasBranches` 为假）时整条不出现——点进去也没有清单可勾。
+List<TaskMenuEntry> _branchEntries(
+        BuildContext context, AppController controller, Task task) =>
+    controller.hasBranches
+        ? [
+            (
+              '归到支线',
+              Icons.call_split,
+              () => showBranchPickSheet(context, controller, task)
+            ),
+          ]
+        : const [];
+
 /// 今日清单条目（①②③⓿⑤ 组）。
 List<TaskMenuEntry> _todayEntries(BuildContext context,
     AppController controller, Task task, TaskMenuKind kind) {
@@ -117,6 +135,7 @@ List<TaskMenuEntry> _todayEntries(BuildContext context,
             ),
     if (kind == TaskMenuKind.picked)
       ('放回池子', Icons.undo, () => controller.returnToPool(task.id)),
+    ..._branchEntries(context, controller, task),
     (
       '编辑',
       Icons.edit,
@@ -348,6 +367,7 @@ List<TaskMenuEntry> _looseEntries(
       Icons.inventory_2_outlined,
       () => controller.setLooseHome(task.id, pool: true)
     ),
+    ..._branchEntries(context, controller, task),
     (
       '编辑',
       Icons.edit,
@@ -387,6 +407,7 @@ List<TaskMenuEntry> _poolEntries(
     else
       ('挑到今日', Icons.today, () => controller.pickForToday(task.id)),
     ('完成', Icons.check_circle, () => controller.complete(task.id)),
+    ..._branchEntries(context, controller, task),
     (
       '编辑',
       Icons.edit,

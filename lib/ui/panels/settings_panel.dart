@@ -9,6 +9,7 @@ import '../dialogs/settings_windows_dialog.dart';
 import '../dialogs/work_time_dialog.dart';
 import '../panel_pages.dart';
 import '../theme.dart';
+import '../widgets/option_bar.dart';
 import 'settings_permissions.dart';
 import 'settings_routines.dart';
 import 'settings_sync.dart';
@@ -47,22 +48,11 @@ String _leadLabel(int minutes) => minutes % 60 == 0
     ? '${minutes ~/ 60} 小时'
     : '$minutes 分';
 
-/// 二选一按钮（选中=实心，其余=描边）：比 SegmentedButton 放得下三个字以上的标签，
-/// 也不会在窄面板里被挤成省略号。
-Widget _modeButton(AppController c, AppSettings s, ScheduleMode mode) {
-  final label = switch (mode) {
-    ScheduleMode.standard => '标准',
-    ScheduleMode.manual => '无排序',
-  };
-  final selected = s.scheduleMode == mode;
-  final onPressed = () => c.updateSettings(s.copyWith(scheduleMode: mode));
-  return Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 4),
-    child: selected
-        ? FilledButton(onPressed: onPressed, child: Text(label))
-        : OutlinedButton(onPressed: onPressed, child: Text(label)),
-  );
-}
+/// 两档的短名（选项格子里只放这么几个字，长解释在副标题里）。
+String _modeLabel(ScheduleMode mode) => switch (mode) {
+      ScheduleMode.standard => '标准',
+      ScheduleMode.manual => '无排序',
+    };
 
 /// 热区宽度的取舍一句话（§6.0）：白条只有 6dp 宽，能起手靠的是外面这块透明热区；
 /// 选的是"好抓"与"不挡路"的折中点——热区盖住的触摸归把手，底下的界面收不到。
@@ -73,21 +63,12 @@ String _hotWidthHint(int dp) => switch (dp) {
       _ => '宽（${maxHandleHotWidth}dp）：最好抓，边上那一竖条更挡路',
     };
 
-/// 三选一按钮（同 [_modeButton]：选中=实心，其余=描边）。
-Widget _hotWidthButton(AppController c, AppSettings s, int dp) {
-  final label = switch (dp) {
-    minHandleHotWidth => '细',
-    defaultHandleHotWidth => '标准',
-    _ => '宽',
-  };
-  final onPressed = () => c.setHandleHotWidth(dp);
-  return Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 4),
-    child: s.handleHotWidth == dp
-        ? FilledButton(onPressed: onPressed, child: Text(label))
-        : OutlinedButton(onPressed: onPressed, child: Text(label)),
-  );
-}
+/// 三选一的短名（同 [_modeLabel]）。
+String _hotWidthLabel(int dp) => switch (dp) {
+      minHandleHotWidth => '细',
+      defaultHandleHotWidth => '标准',
+      _ => '宽',
+    };
 
 /// 设置页（ui-interaction.md §9，暂定 App 唯一主体页面）：
 /// 1. 权限引导〔悬浮壳〕；2. 任务目录；3. 侧边栏（**展开后默认页面** /
@@ -200,8 +181,7 @@ class _SettingsPanelState extends State<SettingsPanel> {
   /// **按壳能力表裁剪**（§9 开头）：把手、把手参数、可拖尺寸、首次拖出引导
   /// 都只属于贴屏悬浮壳；桌面上整行不渲染，这一区只剩默认页面一项。
   List<Widget> _panelSection(AppSettings s) => [
-        // 四选一（§9 第 12 条）。四个标签都是三到四个字，面板最窄 240dp 的
-        // 四等分按钮会把"已完成"挤成省略号，所以用可换行的 chip。
+        // 四选一（§9 第 12 条）。
         ListTile(
           leading: const Icon(Icons.tab_unselected_outlined),
           title: const Text('展开后默认页面'),
@@ -212,20 +192,10 @@ class _SettingsPanelState extends State<SettingsPanel> {
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              children: [
-                for (final page in PanelPage.values)
-                  ChoiceChip(
-                    label: Text(page.label),
-                    selected: _c.defaultPanelPage == page,
-                    onSelected: (_) => _c.setDefaultPage(page),
-                  ),
-              ],
-            ),
+          child: OptionBar<PanelPage>(
+            options: [for (final page in PanelPage.values) (page, page.label)],
+            selected: _c.defaultPanelPage,
+            onChanged: _c.setDefaultPage,
           ),
         ),
         if (_c.caps.handleTuning)
@@ -252,13 +222,14 @@ class _SettingsPanelState extends State<SettingsPanel> {
             subtitle: Text(_hotWidthHint(s.handleHotWidth)),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
-            child: Row(
-              children: [
-                // 三档由窄到宽：越宽越好抓，边上那一竖条也越挡路（§6.0）。
-                for (final dp in handleHotWidthOptions)
-                  Expanded(child: _hotWidthButton(_c, s, dp)),
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+            child: OptionBar<int>(
+              // 三档由窄到宽：越宽越好抓，边上那一竖条也越挡路（§6.0）。
+              options: [
+                for (final dp in handleHotWidthOptions) (dp, _hotWidthLabel(dp)),
               ],
+              selected: s.handleHotWidth,
+              onChanged: _c.setHandleHotWidth,
             ),
           ),
         ],
@@ -277,15 +248,17 @@ class _SettingsPanelState extends State<SettingsPanel> {
           subtitle: Text(_modeHint(s.scheduleMode)),
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
-          child: Row(
-            children: [
-              // 两档由强到弱：算法介入程度依次递减，一次只能选一个。
-              // 不是三格——以前那第三格"完整"只是"标准 + 问重要度"，现在由下面
-              // 那个开关表达，位置则留给 AI 编排（它不是一档，见下方占位条目）。
-              for (final mode in ScheduleMode.values)
-                Expanded(child: _modeButton(_c, s, mode)),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+          child: OptionBar<ScheduleMode>(
+            // 两档由强到弱：算法介入程度依次递减，一次只能选一个。
+            // 不是三格——以前那第三格"完整"只是"标准 + 问重要度"，现在由下面
+            // 那个开关表达，位置则留给 AI 编排（它不是一档，见下方占位条目）。
+            options: [
+              for (final mode in ScheduleMode.values) (mode, _modeLabel(mode)),
             ],
+            selected: s.scheduleMode,
+            onChanged: (mode) =>
+                _c.updateSettings(s.copyWith(scheduleMode: mode)),
           ),
         ),
         // 『问重要度』（§7.0）：只在标准档出现——无排序档不跑公式，问了没处用。
@@ -309,19 +282,15 @@ class _SettingsPanelState extends State<SettingsPanel> {
                 Text('提前多久提醒（截止型与开始型同一套）',
                     style: Theme.of(context).textTheme.bodySmall),
                 const SizedBox(height: 6),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 4,
-                  children: [
-                    for (final m in _leadOptions)
-                      ChoiceChip(
-                        showCheckmark: false,
-                        label: Text(_leadLabel(m)),
-                        selected: s.manualLeadMinutes == m,
-                        onSelected: (_) => _c.updateSettings(
-                            s.copyWith(manualLeadMinutes: m)),
-                      ),
+                OptionBar<int>(
+                  options: [
+                    for (final m in _leadOptions) (m, _leadLabel(m)),
                   ],
+                  // 设置文件被手改成四个快捷值以外的数时，一格都不亮——它照旧
+                  // 生效，只是不在这四颗里。
+                  selected: s.manualLeadMinutes,
+                  onChanged: (m) => _c.updateSettings(
+                      s.copyWith(manualLeadMinutes: m)),
                 ),
               ],
             ),
@@ -377,21 +346,21 @@ class _SettingsPanelState extends State<SettingsPanel> {
           value: s.pickEnabled,
           onChanged: (v) => _c.updateSettings(s.copyWith(pickEnabled: v)),
         ),
-        if (s.pickEnabled)
+        if (s.pickEnabled) ...[
           ListTile(
             leading: const Icon(Icons.update),
             title: const Text('间隔'),
-            trailing: SegmentedButton<int>(
-              segments: const [
-                ButtonSegment(value: 1, label: Text('1 天')),
-                ButtonSegment(value: 3, label: Text('3 天')),
-                ButtonSegment(value: 7, label: Text('7 天')),
-              ],
-              selected: {s.pickIntervalDays},
-              onSelectionChanged: (v) =>
-                  _c.updateSettings(s.copyWith(pickIntervalDays: v.first)),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+            child: OptionBar<int>(
+              options: const [(1, '1 天'), (3, '3 天'), (7, '7 天')],
+              selected: s.pickIntervalDays,
+              onChanged: (days) =>
+                  _c.updateSettings(s.copyWith(pickIntervalDays: days)),
             ),
           ),
+        ],
       ];
 
   Widget _notesSection(AppSettings s) => ListTile(
@@ -406,39 +375,31 @@ class _SettingsPanelState extends State<SettingsPanel> {
         // 明暗三选一（§8）：与强调色预设正交——预设换种子，明暗换中性底。
         // 默认跟随系统；切换立即生效（两个引擎都读同一份 settings.json）。
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
-          child: SizedBox(
-            width: double.infinity,
-            child: SegmentedButton<AppThemeMode>(
-              segments: const [
-                ButtonSegment(
-                    value: AppThemeMode.system, label: Text('跟随系统')),
-                ButtonSegment(value: AppThemeMode.light, label: Text('浅色')),
-                ButtonSegment(value: AppThemeMode.dark, label: Text('深黑')),
-              ],
-              selected: {AppThemeMode.fromId(s.themeMode)},
-              onSelectionChanged: (v) =>
-                  _c.updateSettings(s.copyWith(themeMode: v.first.id)),
-            ),
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+          child: OptionBar<AppThemeMode>(
+            options: const [
+              (AppThemeMode.system, '跟随系统'),
+              (AppThemeMode.light, '浅色'),
+              (AppThemeMode.dark, '深黑'),
+            ],
+            selected: AppThemeMode.fromId(s.themeMode),
+            onChanged: (mode) =>
+                _c.updateSettings(s.copyWith(themeMode: mode.id)),
           ),
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-          child: Wrap(
-            spacing: 8,
-            children: [
+          child: OptionBar<String>(
+            options: [
               for (final preset in AppThemePreset.values)
-                ChoiceChip(
-                  // 选中只靠底色（§9 第 7 条）：默认那颗勾画在色点上，压掉的正
-                  // 是这个预设自己——色点本身就是标识，不必再叠一层。
-                  showCheckmark: false,
-                  avatar: CircleAvatar(backgroundColor: preset.seed, radius: 8),
-                  label: Text(preset.label),
-                  selected: s.themePreset == preset.id,
-                  onSelected: (_) =>
-                      _c.updateSettings(s.copyWith(themePreset: preset.id)),
-                ),
+                (preset.id, preset.label),
             ],
+            // 选中只靠底色（§9 第 7 条）：默认那颗勾画在色点上，压掉的正
+            // 是这个预设自己——色点本身就是标识，不必再叠一层。
+            swatch: (id) => AppThemePreset.fromId(id).seed,
+            selected: s.themePreset,
+            onChanged: (id) =>
+                _c.updateSettings(s.copyWith(themePreset: id)),
           ),
         ),
       ];

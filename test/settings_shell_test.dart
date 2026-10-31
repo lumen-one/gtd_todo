@@ -153,6 +153,9 @@ void main() {
     final row = find.widgetWithText(ListTile, rowLabel);
     await tester.scrollUntilVisible(row, 240,
         scrollable: find.byType(Scrollable).first);
+    // 同 pickNotes：先让它完全进视口再点。
+    await tester.ensureVisible(row);
+    await tester.pumpAndSettle();
     await tester.tap(row);
     await tester.pumpAndSettle();
 
@@ -190,6 +193,10 @@ void main() {
     final row = find.widgetWithText(ListTile, '灵感文件路径');
     await tester.scrollUntilVisible(row, 240,
         scrollable: find.byType(Scrollable).first);
+    // 再贴一次边：列表的缓存区会让"已在树上"的行停在视口边缘外，点下去打空
+    // （这一页加行之后就会碰到）。ensureVisible 让它完全进视口。
+    await tester.ensureVisible(row);
+    await tester.pumpAndSettle();
     await tester.tap(row);
     await tester.pumpAndSettle();
     await tester.tap(find.text('用系统选择器挑一个文件'));
