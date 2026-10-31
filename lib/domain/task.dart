@@ -133,9 +133,24 @@ class Task {
   String? get pinnedAt => metadata['pinned'];
 
   /// **挂起进行标记**（v1.18，ui 决议 47；值 = 挂起时刻 ISO 串，组内降序 = 后挂在上）；
-  /// null = 未挂起。持久意图：保持到完成（`completeTask` 清除）或主动取消，
-  /// **不按天过期**；仅'长期'任务可挂（命令层校验，见 TaskService.setInProgress）。
+  /// null = 今天没挂着。**挂起是每天一挂**：点一下（今天做过）就删掉它，
+  /// 次日靠 [inProgressDailyDate] 自动回挂（见 `docs/decisions/2026-10-31-suspend-daily-habit.md`）。
   String? get inProgressAt => metadata['in_progress'];
+
+  /// **每日回挂标记**（值 = 最近一次"今天做过"的日期 yyyy-MM-dd）：有它 = 这件长期
+  /// 散件每天都回到挂起组；同时也是"同一天里点掉又重启不会当天跳回来"的凭据。
+  String? get inProgressDailyDate => metadata['in_progress_daily'];
+
+  /// 有没有资格挂起（决议 47 的判据）：**'长期'（没估工时）且没有截止**的散件。
+  /// 有了日期或换成数字工时就归调度管——命令层此刻清标记，视图与菜单按它判断。
+  bool get canBeInProgress =>
+      type == TaskType.flex && deadline == null && isLongTerm && !isCompleted;
+
+  /// **有效的挂起**：标记在、且这件现在仍有资格挂。
+  ///
+  /// 视图与菜单一律按它判断，不能只看 [inProgressAt]：失去资格的件如果还占着挂起位，
+  /// 会既进不了挂起组、又被挡在逾期/截止型组之外——谁都不显示它。
+  bool get isInProgress => inProgressAt != null && canBeInProgress;
 
   /// 被挑散件标记（当日有效，值 = yyyy-MM-dd）；null = 未被挑。
   String? get pickedForDate => metadata['picked_for_today'];

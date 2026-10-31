@@ -245,8 +245,16 @@ void main() {
         tasks: [
           task(id: 'picked-for-today', deadline: null,
               metadata: const {'picked_for_today': '2026-10-07'}),
-          task(id: 'hanging', deadline: null,
-              metadata: const {'in_progress': '2026-10-06T09:00:00.000'}),
+          // 挂起只属于长期散件（无工时 + 无截止）：这里的 helper 默认带工时，
+          // 所以这条要显式建成'长期'。
+          Task(
+            id: 'hanging',
+            title: 'hanging',
+            created: now,
+            estimatedWork: null,
+            importance: null,
+            metadata: const {'in_progress': '2026-10-06T09:00:00.000'},
+          ),
           task(id: 'plain', deadline: null),
         ],
         schedule: null,

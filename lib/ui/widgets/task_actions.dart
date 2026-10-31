@@ -99,21 +99,21 @@ List<TaskMenuEntry> _todayEntries(BuildContext context,
               builder: (_) => SnoozeSheet(controller: controller, task: task),
             )
       ),
-    // 『挂起进行 ↔ 取消挂起』（v0.17，决议 47）：只对长期任务开这个口（有截止的
-    // 归调度管）；已在挂起中的（含'转正'后仍占挂位的）给取消。挂起组条目必然
-    // 已挂起，走取消那一支。
-    if (task.isLongTerm || task.inProgressAt != null)
-      task.inProgressAt == null
-          ? (
-              '挂起进行',
-              Icons.play_circle_outline,
-              () => controller.setInProgress(task.id, enabled: true)
-            )
-          : (
-              '取消挂起',
-              Icons.pause_circle_outline,
-              () => controller.setInProgress(task.id, enabled: false)
-            ),
+    // 『挂起进行 ↔ 不再每日挂起』（v0.17，决议 47）：只有**长期散件**能挂（'长期'
+    // 且无截止；有截止的归调度管，加截止或'转正'时命令层自己把标记清掉）。挂起组
+    // 里的件点一下就是『今天做过』，所以那里给的是彻底退出每日循环的那一条。
+    if (task.isInProgress)
+      (
+        '不再每日挂起',
+        Icons.pause_circle_outline,
+        () => controller.stopDailyInProgress(task.id)
+      )
+    else if (task.canBeInProgress)
+      (
+        '挂起进行',
+        Icons.play_circle_outline,
+        () => controller.setInProgress(task.id, enabled: true)
+      ),
     // ③ 的"往前提"分两种口径（§7.0）：自动档给的是插队标记（算法排序的补丁）；
     // 无排序档顺序本来就由人定，插队不生效，这里换成真的把它挪到组首。
     if (kind == TaskMenuKind.flex)
@@ -292,7 +292,7 @@ class _SelectModeTile extends StatelessWidget {
 /// 条目所在的位置：决定长按菜单给哪些动作（决议 23/25/44）。
 /// [pool] = 任务池（计划段与散件段同款，决议 13）。
 /// [loose] = 今日页 ⑥ 散件段（仅无排序档，ui 文档 §6.1）。
-/// [inProgress] = 今日页最顶的挂起组（决议 47：长期任务"正在做"）。
+/// [inProgress] = 今日页最顶的挂起组（决议 47：长期散件"每天做一点"）。
 /// [completed] = 已完成页（ui 文档 §6.7：只有恢复未完成 / 删除）。
 /// [branch] = 支线视图（ui 文档 §6.12：条目是任务引用，动作与今日清单同款）。
 /// [calendar] = 日历弹窗的当天列表（ui 文档 §6.4：点按改期，其余动作在长按菜单）。
@@ -356,7 +356,7 @@ List<TaskMenuEntry> _looseEntries(
     BuildContext context, AppController controller, Task task) {
   return [
     ('完成', Icons.check_circle, () => controller.complete(task.id)),
-    if (task.isLongTerm && task.inProgressAt == null)
+    if (task.canBeInProgress)
       (
         '挂起进行',
         Icons.play_circle_outline,
@@ -391,8 +391,8 @@ List<TaskMenuEntry> _poolEntries(
     BuildContext context, AppController controller, Task task) {
   final looseHere = controller.isManualSort && task.deadline == null;
   return [
-    // 挂起中的件在池子里隐藏（决议 47），所以这里只会给"未挂起"的长期任务。
-    if (task.isLongTerm && task.inProgressAt == null)
+    // 挂起中的件在池子里隐藏（决议 47），所以这里只会给"今天没挂着"的长期散件。
+    if (task.canBeInProgress)
       (
         '挂起进行',
         Icons.play_circle_outline,

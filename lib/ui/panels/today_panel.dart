@@ -106,7 +106,7 @@ class TodayPanel extends StatelessWidget {
                   selecting: selection.selecting,
                   selected: selection.contains(view.inProgress[i].id),
                   onTap:
-                      _tap(context, view.inProgress[i]),
+                      _tapInProgress(context, view.inProgress[i]),
                   onLongPress: _longPress(
                       context, view.inProgress[i], TaskMenuKind.inProgress),
                   trailing: _grip(i, theme),
@@ -270,6 +270,24 @@ class TodayPanel extends StatelessWidget {
   VoidCallback _tap(BuildContext context, Task t) => selection.selecting
       ? () => selection.toggle(t.id)
       : () => showTaskDetailSheet(context, t);
+
+  /// 挂起组点按 = **今天做过**（决议 47）：清掉今天这一挂、退回原来的家，明天早上
+  /// 跨日检查再把它挂上来。这是全清单**唯一一个点按不是"看详情"的地方**——那件长期
+  /// 事每天都要落这一笔，多一层详情卡就是每天多一层。选择模式下照旧是勾选。
+  VoidCallback _tapInProgress(BuildContext context, Task t) {
+    if (selection.selecting) return () => selection.toggle(t.id);
+    return () async {
+      await controller.setInProgress(t.id, enabled: false);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('今天做过「${t.title}」，明天再挂上'),
+          persist: false,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    };
+  }
 
   /// 长按：选择模式下不给菜单（`null` → InkWell 不响应长按）；平时弹菜单，
   /// 菜单最后一行『多选』把这条一并选上（§10#23）。

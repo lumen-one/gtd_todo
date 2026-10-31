@@ -508,10 +508,11 @@ class AppController extends ChangeNotifier {
     _timer = Timer.periodic(const Duration(seconds: 20), (_) => _tick());
   }
 
-  /// 启动时装配：读设置 + 周期实例生成 + 定期挑（system 订阅者语义）。
+  /// 启动时装配：读设置 + 周期实例生成 + 挂起件回挂 + 定期挑（system 订阅者语义）。
   Future<void> bootstrap() async {
     await _loadSettings();
     await syncRoutineInstances();
+    await service.resumeDailyInProgress(); // 隔了一夜才启动：挂起件回挂（决议 47）
     await maybePickForToday();
     try {
       await mainlineService?.load();
@@ -623,6 +624,10 @@ class AppController extends ChangeNotifier {
     _ticking = true;
     try {
       await syncRoutineInstancesIfNewDay();
+      // 跨日回挂（决议 47）：挂起是"每天做一点"，换了一天就重新挂上。同一天里点掉
+      // 再重启不会跳回来（`in_progress_daily` 记着"今天做过"），所以这个调用是无状态
+      // 的幂等判断，值得每 tick 都问一次；真挂了件会发事件，界面照事件刷新。
+      await service.resumeDailyInProgress();
       final event = await service.pollReminder();
       if (event != null) {
         _lastReminder = ShownNotification(event: event);
@@ -1070,7 +1075,12 @@ class AppController extends ChangeNotifier {
     }
     final pool = service.tasks
         .where((t) =>
-            !t.isCompleted && t.type == TaskType.flex && t.deadline == null)
+            !t.isCompleted &&
+            t.type == TaskType.flex &&
+            t.deadline == null &&
+            // 挂起中的件已经在今日页最顶（决议 47），再挑一件等于当天的挑次白费：
+            // 它不会出现在 ⑤，而别的散件也没被挑上来。
+            !t.isInProgress)
         .toList();
     if (pool.isEmpty) return;
     final pick = pool[Random().nextInt(pool.length)];
@@ -1163,10 +1173,14 @@ class AppController extends ChangeNotifier {
   Future<void> setPinnedStack(List<String> orderedIds) =>
       service.setPinnedStack(orderedIds);
 
-  /// 挂起进行开关（v1.18 决议 47）：长期任务顶置今日页最顶的挂起组；
-  /// 保持到完成或主动取消，不按天过期（完成命令顺手清标记）。
+  /// 挂起进行开关（v1.18 决议 47）：长期散件顶置今日页最顶的挂起组。
+  /// `false` = **今天做过**（今天这一挂结束，次日自动挂回来，见 [stopDailyInProgress]）。
   Future<void> setInProgress(String id, {required bool enabled}) =>
       service.setInProgress(id, enabled: enabled);
+
+  /// 『不再每日挂起』（决议 47）：彻底退出挂起组，明天也不回来。
+  Future<void> stopDailyInProgress(String id) =>
+      service.stopDailyInProgress(id);
 
   /// 挂起组拖拽后的整段重排（决议 47）：整段重写挂起时刻，一次落盘。
   Future<void> setInProgressStack(List<String> orderedIds) =>

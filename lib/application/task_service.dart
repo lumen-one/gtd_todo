@@ -542,6 +542,10 @@ class TaskService {
         );
       }
     }
+    // 挂起资格（v1.18，决议 47）：一旦有了截止、或工时换回数字（'转正'），这件就
+    // 不再是散件——两个挂起标记一起清。留着它会让这件既进不了挂起组、又被挡在
+    // 逾期/截止型组之外（两边都不显示它，而调度还在算、提醒还会响）。
+    if (!updated.canBeInProgress) updated = _clearInProgress(updated);
     // 合并后校验：fixed 必须有截止；flex 无截止合法（散件）。
     if (updated.type == TaskType.fixed && updated.deadline == null) {
       throw ArgumentError('开始型任务必须有截止时刻');
@@ -581,28 +585,73 @@ class TaskService {
     return updated;
   }
 
-  /// **挂起进行**（v1.18，ui 决议 47 / D19）：长期任务的"正在做"标记——今日页
-  /// 最顶的挂起组顶置呈现（见 `buildTodayView` 的 `inProgress` 组）。持久意图
-  /// 记在任务上（metadata `in_progress`，值 = 挂起时刻），**保持到完成或主动
-  /// 取消、不按天过期**（`completeTask` 顺手清除）。仅'长期'任务可挂（有截止的
-  /// 事归调度管）；**取消不受此限**——'转正'后已挂的仍占挂起位，也要能取消。
+  /// **挂起进行 / 今天做过**（v1.18，ui 决议 47 / D19）：长期散件的"每天做一点"标记
+  /// ——今日页最顶的挂起组顶置呈现（见 `buildTodayView` 的 `inProgress` 组）。
+  ///
+  /// - `enabled: true` 写两个键：`in_progress`（值 = 挂起时刻，组内排序的载体）+
+  ///   `in_progress_daily`（今天的日期，标记"这件每天都回挂"）；
+  /// - `enabled: false` = **今天做过**：删 `in_progress`、把日期改成今天。它退出挂起组，
+  ///   明天由 [resumeDailyInProgress] 挂回来；
+  /// - 只有长期散件能挂（有截止的归调度管）。失去资格（加截止 / '转正'）由
+  ///   `updateTask` 清标记，这里不再给"转正的也能取消"的口子。
   Future<Task> setInProgress(String id,
       {required bool enabled, EventOrigin origin = EventOrigin.user}) async {
     final cur = _require(id);
-    if (enabled && !cur.isLongTerm) {
-      throw ArgumentError('仅长期任务可挂起进行（有截止的事归调度管）');
+    if (enabled && !cur.canBeInProgress) {
+      throw ArgumentError('仅长期散件可挂起进行（有截止的事归调度管）');
     }
+    final mark = _dayMark(now());
     final updated = _withMeta(cur, (m) {
       final next = Map<String, String>.from(m);
       if (enabled) {
         next['in_progress'] = now().toIso8601String();
+        next['in_progress_daily'] = mark;
       } else {
         next.remove('in_progress');
+        if (cur.canBeInProgress) next['in_progress_daily'] = mark;
       }
       return next;
     });
     await _persist(updated, origin, DomainEventType.taskInProgressSet);
     return updated;
+  }
+
+  /// **不再每日挂起**（决议 47）：两个标记一起清，彻底退出挂起组——完成之外唯一的
+  /// 人工出口（"偶尔翻出来看看"的那类散件不该永远占着最顶那块地方）。
+  Future<Task> stopDailyInProgress(String id,
+      {EventOrigin origin = EventOrigin.user}) async {
+    final updated = _clearInProgress(_require(id));
+    await _persist(updated, origin, DomainEventType.taskInProgressSet);
+    return updated;
+  }
+
+  /// **每日回挂**（决议 47）：一天里的第一次运行，把参与每日循环的长期散件重新挂上
+  /// 挂起组——`in_progress_daily` 记着"今天做过"的日期，不等于今天才还欠着一挂，
+  /// 所以**同一天里点掉又重启不会当天跳回来**。
+  ///
+  /// 批量一次落盘 + 一个事件（理由同 `setInProgressStack`）；时刻按任务列表顺序递减
+  /// 1 毫秒，组内落位因此确定，当天手动挂的（时刻更晚）自然压在这批上面。
+  /// 返回回挂件数，0 时**不落盘也不发事件**（它每个 tick 都会被调一次）。
+  Future<int> resumeDailyInProgress(
+      {EventOrigin origin = EventOrigin.system}) async {
+    final mark = _dayMark(now());
+    final base = now();
+    final updated = <Task>[];
+    for (final t in _tasks) {
+      if (!t.canBeInProgress || t.inProgressAt != null) continue;
+      final last = t.inProgressDailyDate;
+      if (last == null || last == mark) continue;
+      final i = updated.length;
+      updated.add(_withMeta(t, (m) => {
+            ...m,
+            'in_progress':
+                base.subtract(Duration(milliseconds: i)).toIso8601String(),
+            'in_progress_daily': mark,
+          }));
+    }
+    if (updated.isEmpty) return 0;
+    await _persistBatch(updated, DomainEventType.taskInProgressSet, origin);
+    return updated.length;
   }
 
   /// 散件的家（无排序档）：`pool` = 住任务池散件段，`false` = 回今日页 ⑥。
@@ -827,10 +876,16 @@ class TaskService {
     return _withMeta(t, (m) => Map<String, String>.from(m)..remove('point_fired'));
   }
 
-  /// 完成时清掉挂起标记（"持久到完成"，v1.18 决议 47）：键不在就原样返回。
+  /// 清掉挂起的**两个**标记（`in_progress` / `in_progress_daily`）：完成、失去挂起
+  /// 资格（加截止或'转正'）、『不再每日挂起』三条路都走它。键都不在就原样返回。
   static Task _clearInProgress(Task t) {
-    if (!t.metadata.containsKey('in_progress')) return t;
-    return _withMeta(t, (m) => Map<String, String>.from(m)..remove('in_progress'));
+    if (!t.metadata.containsKey('in_progress') &&
+        !t.metadata.containsKey('in_progress_daily')) {
+      return t;
+    }
+    return _withMeta(t, (m) => Map<String, String>.from(m)
+      ..remove('in_progress')
+      ..remove('in_progress_daily'));
   }
 
   static String _dayMark(DateTime d) =>

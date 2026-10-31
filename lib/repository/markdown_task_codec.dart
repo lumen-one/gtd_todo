@@ -43,6 +43,7 @@ class MarkdownTaskCodec implements TaskCodec {
     'remind',            // 逐任务提醒开关（v1.9 决议 38：标准模式下让这一件出声）
     'manual_order',      // 手动序（v1.12 决议 43 / D17：无排序模式下的显示序）
     'in_progress',       // 挂起进行标记（v1.18 决议 47：长期任务顶置今日页，值 = 挂起时刻）
+    'in_progress_daily', // 每日回挂标记（决议 47：值 = 最近一次"今天做过"的日期）
   ];
 
   const MarkdownTaskCodec();

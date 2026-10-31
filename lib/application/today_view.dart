@@ -18,7 +18,8 @@ class TodayView {
 
   /// ⓿ 挂起进行中的任务（v0.17，决议 47）：今日页最顶、逾期组之上、**无编号**；
   /// 按挂起时刻降序（后挂在上，`Task.inProgressAt`），组内可拖调序。
-  /// 成员与调度模式无关（三档下都在），也不进任务池（`buildPoolView` 同规则隐藏）。
+  /// 成员只认 [Task.isInProgress]（长期散件 + 今天的这一挂），与调度模式无关（三档
+  /// 下都在），也不进任务池（`buildPoolView` 同规则隐藏）。
   final List<Task> inProgress;
 
   /// ① 过截止未完成：橙红徽标置顶，完成/改期前不消失（决议 2）。
@@ -215,15 +216,13 @@ TodayView buildTodayView({
 
   // 手动挑过的日子自动挑让位（决议 8）： picked 即今日尾部那一件。
   // **无排序档没有这一件**：那一档不跑定期挑，散件整段在 ⑥——"挑上来"没有去处。
-  // **挂起中的件不当 picked**（决议 47）：它的显示位置是挂起组，取消挂起后
+  // **挂起中的件不当 picked**（决议 47）：它的显示位置是挂起组，点掉（今天做过）后
   // （当日标记还在）才回⑤。
   var pickedTask = scheduleMode.isManual
       ? null
       : tasks
           .where((t) =>
-              !t.isCompleted &&
-              t.pickedForDate == mark &&
-              t.inProgressAt == null)
+              !t.isCompleted && t.pickedForDate == mark && !t.isInProgress)
           .firstOrNull;
 
   final overdue = <Task>[];
@@ -235,11 +234,11 @@ TodayView buildTodayView({
 
   for (final t in tasks) {
     if (t.isCompleted) continue;
-    // ⓿ 挂起组（决议 47）：持久意图顶置最顶——不进其余任何组（逾期/固定/截止型/例行
-    // 都不收它），任务池也不重复出现（buildPoolView 同规则隐藏）。与调度模式无关。
-    // **必须排在 picked 的 identical 跳过之前**：挂着又恰好被挑的件，显示位置是
-    // 挂起组；取消挂起后它才回⑤（picked 是当日标记，还留在 metadata 里）。
-    if (t.inProgressAt != null) {
+    // ⓿ 挂起组（决议 47）：长期散件的每日标记顶置最顶——不进其余任何组（逾期/固定/
+    // 截止型/例行都不收它），任务池也不重复出现（buildPoolView 同规则隐藏）。与调度
+    // 模式无关。**判据是 [Task.isInProgress] 而不是"标记在不在"**：失了挂起资格的件
+    // （加了截止却还留着标记）要当普通任务走它的调度位置，否则两边都不显示它。
+    if (t.isInProgress) {
       inProgress.add(t);
       continue;
     }
@@ -372,7 +371,7 @@ PoolView buildPoolView({
   for (final t in tasks) {
     if (t.isCompleted) continue;
     // 挂起中的任务只在今日页顶置组出现（决议 47）：池子两段都不重复显示。
-    if (t.inProgressAt != null) continue;
+    if (t.isInProgress) continue;
     // 周期实例：当天实例归今日清单（决议 12）；更早的实例（昨日未完成）
     // 不重复出现在计划段——规则的下一次发生由 routineOccurrences 表达。
     if (t.type == TaskType.routine) continue;
